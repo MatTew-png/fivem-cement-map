@@ -509,14 +509,25 @@ export const Sidebar = ({
                           min="1"
                           max="180"
                           value={customMinutesInput}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => setCustomMinutesInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const mins = Math.max(1, parseInt(customMinutesInput, 10) || 10);
+                              onStartCooldown(spot, mins);
+                              setOpenCooldownSpotId(null);
+                            }
+                          }}
                           placeholder="นาที"
                           className="w-16 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-center font-mono text-xs text-white focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-[10px] text-slate-400">นาที</span>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const mins = Math.max(1, parseInt(customMinutesInput, 10) || 10);
                             onStartCooldown(spot, mins);
                             setOpenCooldownSpotId(null);

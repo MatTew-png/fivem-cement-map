@@ -68,7 +68,7 @@ function getMarkerIcon(
     iconSize = [20, 20];
     iconAnchor = [10, 10];
     markerHtml = `
-      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" style="width: 20px; height: 20px;">
+      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 20px; height: 20px;">
         ${isUrgent ? `
           <div class="marker-urgent-pulse-ring" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
         ` : ''}
@@ -93,7 +93,7 @@ function getMarkerIcon(
     `;
   } else {
     markerHtml = `
-      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" style="width: 42px; height: 48px;">
+      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${spot.id}" style="width: 42px; height: 48px;">
         ${isUrgent ? `
           <div class="marker-urgent-pulse-ring"></div>
           <div class="marker-urgent-pulse-ring-delayed"></div>
@@ -311,9 +311,17 @@ function createPopupNode(
   presetBtns.forEach((btn) => {
     (btn as HTMLElement).onclick = (e) => {
       e.stopPropagation();
+      e.preventDefault();
       const mins = parseInt(btn.getAttribute('data-minutes') || '10', 10);
       callbacksRef.current.onStartCooldown(spot, mins);
-      marker.closePopup();
+      // Keep popup open and transition seamlessly to running countdown in place!
+      const updatedCd: ActiveCooldown = {
+        spotId: spot.id,
+        startedAt: Date.now(),
+        expiresAt: Date.now() + mins * 60 * 1000,
+        durationSeconds: mins * 60,
+      };
+      marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
     };
   });
 
@@ -322,9 +330,17 @@ function createPopupNode(
   if (customBtn && customInput) {
     const handleStartCustom = (e?: Event) => {
       e?.stopPropagation();
+      e?.preventDefault();
       const mins = Math.max(1, parseInt(customInput.value, 10) || 10);
       callbacksRef.current.onStartCooldown(spot, mins);
-      marker.closePopup();
+      // Keep popup open and transition seamlessly to running countdown in place!
+      const updatedCd: ActiveCooldown = {
+        spotId: spot.id,
+        startedAt: Date.now(),
+        expiresAt: Date.now() + mins * 60 * 1000,
+        durationSeconds: mins * 60,
+      };
+      marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
     };
     customBtn.onclick = handleStartCustom;
     customInput.onkeydown = (e) => {
@@ -340,8 +356,10 @@ function createPopupNode(
   if (cancelBtn) {
     cancelBtn.onclick = (e) => {
       e.stopPropagation();
+      e.preventDefault();
       callbacksRef.current.onCancelCooldown(spot.id);
-      marker.closePopup();
+      // Reset popup view to idle state without closing!
+      marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
     };
   }
 
@@ -349,6 +367,7 @@ function createPopupNode(
   if (editBtn) {
     editBtn.onclick = (e) => {
       e.stopPropagation();
+      e.preventDefault();
       callbacksRef.current.onEditSpot(spot);
       marker.closePopup();
     };
@@ -587,6 +606,19 @@ export const MapView = ({
     let lastClickCoords: { x: number; y: number } | null = null;
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
+      // Ignore click if originating from within a popup, marker, or control
+      const target = (e.originalEvent?.target as HTMLElement) || null;
+      if (
+        target?.closest('.leaflet-popup') ||
+        target?.closest('.leaflet-control') ||
+        target?.closest('.custom-pin-marker') ||
+        target?.closest('.custom-compact-marker') ||
+        target?.closest('input') ||
+        target?.closest('button')
+      ) {
+        return;
+      }
+
       if (isDistanceMode) {
         const coords = latLngToGameCoords(e.latlng);
         callbacksRef.current.onAddDistancePoint(coords);
@@ -612,6 +644,18 @@ export const MapView = ({
     };
 
     const handleMapDblClick = (e: L.LeafletMouseEvent) => {
+      const target = (e.originalEvent?.target as HTMLElement) || null;
+      if (
+        target?.closest('.leaflet-popup') ||
+        target?.closest('.leaflet-control') ||
+        target?.closest('.custom-pin-marker') ||
+        target?.closest('.custom-compact-marker') ||
+        target?.closest('input') ||
+        target?.closest('button')
+      ) {
+        return;
+      }
+
       if (!isDistanceMode) {
         const coords = latLngToGameCoords(e.latlng);
         triggerCreatePin(coords);
@@ -703,7 +747,11 @@ export const MapView = ({
 
         marker.bindPopup(createPopupNode(spot, activeCd, callbacksRef, marker), {
           maxWidth: 320,
+          minWidth: 260,
           className: 'custom-fivem-popup',
+          autoClose: true,
+          closeOnClick: false,
+          autoPan: false,
         });
 
         marker.on('dragend', () => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock, CheckCircle2, X } from 'lucide-react';
+import { Clock, CheckCircle2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { ActiveCooldown, CementSpot } from '../types/map';
 import { soundEffects } from '../utils/sound';
@@ -19,6 +19,7 @@ export const CooldownTracker = ({
 }: CooldownTrackerProps) => {
   const [now, setNow] = useState(Date.now());
   const [notifiedSpots, setNotifiedSpots] = useState<Set<string>>(new Set());
+  const [isMinimized, setIsMinimized] = useState(false);
 
   // Update timer every second
   useEffect(() => {
@@ -50,14 +51,38 @@ export const CooldownTracker = ({
 
   if (cooldowns.length === 0) return null;
 
+  if (isMinimized) {
+    return (
+      <div className="absolute top-20 right-4 z-[800] flex flex-col gap-2 pointer-events-none">
+        <button
+          type="button"
+          onClick={() => setIsMinimized(false)}
+          className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 backdrop-blur-md border border-amber-500/50 text-amber-300 hover:text-white hover:border-amber-400 font-mono font-bold text-xs shadow-xl transition-all active:scale-95"
+        >
+          <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+          <span>คูลดาวน์ ({cooldowns.length})</span>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="absolute top-20 right-4 z-[1000] w-72 max-w-[calc(100vw-2rem)] flex flex-col gap-2 pointer-events-none">
+    <div className="absolute top-20 right-4 z-[800] w-72 max-w-[calc(100vw-2rem)] flex flex-col gap-2 pointer-events-none">
       <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl pointer-events-auto">
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
             <Clock className="w-4 h-4 animate-spin" style={{ animationDuration: '6s' }} />
             <span>กำลังคูลดาวน์ ({cooldowns.length} จุด)</span>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(true)}
+            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="ย่อแถบนี้"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
         </div>
 
         <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
