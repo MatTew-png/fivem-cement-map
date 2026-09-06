@@ -99,6 +99,15 @@ export const Sidebar = ({
       const matchYield = spot.yieldDescription?.toLowerCase().includes(query);
 
       return matchCat && (matchName || matchPostal || matchNotes || matchYield);
+    }).sort((a, b) => {
+      if (selectedCategory === 'urgent') {
+        const cdA = activeCooldowns.find((c) => c.spotId === a.id);
+        const cdB = activeCooldowns.find((c) => c.spotId === b.id);
+        const expA = cdA ? cdA.expiresAt : Infinity;
+        const expB = cdB ? cdB.expiresAt : Infinity;
+        return expA - expB;
+      }
+      return 0;
     });
   }, [spots, selectedCategory, searchQuery, activeCooldowns, now]);
 

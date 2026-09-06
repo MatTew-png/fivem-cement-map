@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Clock, CheckCircle2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { ActiveCooldown, CementSpot } from '../types/map';
@@ -20,6 +20,11 @@ export const CooldownTracker = ({
   const [now, setNow] = useState(Date.now());
   const [notifiedSpots, setNotifiedSpots] = useState<Set<string>>(new Set());
   const [isMinimized, setIsMinimized] = useState(false);
+
+  // Sort cooldowns ascending by expiresAt (spots closest to completion / already ready come first)
+  const sortedCooldowns = useMemo(() => {
+    return [...cooldowns].sort((a, b) => a.expiresAt - b.expiresAt);
+  }, [cooldowns]);
 
   // Update timer every second
   useEffect(() => {
@@ -85,8 +90,8 @@ export const CooldownTracker = ({
           </button>
         </div>
 
-        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-          {cooldowns.map((cd) => {
+        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+          {sortedCooldowns.map((cd) => {
             const spot = spots.find((s) => s.id === cd.spotId);
             if (!spot) return null;
 
