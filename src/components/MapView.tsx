@@ -32,6 +32,8 @@ interface MapViewProps {
   sidebarCollapsed: boolean;
   isCompactMode?: boolean;
   isGhostMode?: boolean;
+  isCoordsLocked?: boolean;
+  lockedCoords?: { x: number; y: number } | null;
 }
 
 export const MapView = ({
@@ -54,12 +56,15 @@ export const MapView = ({
   sidebarCollapsed,
   isCompactMode = false,
   isGhostMode = false,
+  isCoordsLocked = false,
+  lockedCoords = null,
 }: MapViewProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
   // Timer tick for real-time cooldown countdown updates
   const [tick, setTick] = useState(0);
@@ -83,6 +88,8 @@ export const MapView = ({
     onStartCooldown,
     onCancelCooldown,
     onSpotMoved,
+    isCoordsLocked,
+    lockedCoords,
   });
 
   useEffect(() => {
@@ -97,6 +104,8 @@ export const MapView = ({
       onStartCooldown,
       onCancelCooldown,
       onSpotMoved,
+      isCoordsLocked,
+      lockedCoords,
     };
   });
 
@@ -140,12 +149,15 @@ export const MapView = ({
     tileLayer.addTo(map);
     currentTileLayerRef.current = tileLayer;
 
-    // Create layer groups for markers & distance
+    // Create layer groups for markers & distance & locked target
     const markersGroup = L.layerGroup().addTo(map);
     markersLayerGroupRef.current = markersGroup;
 
     const distanceGroup = L.layerGroup().addTo(map);
     distanceLayerGroupRef.current = distanceGroup;
+
+    const lockedGroup = L.layerGroup().addTo(map);
+    lockedLayerGroupRef.current = lockedGroup;
 
     mapInstanceRef.current = map;
 
@@ -169,6 +181,9 @@ export const MapView = ({
     let lastCoords: { x: number; y: number } | null = null;
 
     const handleMouseMove = (e: L.LeafletMouseEvent) => {
+      // If coordinates are locked, freeze coordinate updates
+      if (callbacksRef.current.isCoordsLocked) return;
+
       lastCoords = latLngToGameCoords(e.latlng);
       if (rafId === null) {
         rafId = requestAnimationFrame(() => {
@@ -185,7 +200,7 @@ export const MapView = ({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      callbacksRef.current.onCursorMove(null);
+      // Keep last known coordinates active when leaving map so HUD buttons (/tp, pin) remain stable without vanishing or jitter
     };
 
     map.on('mousemove', handleMouseMove);
@@ -691,6 +706,44 @@ export const MapView = ({
       }
     }
   }, [selectedSpot]);
+
+  // Render Locked Coordinates Target Beacon
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const group = lockedLayerGroupRef.current;
+    if (!map || !group) return;
+
+    group.clearLayers();
+    if (!isCoordsLocked || !lockedCoords) return;
+
+    const latlng = gameCoordsToLatLng(lockedCoords.x, lockedCoords.y);
+    const beaconHtml = `
+      <div class="locked-beacon-marker relative flex items-center justify-center pointer-events-none" style="width: 44px; height: 44px;">
+        <div class="locked-pulse-ring"></div>
+        <div class="w-7 h-7 rounded-full border border-dashed border-cyan-300 animate-spin" style="animation-duration: 5s;"></div>
+        <div class="absolute w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_10px_#22d3ee]"></div>
+        <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 font-mono font-bold text-[10px] shadow-lg border border-cyan-500/60 flex items-center gap-1">
+          <span>🔒</span>
+          <span>(${lockedCoords.x.toFixed(1)}, ${lockedCoords.y.toFixed(1)})</span>
+        </div>
+      </div>
+    `;
+
+    const beaconIcon = L.divIcon({
+      className: 'custom-leaflet-div-icon',
+      html: beaconHtml,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    });
+
+    const marker = L.marker(latlng, {
+      icon: beaconIcon,
+      zIndexOffset: 3000,
+      interactive: false,
+    });
+
+    group.addLayer(marker);
+  }, [isCoordsLocked, lockedCoords]);
 
   return (
     <div

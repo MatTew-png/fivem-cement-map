@@ -40,10 +40,12 @@ export function App() {
   const [isDistanceMode, setIsDistanceMode] = useState(false);
   const [distancePoints, setDistancePoints] = useState<{ x: number; y: number }[]>([]);
 
-  // State: Coordinates HUD & Zoom
+  // State: Coordinates HUD & Zoom & Lock
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number } | null>(null);
   const cursorCoordsRef = useRef(cursorCoords);
   cursorCoordsRef.current = cursorCoords;
+  const [isCoordsLocked, setIsCoordsLocked] = useState(false);
+  const [lockedCoords, setLockedCoords] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(3);
   const [mapCenterCoords, setMapCenterCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -168,6 +170,45 @@ export function App() {
     handleMapClickToCreatePin(mapCenterCoords);
   }, [mapCenterCoords, handleMapClickToCreatePin]);
 
+  // Coordinate Lock handlers
+  const handleToggleLockCoords = useCallback(() => {
+    setIsCoordsLocked((prev) => {
+      const next = !prev;
+      if (next) {
+        const coords = cursorCoordsRef.current || mapCenterCoords;
+        setLockedCoords(coords);
+        soundEffects.playLock();
+      } else {
+        setLockedCoords(null);
+        soundEffects.playUnlock();
+      }
+      return next;
+    });
+  }, [mapCenterCoords]);
+
+  const handlePinAtLocked = useCallback(() => {
+    if (lockedCoords) {
+      handleMapClickToCreatePin(lockedCoords);
+    }
+  }, [lockedCoords, handleMapClickToCreatePin]);
+
+  // Spacebar hotkey to toggle coordinate lock
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        const activeEl = document.activeElement;
+        const tag = activeEl?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || isPinModalOpen || isExportImportOpen) {
+          return;
+        }
+        e.preventDefault();
+        handleToggleLockCoords();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleToggleLockCoords, isPinModalOpen, isExportImportOpen]);
+
   // Cooldown handlers
   const handleStartCooldown = useCallback((spot: CementSpot, customMinutes?: number) => {
     const mins = customMinutes !== undefined ? customMinutes : (spot.cooldownMinutes || 10);
@@ -262,6 +303,8 @@ export function App() {
           sidebarCollapsed={sidebarCollapsed}
           isCompactMode={isCompactMode}
           isGhostMode={isGhostMode}
+          isCoordsLocked={isCoordsLocked}
+          lockedCoords={lockedCoords}
         />
 
         {/* GTA V In-Game Reticle / Crosshair */}
@@ -292,7 +335,7 @@ export function App() {
 
         {/* Bottom Left: Coordinates HUD */}
         <CoordinatesHUD
-          cursorCoords={cursorCoords}
+          cursorCoords={isCoordsLocked && lockedCoords ? lockedCoords : cursorCoords}
           zoom={zoom}
           activeLayerName={activeLayerConfig.name.split(' ')[0]}
           showCrosshair={showCrosshair}
@@ -302,6 +345,9 @@ export function App() {
           onToggleCompactMode={() => setIsCompactMode((prev) => !prev)}
           isGhostMode={isGhostMode}
           onToggleGhostMode={() => setIsGhostMode((prev) => !prev)}
+          isCoordsLocked={isCoordsLocked}
+          onToggleLockCoords={handleToggleLockCoords}
+          onPinAtLocked={handlePinAtLocked}
         />
       </main>
 

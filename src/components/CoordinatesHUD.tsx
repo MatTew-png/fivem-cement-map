@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Crosshair, Copy, Check, Layers, Target } from 'lucide-react';
+import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock } from 'lucide-react';
 
 interface CoordinatesHUDProps {
   cursorCoords: { x: number; y: number } | null;
@@ -12,6 +12,9 @@ interface CoordinatesHUDProps {
   onToggleCompactMode?: () => void;
   isGhostMode?: boolean;
   onToggleGhostMode?: () => void;
+  isCoordsLocked?: boolean;
+  onToggleLockCoords?: () => void;
+  onPinAtLocked?: () => void;
 }
 
 export const CoordinatesHUD = ({
@@ -25,6 +28,9 @@ export const CoordinatesHUD = ({
   onToggleCompactMode,
   isGhostMode,
   onToggleGhostMode,
+  isCoordsLocked = false,
+  onToggleLockCoords,
+  onPinAtLocked,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -37,24 +43,50 @@ export const CoordinatesHUD = ({
   };
 
   return (
-    <div className="absolute bottom-4 left-4 z-[1000] flex flex-wrap items-center gap-2 bg-slate-900/95 backdrop-blur-md px-3.5 py-2 rounded-xl border border-slate-700/80 shadow-2xl text-xs font-mono text-slate-200 pointer-events-auto select-none">
-      {/* 1. Fixed-Width GPS Coordinates Slot (Zero Layout Shift & Jitter) */}
+    <div
+      className={`absolute bottom-4 left-4 z-[1000] flex flex-wrap items-center gap-2 bg-slate-900/95 backdrop-blur-md px-3.5 py-2 rounded-xl border shadow-2xl text-xs font-mono text-slate-200 pointer-events-auto select-none transition-all duration-200 ${
+        isCoordsLocked
+          ? 'border-cyan-500/80 shadow-cyan-500/20 ring-1 ring-cyan-500/30'
+          : 'border-slate-700/80'
+      }`}
+    >
+      {/* 1. Fixed-Width GPS / Locked Coordinates Slot (Zero Layout Shift & Jitter) */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-1 text-amber-400 font-semibold shrink-0">
-          <Crosshair className="w-3.5 h-3.5 animate-pulse" />
-          <span>GPS:</span>
+        <div
+          className={`flex items-center gap-1 font-semibold shrink-0 transition-colors ${
+            isCoordsLocked ? 'text-cyan-400' : 'text-amber-400'
+          }`}
+        >
+          {isCoordsLocked ? (
+            <Lock className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+          ) : (
+            <Crosshair className="w-3.5 h-3.5 animate-pulse" />
+          )}
+          <span>{isCoordsLocked ? 'LOCKED:' : 'GPS:'}</span>
         </div>
 
         <div className="flex items-center gap-2 tabular-nums">
           <div className="flex items-center gap-1">
             <span className="text-slate-400 text-[11px]">X:</span>
-            <span className="inline-block w-[64px] text-emerald-400 font-bold text-left">
+            <span
+              className={`inline-block w-[64px] font-bold text-left transition-colors ${
+                isCoordsLocked
+                  ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                  : 'text-emerald-400'
+              }`}
+            >
               {cursorCoords ? cursorCoords.x.toFixed(1) : '---.-'}
             </span>
           </div>
           <div className="flex items-center gap-1">
             <span className="text-slate-400 text-[11px]">Y:</span>
-            <span className="inline-block w-[64px] text-emerald-400 font-bold text-left">
+            <span
+              className={`inline-block w-[64px] font-bold text-left transition-colors ${
+                isCoordsLocked
+                  ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                  : 'text-emerald-400'
+              }`}
+            >
               {cursorCoords ? cursorCoords.y.toFixed(1) : '---.-'}
             </span>
           </div>
@@ -64,10 +96,16 @@ export const CoordinatesHUD = ({
         <button
           onClick={handleCopy}
           disabled={!cursorCoords}
-          title={cursorCoords ? 'คลิกเพื่อคัดลอก /tp x y z' : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'}
+          title={
+            cursorCoords
+              ? `คลิกเพื่อคัดลอก /tp x y z (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
+              : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'
+          }
           className={`flex items-center justify-center gap-1 w-[54px] py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
             cursorCoords
-              ? 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-slate-700 cursor-pointer'
+              ? isCoordsLocked
+                ? 'bg-cyan-950/80 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border-cyan-500/50 cursor-pointer shadow-sm'
+                : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-slate-700 cursor-pointer'
               : 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed'
           }`}
         >
@@ -106,6 +144,47 @@ export const CoordinatesHUD = ({
 
       {/* 3. Action Buttons (Rock-solid position, zero jitter) */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {/* Lock Coordinates Toggle (Space Shortcut) */}
+        {onToggleLockCoords && (
+          <button
+            onClick={onToggleLockCoords}
+            title={
+              isCoordsLocked
+                ? 'คลิกเพื่อปลดล็อค หรือกด [Space]'
+                : 'ล็อคพิกัดตรงนี้ ไม่ให้เลื่อนตามเมาส์ (กด Space)'
+            }
+            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] font-medium transition-all ${
+              isCoordsLocked
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/70 shadow-md shadow-cyan-500/30 font-bold'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            {isCoordsLocked ? (
+              <>
+                <Unlock className="w-3 h-3 text-cyan-300" />
+                <span>ปลดล็อค [Space]</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span>ล็อค [Space]</span>
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Pin at Locked Coords */}
+        {isCoordsLocked && onPinAtLocked && (
+          <button
+            onClick={onPinAtLocked}
+            title="สร้างมาร์คใหม่ตรงพิกัดที่ล็อคไว้ทันที"
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] transition-all shadow-md shadow-cyan-500/40 animate-in fade-in"
+          >
+            <Target className="w-3 h-3" />
+            <span>🎯 ปักจุดที่ล็อค</span>
+          </button>
+        )}
+
         {/* Crosshair Toggle */}
         <button
           onClick={onToggleCrosshair}
@@ -167,3 +246,4 @@ export const CoordinatesHUD = ({
     </div>
   );
 };
+
