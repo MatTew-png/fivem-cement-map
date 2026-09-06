@@ -18,7 +18,8 @@ export const GTA5_BOUNDS = {
   maxY: 8400,
 } as const;
 
-export const MAX_ZOOM = 7;
+export const MAX_ZOOM = 10;
+export const MAX_NATIVE_ZOOM = 7;
 export const MIN_ZOOM = 1;
 
 /** Leaflet LatLng bounds for the full GTA V map at maxZoom 7 */

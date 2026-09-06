@@ -99,7 +99,7 @@ export const MapView = ({
     const map = L.map(mapContainerRef.current, {
       crs: customGTA_CRS,
       minZoom: 1,
-      maxZoom: 7,
+      maxZoom: 10,
       zoom: 3,
       center: initialCenter,
       maxBounds: MAP_MAX_BOUNDS,
@@ -120,7 +120,8 @@ export const MapView = ({
       noWrap: true,
       tms: layerConfig.tms,
       minZoom: layerConfig.minZoom,
-      maxZoom: layerConfig.maxZoom,
+      maxZoom: layerConfig.maxZoom || 10,
+      maxNativeZoom: layerConfig.maxNativeZoom || 7,
       bounds: MAP_BOUNDS,
       className: layerConfig.className || '',
     });
@@ -207,7 +208,8 @@ export const MapView = ({
       noWrap: true,
       tms: layerConfig.tms,
       minZoom: layerConfig.minZoom,
-      maxZoom: layerConfig.maxZoom,
+      maxZoom: layerConfig.maxZoom || 10,
+      maxNativeZoom: layerConfig.maxNativeZoom || 7,
       bounds: MAP_BOUNDS,
       className: layerConfig.className || '',
     });

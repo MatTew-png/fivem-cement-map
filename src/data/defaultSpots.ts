@@ -578,7 +578,8 @@ export const MAP_LAYERS: MapLayerConfig[] = [
     url: 'https://s.rsg.sc/sc/images/games/GTAV/map/game/{z}/{x}/{y}.jpg',
     tms: false,
     minZoom: 1,
-    maxZoom: 7,
+    maxZoom: 10,
+    maxNativeZoom: 7,
     bgColor: '#384950',
   },
   {
@@ -588,7 +589,8 @@ export const MAP_LAYERS: MapLayerConfig[] = [
     url: 'https://s.rsg.sc/sc/images/games/GTAV/map/render/{z}/{x}/{y}.jpg',
     tms: false,
     minZoom: 1,
-    maxZoom: 7,
+    maxZoom: 10,
+    maxNativeZoom: 7,
     bgColor: '#0d2b4f',
   },
   {
@@ -598,7 +600,8 @@ export const MAP_LAYERS: MapLayerConfig[] = [
     url: 'https://s.rsg.sc/sc/images/games/GTAV/map/print/{z}/{x}/{y}.jpg',
     tms: false,
     minZoom: 1,
-    maxZoom: 7,
+    maxZoom: 10,
+    maxNativeZoom: 7,
     bgColor: '#4eb1d0',
   },
 ];

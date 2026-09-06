@@ -46,6 +46,7 @@ export interface MapLayerConfig {
   tms: boolean;
   minZoom: number;
   maxZoom: number;
+  maxNativeZoom?: number;
   bgColor: string;
   className?: string;
 }
