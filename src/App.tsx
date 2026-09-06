@@ -73,11 +73,15 @@ export function App() {
     saveCooldownsToStorage(activeCooldowns);
   }, [activeCooldowns]);
 
-  // Clean expired cooldowns periodically
+  // Clean expired cooldowns periodically (keeps array reference if nothing expired)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setActiveCooldowns((prev) => prev.filter((c) => c.expiresAt > now - 120000));
+      setActiveCooldowns((prev) => {
+        const filtered = prev.filter((c) => c.expiresAt > now - 120000);
+        if (filtered.length === prev.length) return prev;
+        return filtered;
+      });
     }, 5000);
     return () => clearInterval(interval);
   }, []);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import {
   customGTA_CRS,
@@ -36,6 +36,327 @@ interface MapViewProps {
   lockedCoords?: { x: number; y: number } | null;
 }
 
+// Helper to generate marker icon with cooldown badge
+function getMarkerIcon(
+  spot: CementSpot,
+  isCurrentSelected: boolean,
+  isCompactMode: boolean,
+  isGhostMode: boolean,
+  activeCd?: ActiveCooldown
+): L.DivIcon {
+  const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
+  const now = Date.now();
+  const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
+  const isCooldown = !!activeCd && remainingSec > 0;
+  const isUrgent = isCooldown && remainingSec <= 180; // <= 3 minutes (180s)
+  const isReady = !!activeCd && remainingSec === 0;
+
+  const cdMinutes = Math.floor(remainingSec / 60);
+  const cdSeconds = remainingSec % 60;
+  const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+
+  const spotIcon = spot.icon || cat?.icon || '🧱';
+  const spotColor = spot.color || cat?.color || '#f59e0b';
+
+  const ghostClass = isGhostMode && !isCurrentSelected ? 'opacity-25 pointer-events-none transition-opacity duration-200' : '';
+
+  let markerHtml = '';
+  let iconSize: [number, number] = [42, 48];
+  let iconAnchor: [number, number] = [21, 48];
+
+  if (isCompactMode) {
+    iconSize = [20, 20];
+    iconAnchor = [10, 10];
+    markerHtml = `
+      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" style="width: 20px; height: 20px;">
+        ${isUrgent ? `
+          <div class="marker-urgent-pulse-ring" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+        ` : ''}
+        <div 
+          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125"
+          style="
+            background-color: ${isUrgent ? '#ef4444' : spotColor};
+            border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
+            transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
+            box-shadow: ${isCurrentSelected ? '0 0 10px #ffffff' : '0 2px 6px rgba(0,0,0,0.6)'};
+          "
+          title="${spot.name} (${spot.x}, ${spot.y})"
+        >
+          ${spotIcon}
+        </div>
+        ${isUrgent ? `
+          <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
+            🔥 ${cdTimeStr}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else {
+    markerHtml = `
+      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" style="width: 42px; height: 48px;">
+        ${isUrgent ? `
+          <div class="marker-urgent-pulse-ring"></div>
+          <div class="marker-urgent-pulse-ring-delayed"></div>
+        ` : isReady ? `
+          <div class="marker-ready-pulse-ring"></div>
+        ` : isCooldown ? `
+          <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
+        ` : ''}
+
+        <!-- Floating Countdown Badge above teardrop -->
+        ${isUrgent ? `
+          <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
+            <span>🔥</span>
+            <span>${cdTimeStr}</span>
+          </div>
+        ` : isReady ? `
+          <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
+            <span>✅ เกิดแล้ว!</span>
+          </div>
+        ` : isCooldown ? `
+          <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+            <span>⏱️</span>
+            <span>${cdTimeStr}</span>
+          </div>
+        ` : ''}
+
+        <div class="relative flex flex-col items-center">
+          <div 
+            class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
+            style="
+              background-color: ${isUrgent ? '#ef4444' : spotColor};
+              border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
+              transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
+              box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
+            "
+          >
+            <span>${spotIcon}</span>
+          </div>
+          <div 
+            class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
+            style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
+          ></div>
+        </div>
+      </div>
+    `;
+  }
+
+  return L.divIcon({
+    className: 'custom-leaflet-div-icon',
+    html: markerHtml,
+    iconSize,
+    iconAnchor,
+    popupAnchor: [0, -iconAnchor[1]],
+  });
+}
+
+// Helper to construct interactive Leaflet popup DOM with event handlers
+function createPopupNode(
+  spot: CementSpot,
+  activeCd: ActiveCooldown | undefined,
+  callbacksRef: React.MutableRefObject<{
+    onEditSpot: (spot: CementSpot) => void;
+    onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
+    onCancelCooldown: (spotId: string) => void;
+  }>,
+  marker: L.Marker
+): HTMLElement {
+  const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
+  const spotIcon = spot.icon || cat?.icon || '🧱';
+  const spotColor = spot.color || cat?.color || '#f59e0b';
+  const cmd = formatFiveMCommand(spot);
+
+  const now = Date.now();
+  const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
+  const isCooldown = !!activeCd && remainingSec > 0;
+  const isUrgent = isCooldown && remainingSec <= 180;
+  const isReady = !!activeCd && remainingSec === 0;
+
+  const cdMinutes = Math.floor(remainingSec / 60);
+  const cdSeconds = remainingSec % 60;
+  const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+
+  const popupNode = document.createElement('div');
+  popupNode.className = 'p-1 text-slate-200 text-xs font-sans min-w-[250px] max-w-[320px]';
+
+  // Prevent map drag/click when interacting inside popup
+  L.DomEvent.disableClickPropagation(popupNode);
+  L.DomEvent.disableScrollPropagation(popupNode);
+
+  popupNode.innerHTML = `
+    <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+        ${spotIcon} ${cat.name}
+      </span>
+      ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
+    </div>
+
+    <h4 class="font-bold text-sm text-white mb-1.5 leading-snug flex items-center gap-1.5">
+      <span class="text-base">${spotIcon}</span>
+      <span>${spot.name}</span>
+    </h4>
+
+    ${spot.yieldDescription ? `
+      <div class="text-[11px] text-emerald-300 mb-1 flex items-start gap-1">
+        <span>📦</span> <span>${spot.yieldDescription}</span>
+      </div>
+    ` : ''}
+
+    ${spot.requiredItems && spot.requiredItems.length > 0 ? `
+      <div class="text-[11px] text-purple-300 mb-1 flex items-start gap-1">
+        <span>🔧</span> <span>ต้องใช้: ${spot.requiredItems.join(', ')}</span>
+      </div>
+    ` : ''}
+
+    ${spot.notes ? `
+      <p class="text-[11px] text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800 my-1.5 leading-relaxed">
+        ${spot.notes}
+      </p>
+    ` : ''}
+
+    <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 font-mono text-[11px] my-2 text-slate-300 flex items-center justify-between">
+      <span>X: <strong class="text-emerald-400">${spot.x.toFixed(1)}</strong> Y: <strong class="text-emerald-400">${spot.y.toFixed(1)}</strong></span>
+      <button id="popup-copy-cmd-${spot.id}" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-[10px] text-slate-300 border border-slate-700 transition-colors">
+        Copy /tp
+      </button>
+    </div>
+
+    <!-- Cooldown Selection & Status Section -->
+    <div class="mt-2 pt-2 border-t border-slate-700/80">
+      <div class="flex items-center justify-between mb-1.5">
+        <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+          <span>⏱️</span>
+          <span>จับเวลาคูลดาวน์</span>
+        </span>
+        <div id="popup-cd-status-box-${spot.id}">
+          ${isCooldown ? `
+            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold ${isUrgent ? 'text-red-400 animate-pulse' : 'text-amber-400'}">
+              ${isUrgent ? '🔥 ใกล้เกิด: ' : '⏳ เหลือ '}<span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+            </span>
+          ` : isReady ? `
+            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>
+          ` : `
+            <span id="popup-cd-status-${spot.id}" class="text-[10px] text-slate-400">ค่าเริ่มต้น: ${spot.cooldownMinutes || 10}น.</span>
+          `}
+        </div>
+      </div>
+
+      <!-- Quick Preset Chips -->
+      <div class="text-[10px] text-slate-400 mb-1 font-medium">เลือกเวลานับถอยหลังทันที:</div>
+      <div class="grid grid-cols-4 gap-1 mb-2">
+        ${[3, 5, 8, 10, 15, 20, 30, 60].map((m) => `
+          <button 
+            type="button" 
+            class="popup-preset-cd-btn py-1 rounded bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 font-mono font-bold text-[11px] transition-all border border-slate-700/80 ${m <= 3 ? 'hover:bg-red-500 hover:text-white border-red-500/30' : ''}" 
+            data-minutes="${m}"
+          >
+            ${m <= 3 ? '🔥 ' : ''}${m}น.
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- Custom Minutes Input Row -->
+      <div class="flex items-center gap-1.5 mb-2">
+        <div class="relative flex-1">
+          <input 
+            type="number" 
+            id="popup-custom-min-input-${spot.id}" 
+            min="1" 
+            max="180" 
+            placeholder="นาที เช่น 8 หรือ 20" 
+            value="${spot.cooldownMinutes || 10}" 
+            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+          />
+          <span class="absolute right-2 top-1 text-[10px] text-slate-400 pointer-events-none">นาที</span>
+        </div>
+        <button 
+          id="popup-start-custom-cd-${spot.id}" 
+          class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow-sm"
+        >
+          เริ่มนับ
+        </button>
+      </div>
+
+      <!-- Action buttons: Cancel & Edit -->
+      <div class="flex items-center gap-1.5">
+        ${isCooldown || isReady ? `
+          <button 
+            id="popup-cancel-cd-${spot.id}" 
+            class="flex-1 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[11px] font-medium transition-colors text-center"
+          >
+            ยกเลิกการนับ
+          </button>
+        ` : ''}
+        <button id="popup-edit-${spot.id}" class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700">
+          แก้ไขหมุด
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Attach event listeners
+  const copyBtn = popupNode.querySelector(`#popup-copy-cmd-${spot.id}`) as HTMLElement | null;
+  if (copyBtn) {
+    copyBtn.onclick = (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(cmd);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy /tp';
+      }, 1800);
+    };
+  }
+
+  const presetBtns = popupNode.querySelectorAll('.popup-preset-cd-btn');
+  presetBtns.forEach((btn) => {
+    (btn as HTMLElement).onclick = (e) => {
+      e.stopPropagation();
+      const mins = parseInt(btn.getAttribute('data-minutes') || '10', 10);
+      callbacksRef.current.onStartCooldown(spot, mins);
+      marker.closePopup();
+    };
+  });
+
+  const customInput = popupNode.querySelector(`#popup-custom-min-input-${spot.id}`) as HTMLInputElement | null;
+  const customBtn = popupNode.querySelector(`#popup-start-custom-cd-${spot.id}`) as HTMLElement | null;
+  if (customBtn && customInput) {
+    const handleStartCustom = (e?: Event) => {
+      e?.stopPropagation();
+      const mins = Math.max(1, parseInt(customInput.value, 10) || 10);
+      callbacksRef.current.onStartCooldown(spot, mins);
+      marker.closePopup();
+    };
+    customBtn.onclick = handleStartCustom;
+    customInput.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleStartCustom();
+      }
+    };
+  }
+
+  const cancelBtn = popupNode.querySelector(`#popup-cancel-cd-${spot.id}`) as HTMLElement | null;
+  if (cancelBtn) {
+    cancelBtn.onclick = (e) => {
+      e.stopPropagation();
+      callbacksRef.current.onCancelCooldown(spot.id);
+      marker.closePopup();
+    };
+  }
+
+  const editBtn = popupNode.querySelector(`#popup-edit-${spot.id}`) as HTMLElement | null;
+  if (editBtn) {
+    editBtn.onclick = (e) => {
+      e.stopPropagation();
+      callbacksRef.current.onEditSpot(spot);
+      marker.closePopup();
+    };
+  }
+
+  return popupNode;
+}
+
 export const MapView = ({
   spots,
   activeLayer,
@@ -63,18 +384,9 @@ export const MapView = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
-
-  // Timer tick for real-time cooldown countdown updates
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (activeCooldowns.length === 0) return;
-    const interval = setInterval(() => {
-      setTick((t) => (t + 1) % 1000000);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeCooldowns.length]);
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
@@ -128,6 +440,7 @@ export const MapView = ({
       attributionControl: false,
       zoomControl: false,
       doubleClickZoom: false,
+      closePopupOnClick: false,
     });
 
     // Add custom zoom control at bottom right
@@ -338,314 +651,133 @@ export const MapView = ({
     };
   }, [isDistanceMode, isGhostMode]);
 
-  // Render Markers
+  // Synchronize Markers on Map (only when spots, mode, or selection changes)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const group = markersLayerGroupRef.current;
     if (!map || !group) return;
 
-    group.clearLayers();
+    const currentSpotIds = new Set(spots.map((s) => s.id));
 
+    // 1. Remove deleted spots
+    markersMapRef.current.forEach((marker, id) => {
+      if (!currentSpotIds.has(id)) {
+        group.removeLayer(marker);
+        markersMapRef.current.delete(id);
+      }
+    });
+
+    // 2. Add or update spots
     spots.forEach((spot) => {
       const latlng = gameCoordsToLatLng(spot.x, spot.y);
-      const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
       const isCurrentSelected = selectedSpot?.id === spot.id;
-
-      // Cooldown calculations
       const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
-      const now = Date.now();
-      const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
-      const isCooldown = !!activeCd && remainingSec > 0;
-      const isUrgent = isCooldown && remainingSec <= 180; // <= 3 minutes (180s)
-      const isReady = !!activeCd && remainingSec === 0;
+      const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
+      const zIndexOffset = activeCd ? 2000 : isCurrentSelected ? 1500 : 0;
 
-      const cdMinutes = Math.floor(remainingSec / 60);
-      const cdSeconds = remainingSec % 60;
-      const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+      const existing = markersMapRef.current.get(spot.id);
+      if (existing) {
+        // Update position and icon
+        existing.setLatLng(latlng);
+        existing.setIcon(icon);
+        existing.setZIndexOffset(zIndexOffset);
 
-      const spotIcon = spot.icon || cat?.icon || '🧱';
-      const spotColor = spot.color || cat?.color || '#f59e0b';
+        // Crucial: Only update popup content if popup is NOT open, so user typing is NEVER lost!
+        if (!existing.isPopupOpen()) {
+          existing.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, existing));
+        }
 
-      const ghostClass = isGhostMode && !isCurrentSelected ? 'opacity-25 pointer-events-none transition-opacity duration-200' : '';
-
-      let markerHtml = '';
-      let iconSize: [number, number] = [42, 48];
-      let iconAnchor: [number, number] = [21, 48];
-
-      if (isCompactMode) {
-        iconSize = [20, 20];
-        iconAnchor = [10, 10];
-        markerHtml = `
-          <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" style="width: 20px; height: 20px;">
-            ${isUrgent ? `
-              <div class="marker-urgent-pulse-ring" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
-            ` : ''}
-            <div 
-              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125"
-              style="
-                background-color: ${isUrgent ? '#ef4444' : spotColor};
-                border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
-                transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
-                box-shadow: ${isCurrentSelected ? '0 0 10px #ffffff' : '0 2px 6px rgba(0,0,0,0.6)'};
-              "
-              title="${spot.name} (${spot.x}, ${spot.y})"
-            >
-              ${spotIcon}
-            </div>
-            ${isUrgent ? `
-              <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
-                🔥 ${cdTimeStr}
-              </div>
-            ` : ''}
-          </div>
-        `;
+        // Draggable handling
+        if (isCurrentSelected) {
+          if (!existing.dragging?.enabled()) existing.dragging?.enable();
+        } else {
+          if (existing.dragging?.enabled()) existing.dragging?.disable();
+        }
       } else {
-        markerHtml = `
-          <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" style="width: 42px; height: 48px;">
-            ${isUrgent ? `
-              <div class="marker-urgent-pulse-ring"></div>
-              <div class="marker-urgent-pulse-ring-delayed"></div>
-            ` : isReady ? `
-              <div class="marker-ready-pulse-ring"></div>
-            ` : isCooldown ? `
-              <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
-            ` : ''}
+        // Create new marker
+        const marker = L.marker(latlng, {
+          icon,
+          draggable: isCurrentSelected,
+          zIndexOffset,
+        });
 
-            <!-- Floating Countdown Badge above teardrop -->
-            ${isUrgent ? `
-              <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
-                <span>🔥</span>
-                <span>${cdTimeStr}</span>
-              </div>
-            ` : isReady ? `
-              <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
-                <span>✅ เกิดแล้ว!</span>
-              </div>
-            ` : isCooldown ? `
-              <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
-                <span>⏱️</span>
-                <span>${cdTimeStr}</span>
-              </div>
-            ` : ''}
+        marker.bindPopup(createPopupNode(spot, activeCd, callbacksRef, marker), {
+          maxWidth: 320,
+          className: 'custom-fivem-popup',
+        });
 
-            <div class="relative flex flex-col items-center">
-              <div 
-                class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
-                style="
-                  background-color: ${isUrgent ? '#ef4444' : spotColor};
-                  border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
-                  transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
-                  box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
-                "
-              >
-                <span>${spotIcon}</span>
-              </div>
-              <div 
-                class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
-                style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
-              ></div>
-            </div>
-          </div>
-        `;
-      }
-
-      const icon = L.divIcon({
-        className: 'custom-leaflet-div-icon',
-        html: markerHtml,
-        iconSize,
-        iconAnchor,
-        popupAnchor: [0, -iconAnchor[1]],
-      });
-
-      const marker = L.marker(latlng, {
-        icon,
-        draggable: isCurrentSelected,
-        zIndexOffset: isUrgent ? 2000 : isCurrentSelected ? 1500 : isReady ? 1000 : 0,
-      });
-
-      if (isCurrentSelected) {
         marker.on('dragend', () => {
           const newLatLng = marker.getLatLng();
           const newCoords = latLngToGameCoords(newLatLng);
           callbacksRef.current.onSpotMoved?.(spot.id, newCoords);
           soundEffects.playPinPlaced();
         });
+
+        group.addLayer(marker);
+        markersMapRef.current.set(spot.id, marker);
       }
-
-      // Build popup content
-      const cmd = formatFiveMCommand(spot);
-
-      const popupNode = document.createElement('div');
-      popupNode.className = 'p-1 text-slate-200 text-xs font-sans min-w-[250px] max-w-[320px]';
-      popupNode.innerHTML = `
-        <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
-            ${spotIcon} ${cat.name}
-          </span>
-          ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
-        </div>
-
-        <h4 class="font-bold text-sm text-white mb-1.5 leading-snug flex items-center gap-1.5">
-          <span class="text-base">${spotIcon}</span>
-          <span>${spot.name}</span>
-        </h4>
-
-        ${spot.yieldDescription ? `
-          <div class="text-[11px] text-emerald-300 mb-1 flex items-start gap-1">
-            <span>📦</span> <span>${spot.yieldDescription}</span>
-          </div>
-        ` : ''}
-
-        ${spot.requiredItems && spot.requiredItems.length > 0 ? `
-          <div class="text-[11px] text-purple-300 mb-1 flex items-start gap-1">
-            <span>🔧</span> <span>ต้องใช้: ${spot.requiredItems.join(', ')}</span>
-          </div>
-        ` : ''}
-
-        ${spot.notes ? `
-          <p class="text-[11px] text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800 my-1.5 leading-relaxed">
-            ${spot.notes}
-          </p>
-        ` : ''}
-
-        <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 font-mono text-[11px] my-2 text-slate-300 flex items-center justify-between">
-          <span>X: <strong class="text-emerald-400">${spot.x.toFixed(1)}</strong> Y: <strong class="text-emerald-400">${spot.y.toFixed(1)}</strong></span>
-          <button id="popup-copy-cmd-${spot.id}" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-[10px] text-slate-300 border border-slate-700 transition-colors">
-            Copy /tp
-          </button>
-        </div>
-
-        <!-- Cooldown Selection & Status Section -->
-        <div class="mt-2 pt-2 border-t border-slate-700/80">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
-              <span>⏱️</span>
-              <span>จับเวลาคูลดาวน์</span>
-            </span>
-            ${isCooldown ? `
-              <span class="text-[11px] font-mono font-bold ${isUrgent ? 'text-red-400 animate-pulse' : 'text-amber-400'}">
-                ${isUrgent ? '🔥 ใกล้เกิด: ' : '⏳ เหลือ '}${cdTimeStr}
-              </span>
-            ` : isReady ? `
-              <span class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>
-            ` : `
-              <span class="text-[10px] text-slate-400">ค่าเริ่มต้น: ${spot.cooldownMinutes || 10}น.</span>
-            `}
-          </div>
-
-          <!-- Quick Preset Chips -->
-          <div class="text-[10px] text-slate-400 mb-1 font-medium">เลือกเวลานับถอยหลังทันที:</div>
-          <div class="grid grid-cols-4 gap-1 mb-2">
-            ${[3, 5, 8, 10, 15, 20, 30, 60].map((m) => `
-              <button 
-                type="button" 
-                class="popup-preset-cd-btn py-1 rounded bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 font-mono font-bold text-[11px] transition-all border border-slate-700/80 ${m <= 3 ? 'hover:bg-red-500 hover:text-white border-red-500/30' : ''}" 
-                data-minutes="${m}"
-              >
-                ${m <= 3 ? '🔥 ' : ''}${m}น.
-              </button>
-            `).join('')}
-          </div>
-
-          <!-- Custom Minutes Input Row -->
-          <div class="flex items-center gap-1.5 mb-2">
-            <div class="relative flex-1">
-              <input 
-                type="number" 
-                id="popup-custom-min-input-${spot.id}" 
-                min="1" 
-                max="180" 
-                placeholder="นาที เช่น 8 หรือ 20" 
-                value="${spot.cooldownMinutes || 10}" 
-                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-              />
-              <span class="absolute right-2 top-1 text-[10px] text-slate-400 pointer-events-none">นาที</span>
-            </div>
-            <button 
-              id="popup-start-custom-cd-${spot.id}" 
-              class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow-sm"
-            >
-              เริ่มนับ
-            </button>
-          </div>
-
-          <!-- Action buttons: Cancel & Edit -->
-          <div class="flex items-center gap-1.5">
-            ${isCooldown || isReady ? `
-              <button 
-                id="popup-cancel-cd-${spot.id}" 
-                class="flex-1 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[11px] font-medium transition-colors text-center"
-              >
-                ยกเลิกการนับ
-              </button>
-            ` : ''}
-            <button id="popup-edit-${spot.id}" class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700">
-              แก้ไขหมุด
-            </button>
-          </div>
-        </div>
-      `;
-
-      marker.bindPopup(popupNode, {
-        maxWidth: 320,
-        className: 'custom-fivem-popup',
-      });
-
-      // Attach event listeners when popup opens
-      marker.on('popupopen', () => {
-        const copyBtn = document.getElementById(`popup-copy-cmd-${spot.id}`);
-        if (copyBtn) {
-          copyBtn.onclick = () => {
-            navigator.clipboard.writeText(cmd);
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => {
-              copyBtn.textContent = 'Copy /tp';
-            }, 1800);
-          };
-        }
-
-        // Preset cooldown buttons click handler
-        const presetBtns = popupNode.querySelectorAll('.popup-preset-cd-btn');
-        presetBtns.forEach((btn) => {
-          (btn as HTMLElement).onclick = () => {
-            const mins = parseInt(btn.getAttribute('data-minutes') || '10', 10);
-            callbacksRef.current.onStartCooldown(spot, mins);
-            marker.closePopup();
-          };
-        });
-
-        // Custom minute input submit
-        const customInput = document.getElementById(`popup-custom-min-input-${spot.id}`) as HTMLInputElement | null;
-        const customBtn = document.getElementById(`popup-start-custom-cd-${spot.id}`);
-        if (customBtn && customInput) {
-          customBtn.onclick = () => {
-            const mins = Math.max(1, parseInt(customInput.value, 10) || 10);
-            callbacksRef.current.onStartCooldown(spot, mins);
-            marker.closePopup();
-          };
-        }
-
-        // Cancel button
-        const cancelBtn = document.getElementById(`popup-cancel-cd-${spot.id}`);
-        if (cancelBtn) {
-          cancelBtn.onclick = () => {
-            callbacksRef.current.onCancelCooldown(spot.id);
-            marker.closePopup();
-          };
-        }
-
-        const editBtn = document.getElementById(`popup-edit-${spot.id}`);
-        if (editBtn) {
-          editBtn.onclick = () => {
-            callbacksRef.current.onEditSpot(spot);
-            marker.closePopup();
-          };
-        }
-      });
-
-      group.addLayer(marker);
     });
-  }, [spots, activeCooldowns, selectedSpot, tick, isCompactMode, isGhostMode]);
+  }, [spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+
+  // Synchronize cooldown marker badges whenever activeCooldowns change
+  useEffect(() => {
+    spots.forEach((spot) => {
+      const marker = markersMapRef.current.get(spot.id);
+      if (!marker) return;
+      const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
+      const isCurrentSelected = selectedSpot?.id === spot.id;
+      marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd));
+      marker.setZIndexOffset(activeCd ? 2000 : isCurrentSelected ? 1500 : 0);
+      if (!marker.isPopupOpen()) {
+        marker.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, marker));
+      }
+    });
+  }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+
+  // Dedicated 1-second real-time countdown updater (updates badges and open popup in place with ZERO popup close)
+  useEffect(() => {
+    if (activeCooldowns.length === 0) return;
+
+    const interval = setInterval(() => {
+      activeCooldowns.forEach((cd) => {
+        const marker = markersMapRef.current.get(cd.spotId);
+        const spot = spots.find((s) => s.id === cd.spotId);
+        if (!marker || !spot) return;
+
+        const isCurrentSelected = selectedSpot?.id === spot.id;
+        const now = Date.now();
+        const remainingSec = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
+        const isUrgent = remainingSec > 0 && remainingSec <= 180;
+        const isReady = remainingSec === 0;
+        const cdMinutes = Math.floor(remainingSec / 60);
+        const cdSeconds = remainingSec % 60;
+        const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+
+        // 1. Update marker icon badge (setIcon preserves open popup in Leaflet)
+        marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, cd));
+
+        // 2. If popup is currently open on this spot, update the countdown text in place
+        const timerSpan = document.getElementById(`popup-cd-time-${spot.id}`);
+        if (timerSpan) {
+          timerSpan.textContent = cdTimeStr;
+        }
+        const statusBox = document.getElementById(`popup-cd-status-box-${spot.id}`);
+        if (statusBox) {
+          if (isReady) {
+            statusBox.innerHTML = `<span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>`;
+          } else if (isUrgent) {
+            statusBox.innerHTML = `
+              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-red-400 animate-pulse">
+                🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+              </span>
+            `;
+          }
+        }
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
   // Render Distance Measurement Tool Polyline & Markers
   useEffect(() => {
