@@ -94,6 +94,83 @@
   animation: radar-pulse 2s infinite cubic-bezier(0.24, 0, 0.38, 1);
 }
 
+/* Urgent / Ready Soon (< 3 min) Alert Animations */
+@keyframes urgent-beacon {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+    border-width: 3px;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+@keyframes urgent-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.9)) drop-shadow(0 0 20px rgba(245, 158, 11, 0.7));
+  }
+  50% {
+    filter: drop-shadow(0 0 18px rgba(239, 68, 68, 1)) drop-shadow(0 0 32px rgba(234, 179, 8, 0.9));
+  }
+}
+
+.marker-urgent-pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  margin-left: -22px;
+  border-radius: 9999px;
+  border: 3px solid #ef4444;
+  pointer-events: none;
+  animation: urgent-beacon 1.4s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
+  box-shadow: 0 0 14px #ef4444;
+}
+
+.marker-urgent-pulse-ring-delayed {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  margin-left: -22px;
+  border-radius: 9999px;
+  border: 2px solid #f59e0b;
+  pointer-events: none;
+  animation: urgent-beacon 1.4s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
+  animation-delay: 0.7s;
+  box-shadow: 0 0 10px #f59e0b;
+}
+
+.marker-ready-pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 42px;
+  margin-top: -21px;
+  margin-left: -21px;
+  border-radius: 9999px;
+  border: 3px solid #10b981;
+  pointer-events: none;
+  animation: radar-pulse 1.6s infinite ease-out;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.8);
+}
+
+.urgent-pin-highlight {
+  animation: urgent-glow 1.2s infinite ease-in-out;
+  transform: scale(1.22);
+}
+
 /* GTA V Crosshair / Reticle (From in-game pause map) */
 .gta-crosshair-h {
   position: absolute;

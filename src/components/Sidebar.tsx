@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { MouseEvent } from 'react';
 import {
   Search,
@@ -14,6 +14,8 @@ import {
   Edit2,
   Trash2,
   Package,
+  Flame,
+  X,
 } from 'lucide-react';
 import type { CementSpot, SpotCategory, ActiveCooldown } from '../types/map';
 import { CATEGORIES } from '../data/defaultSpots';
@@ -26,7 +28,8 @@ interface SidebarProps {
   onAddNewSpot: () => void;
   onEditSpot: (spot: CementSpot) => void;
   onDeleteSpot: (id: string) => void;
-  onStartCooldown: (spot: CementSpot) => void;
+  onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
+  onCancelCooldown: (spotId: string) => void;
   onOpenExportImport: () => void;
   onClearAllSpots: () => void;
   selectedSpotId?: string;
@@ -42,6 +45,7 @@ export const Sidebar = ({
   onEditSpot,
   onDeleteSpot,
   onStartCooldown,
+  onCancelCooldown,
   onOpenExportImport,
   onClearAllSpots,
   selectedSpotId,
@@ -49,13 +53,43 @@ export const Sidebar = ({
   onToggleCollapse,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all' | 'urgent'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [openCooldownSpotId, setOpenCooldownSpotId] = useState<string | null>(null);
+  const [customMinutesInput, setCustomMinutesInput] = useState<string>('10');
+
+  // Real-time timer tick for countdown displays
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (activeCooldowns.length === 0) return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeCooldowns.length]);
+
+  // Count spots with urgent cooldown (<= 3 mins)
+  const urgentCount = useMemo(() => {
+    return spots.filter((spot) => {
+      const cd = activeCooldowns.find((c) => c.spotId === spot.id);
+      if (!cd) return false;
+      const rem = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
+      return rem > 0 && rem <= 180;
+    }).length;
+  }, [spots, activeCooldowns, now]);
 
   // Filter spots
   const filteredSpots = useMemo(() => {
     return spots.filter((spot) => {
-      const matchCat = selectedCategory === 'all' || spot.category === selectedCategory;
+      let matchCat = true;
+      if (selectedCategory === 'urgent') {
+        const cd = activeCooldowns.find((c) => c.spotId === spot.id);
+        const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
+        matchCat = rem > 0 && rem <= 180;
+      } else if (selectedCategory !== 'all') {
+        matchCat = spot.category === selectedCategory;
+      }
+
       const query = searchQuery.toLowerCase().trim();
       if (!query) return matchCat;
 
@@ -66,7 +100,7 @@ export const Sidebar = ({
 
       return matchCat && (matchName || matchPostal || matchNotes || matchYield);
     });
-  }, [spots, selectedCategory, searchQuery]);
+  }, [spots, selectedCategory, searchQuery, activeCooldowns, now]);
 
   const handleCopyCommand = (e: MouseEvent, spot: CementSpot) => {
     e.stopPropagation();
@@ -168,6 +202,20 @@ export const Sidebar = ({
             >
               ทั้งหมด ({spots.length})
             </button>
+
+            {urgentCount > 0 && (
+              <button
+                onClick={() => setSelectedCategory('urgent')}
+                className={`px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 transition-all animate-bounce ${
+                  selectedCategory === 'urgent'
+                    ? 'bg-red-600 text-white font-bold shadow-lg shadow-red-600/40'
+                    : 'bg-red-950/60 text-red-300 border border-red-500/50 hover:bg-red-900/60'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-yellow-300" />
+                <span>ใกล้เกิด ({urgentCount})</span>
+              </button>
+            )}
             {Object.values(CATEGORIES)
               .filter((cat) => spots.some((s) => s.category === cat.id))
               .map((cat) => {
@@ -244,16 +292,62 @@ export const Sidebar = ({
               const spotIcon = spot.icon || cat.icon;
               const spotColor = spot.color || cat.color;
 
+              // Cooldown calculations
+              const remainingSec = activeCooldown ? Math.max(0, Math.floor((activeCooldown.expiresAt - now) / 1000)) : 0;
+              const isCooldown = !!activeCooldown && remainingSec > 0;
+              const isUrgent = isCooldown && remainingSec <= 180; // <= 3 mins
+              const isReady = !!activeCooldown && remainingSec === 0;
+
+              const cdMinutes = Math.floor(remainingSec / 60);
+              const cdSeconds = remainingSec % 60;
+              const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+
+              const isCooldownPanelOpen = openCooldownSpotId === spot.id;
+
               return (
                 <div
                   key={spot.id}
                   onClick={() => onSelectSpot(spot)}
                   className={`p-3 rounded-2xl border transition-all cursor-pointer group relative text-xs ${
-                    isSelected
+                    isUrgent
+                      ? 'bg-red-950/40 border-red-500 shadow-xl shadow-red-500/20 animate-pulse'
+                      : isSelected
                       ? 'bg-slate-800/95 border-amber-500/80 shadow-lg shadow-amber-500/10'
                       : 'bg-slate-850/60 border-slate-800 hover:bg-slate-800/80 hover:border-slate-700'
                   }`}
                 >
+                  {/* Urgent / Active Countdown Banner */}
+                  {isUrgent ? (
+                    <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold text-[11px] mb-2 shadow-md">
+                      <span className="flex items-center gap-1">
+                        <Flame className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
+                        <span>ใกล้เกิดแล้ว! ต่ำกว่า 3 นาที</span>
+                      </span>
+                      <span className="font-mono font-black text-xs">{cdTimeStr}</span>
+                    </div>
+                  ) : isCooldown ? (
+                    <div className="flex items-center justify-between px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[10px] mb-2">
+                      <span>⏳ กำลังคูลดาวน์</span>
+                      <span className="font-bold">{cdTimeStr}</span>
+                    </div>
+                  ) : isReady ? (
+                    <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] mb-2 shadow-md animate-pulse">
+                      <span className="flex items-center gap-1">
+                        <span>✅</span>
+                        <span>ถึงเวลาเกิดแล้ว! จกได้เลย</span>
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCancelCooldown(spot.id);
+                        }}
+                        className="text-[10px] text-emerald-100 hover:text-white underline"
+                      >
+                        ปิด
+                      </button>
+                    </div>
+                  ) : null}
+
                   {/* Category & Postal badges */}
                   <div className="flex items-center justify-between mb-1.5">
                     <span
@@ -316,24 +410,28 @@ export const Sidebar = ({
                         )}
                       </button>
 
-                      {/* Cooldown button */}
-                      {spot.cooldownMinutes && spot.cooldownMinutes > 0 ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onStartCooldown(spot);
-                          }}
-                          title={activeCooldown ? 'กำลังคูลดาวน์' : 'เริ่มจับเวลาคูลดาวน์'}
-                          className={`px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 transition-colors border ${
-                            activeCooldown
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                          }`}
-                        >
+                      {/* Cooldown button / toggle quick picker */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenCooldownSpotId((prev) => (prev === spot.id ? null : spot.id));
+                        }}
+                        title={activeCooldown ? 'ปรับเวลาหรือยกเลิกคูลดาวน์' : 'เลือกเวลาคูลดาวน์'}
+                        className={`px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 transition-all border ${
+                          isUrgent
+                            ? 'bg-red-600 text-white border-yellow-300 font-black animate-bounce shadow-md shadow-red-600/50'
+                            : activeCooldown
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {isUrgent ? (
+                          <Flame className="w-3 h-3 text-yellow-300" />
+                        ) : (
                           <Clock className="w-2.5 h-2.5 text-amber-400" />
-                          <span>{activeCooldown ? 'นับเวลา' : `${spot.cooldownMinutes}น.`}</span>
-                        </button>
-                      ) : null}
+                        )}
+                        <span>{isUrgent ? cdTimeStr : isCooldown ? cdTimeStr : `${spot.cooldownMinutes || 10}น.`}</span>
+                      </button>
 
                       {/* Edit Button */}
                       <button
@@ -362,6 +460,86 @@ export const Sidebar = ({
                       </button>
                     </div>
                   </div>
+
+                  {/* Inline Quick Cooldown Picker Panel */}
+                  {isCooldownPanelOpen && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-2.5 p-2.5 rounded-xl bg-slate-900/95 border border-slate-700/90 text-xs space-y-2 shadow-xl animate-in fade-in duration-150"
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          <span>เลือกเวลานับถอยหลัง:</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOpenCooldownSpotId(null)}
+                          className="text-slate-400 hover:text-white p-0.5 rounded"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Presets Grid */}
+                      <div className="grid grid-cols-4 gap-1">
+                        {[3, 5, 8, 10, 15, 20, 30, 60].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              onStartCooldown(spot, m);
+                              setOpenCooldownSpotId(null);
+                            }}
+                            className={`py-1 rounded font-mono font-bold text-[10px] transition-all border ${
+                              m <= 3
+                                ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500 hover:text-white'
+                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-amber-400 hover:text-slate-950'
+                            }`}
+                          >
+                            {m <= 3 ? '🔥 ' : ''}{m}น.
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Custom Minutes Input */}
+                      <div className="flex items-center gap-1 pt-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          max="180"
+                          value={customMinutesInput}
+                          onChange={(e) => setCustomMinutesInput(e.target.value)}
+                          placeholder="นาที"
+                          className="w-16 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-center font-mono text-xs text-white focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-[10px] text-slate-400">นาที</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const mins = Math.max(1, parseInt(customMinutesInput, 10) || 10);
+                            onStartCooldown(spot, mins);
+                            setOpenCooldownSpotId(null);
+                          }}
+                          className="ml-auto px-2.5 py-0.5 rounded bg-amber-500 text-slate-950 font-bold text-[10px] hover:bg-amber-400 transition-colors"
+                        >
+                          เริ่มนับ
+                        </button>
+                        {activeCooldown && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onCancelCooldown(spot.id);
+                              setOpenCooldownSpotId(null);
+                            }}
+                            className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] hover:bg-red-500/30"
+                          >
+                            ยกเลิก
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })

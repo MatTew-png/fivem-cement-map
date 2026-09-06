@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import {
   customGTA_CRS,
@@ -24,7 +24,8 @@ interface MapViewProps {
   onZoomChange: (zoom: number) => void;
   onEditSpot: (spot: CementSpot) => void;
   onDeleteSpot: (id: string) => void;
-  onStartCooldown: (spot: CementSpot) => void;
+  onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
+  onCancelCooldown: (spotId: string) => void;
   selectedSpot: CementSpot | null;
   sidebarCollapsed: boolean;
 }
@@ -42,6 +43,7 @@ export const MapView = ({
   onEditSpot,
   onDeleteSpot,
   onStartCooldown,
+  onCancelCooldown,
   selectedSpot,
   sidebarCollapsed,
 }: MapViewProps) => {
@@ -50,6 +52,16 @@ export const MapView = ({
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
+
+  // Timer tick for real-time cooldown countdown updates
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (activeCooldowns.length === 0) return;
+    const interval = setInterval(() => {
+      setTick((t) => (t + 1) % 1000000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeCooldowns.length]);
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
@@ -60,6 +72,7 @@ export const MapView = ({
     onEditSpot,
     onDeleteSpot,
     onStartCooldown,
+    onCancelCooldown,
   });
 
   useEffect(() => {
@@ -71,6 +84,7 @@ export const MapView = ({
       onEditSpot,
       onDeleteSpot,
       onStartCooldown,
+      onCancelCooldown,
     };
   });
 
@@ -291,31 +305,67 @@ export const MapView = ({
     spots.forEach((spot) => {
       const latlng = gameCoordsToLatLng(spot.x, spot.y);
       const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
-      const isCooldown = activeCooldowns.some((c) => c.spotId === spot.id);
       const isCurrentSelected = selectedSpot?.id === spot.id;
+
+      // Cooldown calculations
+      const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
+      const now = Date.now();
+      const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
+      const isCooldown = !!activeCd && remainingSec > 0;
+      const isUrgent = isCooldown && remainingSec <= 180; // <= 3 minutes (180s)
+      const isReady = !!activeCd && remainingSec === 0;
+
+      const cdMinutes = Math.floor(remainingSec / 60);
+      const cdSeconds = remainingSec % 60;
+      const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
       const spotIcon = spot.icon || cat?.icon || '🧱';
       const spotColor = spot.color || cat?.color || '#f59e0b';
 
       // Custom HTML Marker Icon
       const markerHtml = `
-        <div class="custom-pin-marker relative cursor-pointer" style="width: 36px; height: 42px;">
-          ${isCooldown ? `<div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>` : ''}
+        <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''}" style="width: 42px; height: 48px;">
+          ${isUrgent ? `
+            <div class="marker-urgent-pulse-ring"></div>
+            <div class="marker-urgent-pulse-ring-delayed"></div>
+          ` : isReady ? `
+            <div class="marker-ready-pulse-ring"></div>
+          ` : isCooldown ? `
+            <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
+          ` : ''}
+
+          <!-- Floating Countdown Badge above teardrop -->
+          ${isUrgent ? `
+            <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
+              <span>🔥</span>
+              <span>${cdTimeStr}</span>
+            </div>
+          ` : isReady ? `
+            <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
+              <span>✅ เกิดแล้ว!</span>
+            </div>
+          ` : isCooldown ? `
+            <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+              <span>⏱️</span>
+              <span>${cdTimeStr}</span>
+            </div>
+          ` : ''}
+
           <div class="relative flex flex-col items-center">
             <div 
               class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
               style="
-                background-color: ${spotColor};
-                border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
-                transform: ${isCurrentSelected ? 'scale(1.2)' : 'scale(1)'};
-                box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                background-color: ${isUrgent ? '#ef4444' : spotColor};
+                border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
+                transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
+                box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
               "
             >
               <span>${spotIcon}</span>
             </div>
             <div 
               class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
-              style="border-top-color: ${spotColor};"
+              style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
             ></div>
           </div>
         </div>
@@ -324,9 +374,9 @@ export const MapView = ({
       const icon = L.divIcon({
         className: 'custom-leaflet-div-icon',
         html: markerHtml,
-        iconSize: [36, 42],
-        iconAnchor: [18, 42],
-        popupAnchor: [0, -42],
+        iconSize: [42, 48],
+        iconAnchor: [21, 48],
+        popupAnchor: [0, -48],
       });
 
       const marker = L.marker(latlng, { icon });
@@ -335,7 +385,7 @@ export const MapView = ({
       const cmd = formatFiveMCommand(spot);
 
       const popupNode = document.createElement('div');
-      popupNode.className = 'p-1 text-slate-200 text-xs font-sans min-w-[240px] max-w-[300px]';
+      popupNode.className = 'p-1 text-slate-200 text-xs font-sans min-w-[250px] max-w-[320px]';
       popupNode.innerHTML = `
         <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
@@ -374,15 +424,74 @@ export const MapView = ({
           </button>
         </div>
 
-        <div class="flex items-center gap-1.5 pt-1 border-t border-slate-800">
-          ${spot.cooldownMinutes ? `
-            <button id="popup-cooldown-${spot.id}" class="flex-1 py-1 px-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] text-center transition-colors">
-              ${isCooldown ? '⏳ กำลังคูลดาวน์' : `⏱️ เริ่มคูลดาวน์ (${spot.cooldownMinutes}น.)`}
+        <!-- Cooldown Selection & Status Section -->
+        <div class="mt-2 pt-2 border-t border-slate-700/80">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+              <span>⏱️</span>
+              <span>จับเวลาคูลดาวน์</span>
+            </span>
+            ${isCooldown ? `
+              <span class="text-[11px] font-mono font-bold ${isUrgent ? 'text-red-400 animate-pulse' : 'text-amber-400'}">
+                ${isUrgent ? '🔥 ใกล้เกิด: ' : '⏳ เหลือ '}${cdTimeStr}
+              </span>
+            ` : isReady ? `
+              <span class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>
+            ` : `
+              <span class="text-[10px] text-slate-400">ค่าเริ่มต้น: ${spot.cooldownMinutes || 10}น.</span>
+            `}
+          </div>
+
+          <!-- Quick Preset Chips -->
+          <div class="text-[10px] text-slate-400 mb-1 font-medium">เลือกเวลานับถอยหลังทันที:</div>
+          <div class="grid grid-cols-4 gap-1 mb-2">
+            ${[3, 5, 8, 10, 15, 20, 30, 60].map((m) => `
+              <button 
+                type="button" 
+                class="popup-preset-cd-btn py-1 rounded bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 font-mono font-bold text-[11px] transition-all border border-slate-700/80 ${m <= 3 ? 'hover:bg-red-500 hover:text-white border-red-500/30' : ''}" 
+                data-minutes="${m}"
+              >
+                ${m <= 3 ? '🔥 ' : ''}${m}น.
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Custom Minutes Input Row -->
+          <div class="flex items-center gap-1.5 mb-2">
+            <div class="relative flex-1">
+              <input 
+                type="number" 
+                id="popup-custom-min-input-${spot.id}" 
+                min="1" 
+                max="180" 
+                placeholder="นาที เช่น 8 หรือ 20" 
+                value="${spot.cooldownMinutes || 10}" 
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+              />
+              <span class="absolute right-2 top-1 text-[10px] text-slate-400 pointer-events-none">นาที</span>
+            </div>
+            <button 
+              id="popup-start-custom-cd-${spot.id}" 
+              class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow-sm"
+            >
+              เริ่มนับ
             </button>
-          ` : ''}
-          <button id="popup-edit-${spot.id}" class="p-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700">
-            แก้ไข
-          </button>
+          </div>
+
+          <!-- Action buttons: Cancel & Edit -->
+          <div class="flex items-center gap-1.5">
+            ${isCooldown || isReady ? `
+              <button 
+                id="popup-cancel-cd-${spot.id}" 
+                class="flex-1 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[11px] font-medium transition-colors text-center"
+              >
+                ยกเลิกการนับ
+              </button>
+            ` : ''}
+            <button id="popup-edit-${spot.id}" class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700">
+              แก้ไขหมุด
+            </button>
+          </div>
         </div>
       `;
 
@@ -404,10 +513,32 @@ export const MapView = ({
           };
         }
 
-        const cdBtn = document.getElementById(`popup-cooldown-${spot.id}`);
-        if (cdBtn) {
-          cdBtn.onclick = () => {
-            callbacksRef.current.onStartCooldown(spot);
+        // Preset cooldown buttons click handler
+        const presetBtns = popupNode.querySelectorAll('.popup-preset-cd-btn');
+        presetBtns.forEach((btn) => {
+          (btn as HTMLElement).onclick = () => {
+            const mins = parseInt(btn.getAttribute('data-minutes') || '10', 10);
+            callbacksRef.current.onStartCooldown(spot, mins);
+            marker.closePopup();
+          };
+        });
+
+        // Custom minute input submit
+        const customInput = document.getElementById(`popup-custom-min-input-${spot.id}`) as HTMLInputElement | null;
+        const customBtn = document.getElementById(`popup-start-custom-cd-${spot.id}`);
+        if (customBtn && customInput) {
+          customBtn.onclick = () => {
+            const mins = Math.max(1, parseInt(customInput.value, 10) || 10);
+            callbacksRef.current.onStartCooldown(spot, mins);
+            marker.closePopup();
+          };
+        }
+
+        // Cancel button
+        const cancelBtn = document.getElementById(`popup-cancel-cd-${spot.id}`);
+        if (cancelBtn) {
+          cancelBtn.onclick = () => {
+            callbacksRef.current.onCancelCooldown(spot.id);
             marker.closePopup();
           };
         }
@@ -423,7 +554,7 @@ export const MapView = ({
 
       group.addLayer(marker);
     });
-  }, [spots, activeCooldowns, selectedSpot]);
+  }, [spots, activeCooldowns, selectedSpot, tick]);
 
   // Render Distance Measurement Tool Polyline & Markers
   useEffect(() => {

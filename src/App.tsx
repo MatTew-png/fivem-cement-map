@@ -150,10 +150,11 @@ export function App() {
   }, []);
 
   // Cooldown handlers
-  const handleStartCooldown = useCallback((spot: CementSpot) => {
-    if (!spot.cooldownMinutes || spot.cooldownMinutes <= 0) return;
+  const handleStartCooldown = useCallback((spot: CementSpot, customMinutes?: number) => {
+    const mins = customMinutes !== undefined ? customMinutes : (spot.cooldownMinutes || 10);
+    if (mins <= 0) return;
 
-    const durationSeconds = spot.cooldownMinutes * 60;
+    const durationSeconds = mins * 60;
     const now = Date.now();
     const expiresAt = now + durationSeconds * 1000;
 
@@ -197,8 +198,8 @@ export function App() {
   const activeLayerConfig = MAP_LAYERS.find((l) => l.id === activeLayer) || MAP_LAYERS[0];
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none flex">
-      {/* Sidebar */}
+    <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
+      {/* Collapsible Left Sidebar */}
       <Sidebar
         spots={spots}
         activeCooldowns={activeCooldowns}
@@ -207,6 +208,7 @@ export function App() {
         onEditSpot={handleEditSpot}
         onDeleteSpot={handleDeleteSpot}
         onStartCooldown={handleStartCooldown}
+        onCancelCooldown={handleCancelCooldown}
         onOpenExportImport={() => setIsExportImportOpen(true)}
         onClearAllSpots={handleClearAllSpots}
         selectedSpotId={selectedSpot?.id}
@@ -234,6 +236,7 @@ export function App() {
           onEditSpot={handleEditSpot}
           onDeleteSpot={handleDeleteSpot}
           onStartCooldown={handleStartCooldown}
+          onCancelCooldown={handleCancelCooldown}
           selectedSpot={selectedSpot}
           sidebarCollapsed={sidebarCollapsed}
         />

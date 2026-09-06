@@ -69,6 +69,7 @@ export const CooldownTracker = ({
             const totalSeconds = cd.durationSeconds;
             const progress = Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100));
             const isReady = remainingSeconds === 0;
+            const isUrgent = remainingSeconds > 0 && remainingSeconds <= 180;
 
             const minutes = Math.floor(remainingSeconds / 60);
             const seconds = remainingSeconds % 60;
@@ -80,16 +81,19 @@ export const CooldownTracker = ({
                 className={`p-2.5 rounded-xl border transition-all text-xs ${
                   isReady
                     ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                    : isUrgent
+                    ? 'bg-red-950/60 border-red-500 shadow-lg shadow-red-500/30 text-white animate-pulse'
                     : 'bg-slate-800/70 border-slate-700/60 text-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span
                     onClick={() => onFocusSpot(spot)}
-                    className="font-medium truncate hover:text-amber-400 cursor-pointer flex-1 mr-2"
+                    className="font-medium truncate hover:text-amber-400 cursor-pointer flex-1 mr-2 flex items-center gap-1"
                     title={spot.name}
                   >
-                    {spot.name}
+                    {isUrgent && <span>🔥</span>}
+                    <span>{spot.name}</span>
                   </span>
                   <button
                     onClick={() => onCancelCooldown(cd.spotId)}
@@ -115,14 +119,22 @@ export const CooldownTracker = ({
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center justify-between text-[11px] mb-1 font-mono text-slate-400">
-                      <span>เหลือเวลา</span>
-                      <span className="font-bold text-amber-400">{timeStr}</span>
+                    <div className="flex items-center justify-between text-[11px] mb-1 font-mono">
+                      <span className={isUrgent ? 'text-yellow-300 font-bold flex items-center gap-1' : 'text-slate-400'}>
+                        {isUrgent ? '🔥 ใกล้เกิดแล้ว!' : 'เหลือเวลา'}
+                      </span>
+                      <span className={`font-bold ${isUrgent ? 'text-white text-xs font-black' : 'text-amber-400'}`}>
+                        {timeStr}
+                      </span>
                     </div>
                     {/* Progress bar */}
                     <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-1000"
+                        className={`h-full transition-all duration-1000 ${
+                          isUrgent
+                            ? 'bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500'
+                            : 'bg-gradient-to-r from-amber-500 to-emerald-400'
+                        }`}
                         style={{ width: `${progress}%` }}
                       />
                     </div>
