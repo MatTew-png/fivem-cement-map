@@ -87,3 +87,51 @@ export function calculateGameDistance(
   const dy = pos2.y - pos1.y;
   return Math.round(Math.hypot(dx, dy));
 }
+
+/**
+ * Parse various FiveM coordinate formats into { x, y, z }
+ * Supported formats:
+ *   - vector3(-154.2, -1035.8, 30.5)
+ *   - vector4(-154.2, -1035.8, 30.5, 90.0)
+ *   - vec3(-154.2, -1035.8, 30.5)
+ *   - /tp -154.2 -1035.8 30.5
+ *   - -154.2, -1035.8, 30.5
+ *   - { x = -154.2, y = -1035.8, z = 30.5 }
+ */
+export function parseFiveMCoords(input: string): { x: number; y: number; z: number } | null {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+
+  // Pattern 1: Named x, y, z format
+  const namedMatch = str.match(/x\s*[:=]\s*([-\d.]+)[,\s]+y\s*[:=]\s*([-\d.]+)(?:[,\s]+z\s*[:=]\s*([-\d.]+))?/i);
+  if (namedMatch) {
+    const x = parseFloat(namedMatch[1]);
+    const y = parseFloat(namedMatch[2]);
+    const z = namedMatch[3] ? parseFloat(namedMatch[3]) : 30.0;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, z: Math.round(z * 10) / 10 };
+    }
+  }
+
+  // Pattern 2: vector3, vector4, /tp, or comma/space-delimited numbers
+  const clean = str
+    .replace(/(?:vector[34]|vec3|\/tp)/gi, '')
+    .replace(/[()[\]{}]/g, ' ')
+    .trim();
+
+  const numbers = clean.match(/[-+]?\b\d+(?:\.\d+)?\b/g);
+  if (numbers && numbers.length >= 2) {
+    const x = parseFloat(numbers[0]);
+    const y = parseFloat(numbers[1]);
+    const z = numbers.length >= 3 ? parseFloat(numbers[2]) : 30.0;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return {
+        x: Math.round(x * 10) / 10,
+        y: Math.round(y * 10) / 10,
+        z: Math.round((Number.isFinite(z) ? z : 30.0) * 10) / 10,
+      };
+    }
+  }
+
+  return null;
+}

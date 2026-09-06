@@ -7,6 +7,11 @@ interface CoordinatesHUDProps {
   activeLayerName: string;
   showCrosshair: boolean;
   onToggleCrosshair: () => void;
+  onPinAtCrosshair?: () => void;
+  isCompactMode?: boolean;
+  onToggleCompactMode?: () => void;
+  isGhostMode?: boolean;
+  onToggleGhostMode?: () => void;
 }
 
 export const CoordinatesHUD = ({
@@ -15,6 +20,11 @@ export const CoordinatesHUD = ({
   activeLayerName,
   showCrosshair,
   onToggleCrosshair,
+  onPinAtCrosshair,
+  isCompactMode,
+  onToggleCompactMode,
+  isGhostMode,
+  onToggleGhostMode,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -91,6 +101,52 @@ export const CoordinatesHUD = ({
         <Target className="w-3 h-3" />
         <span>เป้าเล็ง</span>
       </button>
+
+      {/* Pin at Crosshair Center */}
+      {showCrosshair && onPinAtCrosshair && (
+        <button
+          onClick={onPinAtCrosshair}
+          title="สร้างมาร์คใหม่ตรงจุดตัดเป้าเล็งกลางจอ (แม่นยำ 100%)"
+          className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] transition-all shadow-md shadow-amber-500/30 animate-in fade-in"
+        >
+          <Crosshair className="w-3 h-3" />
+          <span>🎯 ปักตรงเป้า</span>
+        </button>
+      )}
+
+      <div className="h-3 w-[1px] bg-slate-700 mx-1 hidden md:block" />
+
+      {/* Compact Mode Toggle */}
+      {onToggleCompactMode && (
+        <button
+          onClick={onToggleCompactMode}
+          title="สลับเป็นหมุดจุดจิ๋ว เพื่อไม่ให้บังพื้นที่และปักจุดติดๆ กันได้ง่าย"
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
+            isCompactMode
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold'
+              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+          }`}
+        >
+          <span>🔘</span>
+          <span>{isCompactMode ? 'หมุดจิ๋ว (เปิด)' : 'หมุดจิ๋ว'}</span>
+        </button>
+      )}
+
+      {/* Ghost Mode Toggle */}
+      {onToggleGhostMode && (
+        <button
+          onClick={onToggleGhostMode}
+          title="ทำให้หมุดอื่นโปร่งแสง เพื่อให้ดับเบิ้ลคลิกปักจุดใหม่ที่อยู่ติดกันได้โดยไม่ติดหมุดเดิม"
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
+            isGhostMode
+              ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 font-bold'
+              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+          }`}
+        >
+          <span>👻</span>
+          <span>{isGhostMode ? 'โปร่งแสง (เปิด)' : 'โปร่งแสง'}</span>
+        </button>
+      )}
     </div>
   );
 };

@@ -21,13 +21,17 @@ interface MapViewProps {
   onAddDistancePoint: (pt: { x: number; y: number }) => void;
   onMapClickToCreatePin: (coords: { x: number; y: number }) => void;
   onCursorMove: (coords: { x: number; y: number } | null) => void;
+  onCenterCoordsChange?: (coords: { x: number; y: number }) => void;
   onZoomChange: (zoom: number) => void;
   onEditSpot: (spot: CementSpot) => void;
   onDeleteSpot: (id: string) => void;
   onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
   onCancelCooldown: (spotId: string) => void;
+  onSpotMoved?: (spotId: string, newCoords: { x: number; y: number }) => void;
   selectedSpot: CementSpot | null;
   sidebarCollapsed: boolean;
+  isCompactMode?: boolean;
+  isGhostMode?: boolean;
 }
 
 export const MapView = ({
@@ -39,13 +43,17 @@ export const MapView = ({
   onAddDistancePoint,
   onMapClickToCreatePin,
   onCursorMove,
+  onCenterCoordsChange,
   onZoomChange,
   onEditSpot,
   onDeleteSpot,
   onStartCooldown,
   onCancelCooldown,
+  onSpotMoved,
   selectedSpot,
   sidebarCollapsed,
+  isCompactMode = false,
+  isGhostMode = false,
 }: MapViewProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -68,11 +76,13 @@ export const MapView = ({
     onAddDistancePoint,
     onMapClickToCreatePin,
     onCursorMove,
+    onCenterCoordsChange,
     onZoomChange,
     onEditSpot,
     onDeleteSpot,
     onStartCooldown,
     onCancelCooldown,
+    onSpotMoved,
   });
 
   useEffect(() => {
@@ -80,11 +90,13 @@ export const MapView = ({
       onAddDistancePoint,
       onMapClickToCreatePin,
       onCursorMove,
+      onCenterCoordsChange,
       onZoomChange,
       onEditSpot,
       onDeleteSpot,
       onStartCooldown,
       onCancelCooldown,
+      onSpotMoved,
     };
   });
 
@@ -143,6 +155,15 @@ export const MapView = ({
     });
     callbacksRef.current.onZoomChange(map.getZoom());
 
+    // Center coordinates listener (for Pin at Crosshair)
+    const handleMapMove = () => {
+      const centerCoords = latLngToGameCoords(map.getCenter());
+      callbacksRef.current.onCenterCoordsChange?.(centerCoords);
+    };
+    map.on('move', handleMapMove);
+    map.on('moveend', handleMapMove);
+    handleMapMove();
+
     // Throttled mouse move listener for live coordinates (rAF prevents render thrashing)
     let rafId: number | null = null;
     let lastCoords: { x: number; y: number } | null = null;
@@ -174,6 +195,8 @@ export const MapView = ({
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
+      map.off('move', handleMapMove);
+      map.off('moveend', handleMapMove);
       map.getContainer().removeEventListener('mouseleave', handleMouseLeave);
       map.remove();
       mapInstanceRef.current = null;
@@ -271,14 +294,18 @@ export const MapView = ({
     const container = map.getContainer();
     const handleNativeDblClick = (e: MouseEvent) => {
       if (isDistanceMode) return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target?.closest('.leaflet-popup') ||
-        target?.closest('.leaflet-control') ||
-        target?.closest('.custom-pin-marker') ||
-        target?.closest('button')
-      ) {
-        return;
+      // Allow Shift or Alt key or Ghost Mode to bypass marker hit testing
+      if (!e.shiftKey && !e.altKey && !isGhostMode) {
+        const target = e.target as HTMLElement | null;
+        if (
+          target?.closest('.leaflet-popup') ||
+          target?.closest('.leaflet-control') ||
+          target?.closest('.custom-pin-marker') ||
+          target?.closest('.custom-compact-marker') ||
+          target?.closest('button')
+        ) {
+          return;
+        }
       }
       const latlng = map.mouseEventToLatLng(e);
       const coords = latLngToGameCoords(latlng);
@@ -294,7 +321,7 @@ export const MapView = ({
       map.off('dblclick', handleMapDblClick);
       container.removeEventListener('dblclick', handleNativeDblClick);
     };
-  }, [isDistanceMode]);
+  }, [isDistanceMode, isGhostMode]);
 
   // Render Markers
   useEffect(() => {
@@ -324,64 +351,111 @@ export const MapView = ({
       const spotIcon = spot.icon || cat?.icon || '🧱';
       const spotColor = spot.color || cat?.color || '#f59e0b';
 
-      // Custom HTML Marker Icon
-      const markerHtml = `
-        <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''}" style="width: 42px; height: 48px;">
-          ${isUrgent ? `
-            <div class="marker-urgent-pulse-ring"></div>
-            <div class="marker-urgent-pulse-ring-delayed"></div>
-          ` : isReady ? `
-            <div class="marker-ready-pulse-ring"></div>
-          ` : isCooldown ? `
-            <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
-          ` : ''}
+      const ghostClass = isGhostMode && !isCurrentSelected ? 'opacity-25 pointer-events-none transition-opacity duration-200' : '';
 
-          <!-- Floating Countdown Badge above teardrop -->
-          ${isUrgent ? `
-            <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
-              <span>🔥</span>
-              <span>${cdTimeStr}</span>
-            </div>
-          ` : isReady ? `
-            <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
-              <span>✅ เกิดแล้ว!</span>
-            </div>
-          ` : isCooldown ? `
-            <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
-              <span>⏱️</span>
-              <span>${cdTimeStr}</span>
-            </div>
-          ` : ''}
+      let markerHtml = '';
+      let iconSize: [number, number] = [42, 48];
+      let iconAnchor: [number, number] = [21, 48];
 
-          <div class="relative flex flex-col items-center">
+      if (isCompactMode) {
+        iconSize = [20, 20];
+        iconAnchor = [10, 10];
+        markerHtml = `
+          <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" style="width: 20px; height: 20px;">
+            ${isUrgent ? `
+              <div class="marker-urgent-pulse-ring" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+            ` : ''}
             <div 
-              class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125"
               style="
                 background-color: ${isUrgent ? '#ef4444' : spotColor};
-                border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
-                transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
-                box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
+                border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
+                transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
+                box-shadow: ${isCurrentSelected ? '0 0 10px #ffffff' : '0 2px 6px rgba(0,0,0,0.6)'};
               "
+              title="${spot.name} (${spot.x}, ${spot.y})"
             >
-              <span>${spotIcon}</span>
+              ${spotIcon}
             </div>
-            <div 
-              class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
-              style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
-            ></div>
+            ${isUrgent ? `
+              <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
+                🔥 ${cdTimeStr}
+              </div>
+            ` : ''}
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        markerHtml = `
+          <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" style="width: 42px; height: 48px;">
+            ${isUrgent ? `
+              <div class="marker-urgent-pulse-ring"></div>
+              <div class="marker-urgent-pulse-ring-delayed"></div>
+            ` : isReady ? `
+              <div class="marker-ready-pulse-ring"></div>
+            ` : isCooldown ? `
+              <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
+            ` : ''}
+
+            <!-- Floating Countdown Badge above teardrop -->
+            ${isUrgent ? `
+              <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
+                <span>🔥</span>
+                <span>${cdTimeStr}</span>
+              </div>
+            ` : isReady ? `
+              <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
+                <span>✅ เกิดแล้ว!</span>
+              </div>
+            ` : isCooldown ? `
+              <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+                <span>⏱️</span>
+                <span>${cdTimeStr}</span>
+              </div>
+            ` : ''}
+
+            <div class="relative flex flex-col items-center">
+              <div 
+                class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
+                style="
+                  background-color: ${isUrgent ? '#ef4444' : spotColor};
+                  border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
+                  transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
+                  box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
+                "
+              >
+                <span>${spotIcon}</span>
+              </div>
+              <div 
+                class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
+                style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
+              ></div>
+            </div>
+          </div>
+        `;
+      }
 
       const icon = L.divIcon({
         className: 'custom-leaflet-div-icon',
         html: markerHtml,
-        iconSize: [42, 48],
-        iconAnchor: [21, 48],
-        popupAnchor: [0, -48],
+        iconSize,
+        iconAnchor,
+        popupAnchor: [0, -iconAnchor[1]],
       });
 
-      const marker = L.marker(latlng, { icon });
+      const marker = L.marker(latlng, {
+        icon,
+        draggable: isCurrentSelected,
+        zIndexOffset: isUrgent ? 2000 : isCurrentSelected ? 1500 : isReady ? 1000 : 0,
+      });
+
+      if (isCurrentSelected) {
+        marker.on('dragend', () => {
+          const newLatLng = marker.getLatLng();
+          const newCoords = latLngToGameCoords(newLatLng);
+          callbacksRef.current.onSpotMoved?.(spot.id, newCoords);
+          soundEffects.playPinPlaced();
+        });
+      }
 
       // Build popup content
       const cmd = formatFiveMCommand(spot);
@@ -556,7 +630,7 @@ export const MapView = ({
 
       group.addLayer(marker);
     });
-  }, [spots, activeCooldowns, selectedSpot, tick]);
+  }, [spots, activeCooldowns, selectedSpot, tick, isCompactMode, isGhostMode]);
 
   // Render Distance Measurement Tool Polyline & Markers
   useEffect(() => {

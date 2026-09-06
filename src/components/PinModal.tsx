@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles } from 'lucide-react';
+import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check } from 'lucide-react';
 import type { CementSpot } from '../types/map';
+import { parseFiveMCoords } from '../utils/crs';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -150,6 +151,20 @@ export const PinModal = ({
   const [yieldDescription, setYieldDescription] = useState('');
   const [requiredItemsStr, setRequiredItemsStr] = useState('');
   const [notes, setNotes] = useState('');
+  const [coordsPasteInput, setCoordsPasteInput] = useState('');
+  const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
+
+  const handleCoordsPaste = (raw: string) => {
+    setCoordsPasteInput(raw);
+    const parsed = parseFiveMCoords(raw);
+    if (parsed) {
+      setX(parsed.x);
+      setY(parsed.y);
+      setZ(parsed.z);
+      setCoordsPasteStatus(`✓ พิกัด X: ${parsed.x}, Y: ${parsed.y}, Z: ${parsed.z}`);
+      setTimeout(() => setCoordsPasteStatus(null), 3000);
+    }
+  };
 
   // Flattened all icons for search
   const allIcons = useMemo(() => {
@@ -169,6 +184,8 @@ export const PinModal = ({
   }, [allIcons, activeGroup, iconSearch]);
 
   useEffect(() => {
+    setCoordsPasteInput('');
+    setCoordsPasteStatus(null);
     if (initialSpot) {
       setName(initialSpot.name || '');
       setIcon(initialSpot.icon || '🧱');
@@ -441,9 +458,38 @@ export const PinModal = ({
 
           {/* 4. พิกัด X, Y, Z และ Postal */}
           <div>
-            <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
-              4. ตำแหน่งพิกัดในเกม FiveM
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
+                4. ตำแหน่งพิกัดในเกม FiveM
+              </label>
+              {coordsPasteStatus && (
+                <span className="text-[11px] text-emerald-400 font-bold animate-pulse flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  <span>{coordsPasteStatus}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Quick Paste Vector3 / Coords Bar */}
+            <div className="mb-2.5 p-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2">
+              <ClipboardPaste className="w-4 h-4 text-amber-400 shrink-0" />
+              <input
+                type="text"
+                value={coordsPasteInput}
+                onChange={(e) => handleCoordsPaste(e.target.value)}
+                placeholder="วางพิกัดจาก FiveM ทันที เช่น vector3(-154.2, -1035.8, 30.5) หรือ /tp ..."
+                className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none"
+              />
+              {coordsPasteInput && (
+                <button
+                  type="button"
+                  onClick={() => setCoordsPasteInput('')}
+                  className="text-slate-400 hover:text-white p-1 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">

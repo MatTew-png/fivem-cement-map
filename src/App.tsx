@@ -45,6 +45,11 @@ export function App() {
   const cursorCoordsRef = useRef(cursorCoords);
   cursorCoordsRef.current = cursorCoords;
   const [zoom, setZoom] = useState(3);
+  const [mapCenterCoords, setMapCenterCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // State: Precision tools (Compact Mode & Ghost Mode)
+  const [isCompactMode, setIsCompactMode] = useState(false);
+  const [isGhostMode, setIsGhostMode] = useState(false);
 
   // State: Modals & Sidebar
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -149,6 +154,20 @@ export function App() {
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
   }, []);
 
+  const handleSpotMoved = useCallback((spotId: string, newCoords: { x: number; y: number }) => {
+    setSpots((prev) =>
+      prev.map((s) =>
+        s.id === spotId
+          ? { ...s, x: newCoords.x, y: newCoords.y, updatedAt: Date.now() }
+          : s
+      )
+    );
+  }, []);
+
+  const handlePinAtCrosshair = useCallback(() => {
+    handleMapClickToCreatePin(mapCenterCoords);
+  }, [mapCenterCoords, handleMapClickToCreatePin]);
+
   // Cooldown handlers
   const handleStartCooldown = useCallback((spot: CementSpot, customMinutes?: number) => {
     const mins = customMinutes !== undefined ? customMinutes : (spot.cooldownMinutes || 10);
@@ -232,13 +251,17 @@ export function App() {
           onAddDistancePoint={handleAddDistancePoint}
           onMapClickToCreatePin={handleMapClickToCreatePin}
           onCursorMove={setCursorCoords}
+          onCenterCoordsChange={setMapCenterCoords}
           onZoomChange={setZoom}
           onEditSpot={handleEditSpot}
           onDeleteSpot={handleDeleteSpot}
           onStartCooldown={handleStartCooldown}
           onCancelCooldown={handleCancelCooldown}
+          onSpotMoved={handleSpotMoved}
           selectedSpot={selectedSpot}
           sidebarCollapsed={sidebarCollapsed}
+          isCompactMode={isCompactMode}
+          isGhostMode={isGhostMode}
         />
 
         {/* GTA V In-Game Reticle / Crosshair */}
@@ -274,6 +297,11 @@ export function App() {
           activeLayerName={activeLayerConfig.name.split(' ')[0]}
           showCrosshair={showCrosshair}
           onToggleCrosshair={() => setShowCrosshair((prev) => !prev)}
+          onPinAtCrosshair={handlePinAtCrosshair}
+          isCompactMode={isCompactMode}
+          onToggleCompactMode={() => setIsCompactMode((prev) => !prev)}
+          isGhostMode={isGhostMode}
+          onToggleGhostMode={() => setIsGhostMode((prev) => !prev)}
         />
       </main>
 
