@@ -70,10 +70,10 @@ function getMarkerIcon(
     markerHtml = `
       <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 20px; height: 20px;">
         ${isUrgent ? `
-          <div class="marker-urgent-pulse-ring" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+          <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
         ` : ''}
         <div 
-          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125"
+          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125 pointer-events-auto"
           style="
             background-color: ${isUrgent ? '#ef4444' : spotColor};
             border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
@@ -85,8 +85,8 @@ function getMarkerIcon(
           ${spotIcon}
         </div>
         ${isUrgent ? `
-          <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
-            🔥 ${cdTimeStr}
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
+            🔥 <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
         ` : ''}
       </div>
@@ -95,32 +95,32 @@ function getMarkerIcon(
     markerHtml = `
       <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${spot.id}" style="width: 42px; height: 48px;">
         ${isUrgent ? `
-          <div class="marker-urgent-pulse-ring"></div>
-          <div class="marker-urgent-pulse-ring-delayed"></div>
+          <div class="marker-urgent-pulse-ring pointer-events-none"></div>
+          <div class="marker-urgent-pulse-ring-delayed pointer-events-none"></div>
         ` : isReady ? `
-          <div class="marker-ready-pulse-ring"></div>
+          <div class="marker-ready-pulse-ring pointer-events-none"></div>
         ` : isCooldown ? `
-          <div class="marker-pulse-ring" style="border: 2px solid ${spotColor};"></div>
+          <div class="marker-pulse-ring pointer-events-none" style="border: 2px solid ${spotColor};"></div>
         ` : ''}
 
-        <!-- Floating Countdown Badge above teardrop -->
+        <!-- Floating Countdown Badge above teardrop (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
             <span>🔥</span>
-            <span>${cdTimeStr}</span>
+            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
         ` : isReady ? `
-          <div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
             <span>✅ เกิดแล้ว!</span>
           </div>
         ` : isCooldown ? `
-          <div class="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
             <span>⏱️</span>
-            <span>${cdTimeStr}</span>
+            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
         ` : ''}
 
-        <div class="relative flex flex-col items-center">
+        <div class="relative flex flex-col items-center pointer-events-auto">
           <div 
             class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
             style="
@@ -406,6 +406,12 @@ export const MapView = ({
   const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
+
+  const activeCooldownsRef = useRef(activeCooldowns);
+  activeCooldownsRef.current = activeCooldowns;
+  const selectedSpotRef = useRef(selectedSpot);
+  selectedSpotRef.current = selectedSpot;
+  const prevActiveCooldownsRef = useRef<ActiveCooldown[]>(activeCooldowns);
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
@@ -717,14 +723,14 @@ export const MapView = ({
       const isCurrentSelected = selectedSpot?.id === spot.id;
       const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
       const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
-      const zIndexOffset = activeCd ? 2000 : isCurrentSelected ? 1500 : 0;
+      const zIndexOffset = isCurrentSelected ? 2000 : activeCd ? 300 : 0;
 
       const existing = markersMapRef.current.get(spot.id);
       if (existing) {
         // Update position and icon
         existing.setLatLng(latlng);
         existing.setIcon(icon);
-        existing.setZIndexOffset(zIndexOffset);
+        existing.setZIndexOffset(existing.isPopupOpen() ? 3500 : zIndexOffset);
 
         // Crucial: Only update popup content if popup is NOT open, so user typing is NEVER lost!
         if (!existing.isPopupOpen()) {
@@ -749,9 +755,25 @@ export const MapView = ({
           maxWidth: 320,
           minWidth: 260,
           className: 'custom-fivem-popup',
-          autoClose: true,
+          autoClose: false,
           closeOnClick: false,
           autoPan: false,
+        });
+
+        marker.on('popupopen', () => {
+          // Cleanly close other popups so only 1 popup is open at a time without race conditions
+          markersMapRef.current.forEach((otherMarker, otherId) => {
+            if (otherId !== spot.id && otherMarker.isPopupOpen()) {
+              otherMarker.closePopup();
+            }
+          });
+          marker.setZIndexOffset(3500);
+        });
+
+        marker.on('popupclose', () => {
+          const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
+          const isSelected = selectedSpotRef.current?.id === spot.id;
+          marker.setZIndexOffset(isSelected ? 2000 : currentCd ? 300 : 0);
         });
 
         marker.on('dragend', () => {
@@ -767,33 +789,57 @@ export const MapView = ({
     });
   }, [spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
-  // Synchronize cooldown marker badges whenever activeCooldowns change
+  // Synchronize cooldown marker badges ONLY when activeCooldowns actually changes for a spot
   useEffect(() => {
-    spots.forEach((spot) => {
-      const marker = markersMapRef.current.get(spot.id);
-      if (!marker) return;
+    const prevCds = prevActiveCooldownsRef.current;
+    prevActiveCooldownsRef.current = activeCooldowns;
+
+    // Detect which spot IDs have cooldown changes
+    const changedSpotIds = new Set<string>();
+    activeCooldowns.forEach((cd) => {
+      const old = prevCds.find((p) => p.spotId === cd.spotId);
+      if (!old || old.expiresAt !== cd.expiresAt) {
+        changedSpotIds.add(cd.spotId);
+      }
+    });
+    prevCds.forEach((old) => {
+      if (!activeCooldowns.some((c) => c.spotId === old.spotId)) {
+        changedSpotIds.add(old.spotId);
+      }
+    });
+
+    changedSpotIds.forEach((spotId) => {
+      const marker = markersMapRef.current.get(spotId);
+      const spot = spots.find((s) => s.id === spotId);
+      if (!marker || !spot) return;
       const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
       const isCurrentSelected = selectedSpot?.id === spot.id;
       marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd));
-      marker.setZIndexOffset(activeCd ? 2000 : isCurrentSelected ? 1500 : 0);
+      const zIndex = marker.isPopupOpen() ? 3500 : isCurrentSelected ? 2000 : activeCd ? 300 : 0;
+      marker.setZIndexOffset(zIndex);
       if (!marker.isPopupOpen()) {
         marker.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, marker));
       }
     });
   }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
-  // Dedicated 1-second real-time countdown updater (updates badges and open popup in place with ZERO popup close)
+  // Dedicated 1-second real-time countdown updater
+  // Crucial: Directly updates badge text and popup timer in the DOM!
+  // NEVER calls marker.setIcon() on tick, eliminating Leaflet DOM recreation, click loss, and popup auto-close!
   useEffect(() => {
     if (activeCooldowns.length === 0) return;
 
-    const interval = setInterval(() => {
-      activeCooldowns.forEach((cd) => {
-        const marker = markersMapRef.current.get(cd.spotId);
-        const spot = spots.find((s) => s.id === cd.spotId);
-        if (!marker || !spot) return;
+    // Track urgent spots so we only update icon when crossing <= 180s threshold
+    const urgentSpots = new Set<string>();
+    activeCooldowns.forEach((cd) => {
+      const rem = Math.max(0, Math.floor((cd.expiresAt - Date.now()) / 1000));
+      if (rem > 0 && rem <= 180) urgentSpots.add(cd.spotId);
+    });
 
-        const isCurrentSelected = selectedSpot?.id === spot.id;
-        const now = Date.now();
+    const interval = setInterval(() => {
+      const now = Date.now();
+
+      activeCooldowns.forEach((cd) => {
         const remainingSec = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
         const isUrgent = remainingSec > 0 && remainingSec <= 180;
         const isReady = remainingSec === 0;
@@ -801,22 +847,39 @@ export const MapView = ({
         const cdSeconds = remainingSec % 60;
         const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
-        // 1. Update marker icon badge (setIcon preserves open popup in Leaflet)
-        marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, cd));
+        // 1. Direct DOM update for marker badge text (instant, zero DOM thrashing)
+        const badgeText = document.getElementById(`marker-cd-text-${cd.spotId}`);
+        if (badgeText) {
+          badgeText.textContent = cdTimeStr;
+        }
 
-        // 2. If popup is currently open on this spot, update the countdown text in place
-        const timerSpan = document.getElementById(`popup-cd-time-${spot.id}`);
+        // Only recreate icon when crossing urgent boundary (normal -> urgent)
+        const wasUrgent = urgentSpots.has(cd.spotId);
+        if (isUrgent !== wasUrgent) {
+          if (isUrgent) urgentSpots.add(cd.spotId);
+          else urgentSpots.delete(cd.spotId);
+
+          const marker = markersMapRef.current.get(cd.spotId);
+          const spot = spots.find((s) => s.id === cd.spotId);
+          if (marker && spot) {
+            const isCurrentSelected = selectedSpot?.id === spot.id;
+            marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, cd));
+          }
+        }
+
+        // 2. Direct DOM update for popup countdown text if open
+        const timerSpan = document.getElementById(`popup-cd-time-${cd.spotId}`);
         if (timerSpan) {
           timerSpan.textContent = cdTimeStr;
         }
-        const statusBox = document.getElementById(`popup-cd-status-box-${spot.id}`);
+        const statusBox = document.getElementById(`popup-cd-status-box-${cd.spotId}`);
         if (statusBox) {
-          if (isReady) {
-            statusBox.innerHTML = `<span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>`;
-          } else if (isUrgent) {
+          if (isReady && !statusBox.innerHTML.includes('ถึงเวลาเกิดแล้ว')) {
+            statusBox.innerHTML = `<span id="popup-cd-status-${cd.spotId}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>`;
+          } else if (isUrgent && !statusBox.innerHTML.includes('ใกล้เกิด')) {
             statusBox.innerHTML = `
-              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-red-400 animate-pulse">
-                🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+              <span id="popup-cd-status-${cd.spotId}" class="text-[11px] font-mono font-bold text-red-400 animate-pulse">
+                🔥 ใกล้เกิด: <span id="popup-cd-time-${cd.spotId}">${cdTimeStr}</span>
               </span>
             `;
           }
