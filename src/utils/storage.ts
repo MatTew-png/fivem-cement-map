@@ -1,7 +1,7 @@
 import type { CementSpot, ActiveCooldown } from '../types/map';
 
-const SPOTS_STORAGE_KEY = 'fivem_cement_spots_v4';
-const COOLDOWNS_STORAGE_KEY = 'fivem_cement_cooldowns_v4';
+const SPOTS_STORAGE_KEY = 'fivem_cement_spots_v5';
+const COOLDOWNS_STORAGE_KEY = 'fivem_cement_cooldowns_v5';
 
 export function loadSpotsFromStorage(): CementSpot[] | null {
   try {
@@ -9,6 +9,7 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     localStorage.removeItem('fivem_cement_spots_v1');
     localStorage.removeItem('fivem_cement_spots_v2');
     localStorage.removeItem('fivem_cement_spots_v3');
+    localStorage.removeItem('fivem_cement_spots_v4');
 
     const raw = localStorage.getItem(SPOTS_STORAGE_KEY);
     if (!raw) return null;
@@ -37,6 +38,7 @@ export function clearAllSpotsFromStorage(): void {
     localStorage.removeItem('fivem_cement_spots_v1');
     localStorage.removeItem('fivem_cement_spots_v2');
     localStorage.removeItem('fivem_cement_spots_v3');
+    localStorage.removeItem('fivem_cement_spots_v4');
   } catch (err) {
     console.error('Failed to clear spots from storage:', err);
   }
