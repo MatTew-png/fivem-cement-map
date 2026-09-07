@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MapView } from './components/MapView';
 import { Sidebar } from './components/Sidebar';
 import { CoordinatesHUD } from './components/CoordinatesHUD';
 import { LayerSwitcher } from './components/LayerSwitcher';
 import { PinModal } from './components/PinModal';
 import { CooldownTracker } from './components/CooldownTracker';
-import { DistanceTool } from './components/DistanceTool';
 import { ExportImportModal } from './components/ExportImportModal';
 import { GtaCrosshair } from './components/GtaCrosshair';
 import type { CementSpot, MapTileLayer, ActiveCooldown } from './types/map';
@@ -17,7 +16,6 @@ import {
   saveCooldownsToStorage,
 } from './utils/storage';
 import { soundEffects } from './utils/sound';
-import { calculateGameDistance } from './utils/crs';
 
 export function App() {
   // State: Spots
@@ -35,10 +33,6 @@ export function App() {
   const [activeCooldowns, setActiveCooldowns] = useState<ActiveCooldown[]>(() => {
     return loadCooldownsFromStorage();
   });
-
-  // State: Distance measurement tool
-  const [isDistanceMode, setIsDistanceMode] = useState(false);
-  const [distancePoints, setDistancePoints] = useState<{ x: number; y: number }[]>([]);
 
   // State: Coordinates HUD & Zoom & Lock
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number } | null>(null);
@@ -84,33 +78,6 @@ export function App() {
       });
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
-
-  // Distance calculation
-  const totalDistance = useMemo(() => {
-    if (distancePoints.length < 2) return 0;
-    let dist = 0;
-    for (let i = 0; i < distancePoints.length - 1; i++) {
-      dist += calculateGameDistance(distancePoints[i], distancePoints[i + 1]);
-    }
-    return dist;
-  }, [distancePoints]);
-
-  const handleAddDistancePoint = useCallback((pt: { x: number; y: number }) => {
-    setDistancePoints((prev) => [...prev, pt]);
-  }, []);
-
-  const handleClearDistance = useCallback(() => {
-    setDistancePoints([]);
-  }, []);
-
-  const handleToggleDistance = useCallback(() => {
-    setIsDistanceMode((prev) => {
-      if (prev) {
-        setDistancePoints([]);
-      }
-      return !prev;
-    });
   }, []);
 
   // Spot handlers
@@ -291,9 +258,6 @@ export function App() {
           spots={spots}
           activeLayer={activeLayer}
           activeCooldowns={activeCooldowns}
-          isDistanceMode={isDistanceMode}
-          distancePoints={distancePoints}
-          onAddDistancePoint={handleAddDistancePoint}
           onMapClickToCreatePin={handleMapClickToCreatePin}
           onCursorMove={setCursorCoords}
           onCenterCoordsChange={setMapCenterCoords}
@@ -318,15 +282,6 @@ export function App() {
         <LayerSwitcher
           activeLayer={activeLayer}
           onLayerChange={setActiveLayer}
-        />
-
-        {/* Distance Tool Toggle & Info */}
-        <DistanceTool
-          isActive={isDistanceMode}
-          onToggle={handleToggleDistance}
-          points={distancePoints}
-          totalDistance={totalDistance}
-          onClear={handleClearDistance}
         />
 
         {/* Active Cooldowns Floating Card */}

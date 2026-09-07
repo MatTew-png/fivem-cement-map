@@ -16,9 +16,6 @@ interface MapViewProps {
   spots: CementSpot[];
   activeLayer: MapTileLayer;
   activeCooldowns: ActiveCooldown[];
-  isDistanceMode: boolean;
-  distancePoints: { x: number; y: number }[];
-  onAddDistancePoint: (pt: { x: number; y: number }) => void;
   onMapClickToCreatePin: (coords: { x: number; y: number }) => void;
   onCursorMove: (coords: { x: number; y: number } | null) => void;
   onCenterCoordsChange?: (coords: { x: number; y: number }) => void;
@@ -503,9 +500,6 @@ export const MapView = ({
   spots,
   activeLayer,
   activeCooldowns,
-  isDistanceMode,
-  distancePoints,
-  onAddDistancePoint,
   onMapClickToCreatePin,
   onCursorMove,
   onCenterCoordsChange,
@@ -527,7 +521,6 @@ export const MapView = ({
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
-  const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
@@ -540,7 +533,6 @@ export const MapView = ({
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
-    onAddDistancePoint,
     onMapClickToCreatePin,
     onCursorMove,
     onCenterCoordsChange,
@@ -556,7 +548,6 @@ export const MapView = ({
 
   useEffect(() => {
     callbacksRef.current = {
-      onAddDistancePoint,
       onMapClickToCreatePin,
       onCursorMove,
       onCenterCoordsChange,
@@ -612,12 +603,9 @@ export const MapView = ({
     tileLayer.addTo(map);
     currentTileLayerRef.current = tileLayer;
 
-    // Create layer groups for markers & distance & locked target
+    // Create layer groups for markers & locked target
     const markersGroup = L.layerGroup().addTo(map);
     markersLayerGroupRef.current = markersGroup;
-
-    const distanceGroup = L.layerGroup().addTo(map);
-    distanceLayerGroupRef.current = distanceGroup;
 
     const lockedGroup = L.layerGroup().addTo(map);
     lockedLayerGroupRef.current = lockedGroup;
@@ -679,7 +667,6 @@ export const MapView = ({
       map.getContainer().removeEventListener('mouseleave', handleMouseLeave);
       markersMapRef.current.clear();
       markersLayerGroupRef.current = null;
-      distanceLayerGroupRef.current = null;
       lockedLayerGroupRef.current = null;
       map.remove();
       mapInstanceRef.current = null;
@@ -724,7 +711,7 @@ export const MapView = ({
     currentTileLayerRef.current = newTileLayer;
   }, [activeLayer]);
 
-  // Handle map events (single-click for distance tool, double-click for pin creation)
+  // Handle map events (double-click for pin creation)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -759,13 +746,6 @@ export const MapView = ({
       // Close open popup when clicking outside on the map
       map.closePopup();
 
-      if (isDistanceMode) {
-        const coords = latLngToGameCoords(e.latlng);
-        callbacksRef.current.onAddDistancePoint(coords);
-        soundEffects.playPinPlaced();
-        return;
-      }
-
       // Fast double-tap / double-click detection (within 400ms)
       const now = Date.now();
       const coords = latLngToGameCoords(e.latlng);
@@ -796,16 +776,13 @@ export const MapView = ({
         return;
       }
 
-      if (!isDistanceMode) {
-        const coords = latLngToGameCoords(e.latlng);
-        triggerCreatePin(coords);
-      }
+      const coords = latLngToGameCoords(e.latlng);
+      triggerCreatePin(coords);
     };
 
     // Native DOM double-click handler on map container ensures reliable event capture
     const container = map.getContainer();
     const handleNativeDblClick = (e: MouseEvent) => {
-      if (isDistanceMode) return;
       // Allow Shift or Alt key or Ghost Mode to bypass marker hit testing
       if (!e.shiftKey && !e.altKey && !isGhostMode) {
         const target = e.target as HTMLElement | null;
@@ -833,7 +810,7 @@ export const MapView = ({
       map.off('dblclick', handleMapDblClick);
       container.removeEventListener('dblclick', handleNativeDblClick);
     };
-  }, [mapReady, isDistanceMode, isGhostMode]);
+  }, [mapReady, isGhostMode]);
 
   // Synchronize Markers on Map (only when spots, mode, or selection changes)
   useEffect(() => {
@@ -1027,49 +1004,6 @@ export const MapView = ({
     return () => clearInterval(interval);
   }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
-  // Render Distance Measurement Tool Polyline & Markers
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const group = distanceLayerGroupRef.current;
-    if (!map || !group) return;
-
-    group.clearLayers();
-    if (!isDistanceMode || distancePoints.length === 0) return;
-
-    const latlngs = distancePoints.map((p) => gameCoordsToLatLng(p.x, p.y));
-
-    // Draw line
-    if (latlngs.length > 1) {
-      const polyline = L.polyline(latlngs, {
-        color: '#f59e0b',
-        weight: 3,
-        dashArray: '6, 8',
-        opacity: 0.9,
-      });
-      group.addLayer(polyline);
-    }
-
-    // Draw point markers
-    distancePoints.forEach((pt, index) => {
-      const latlng = gameCoordsToLatLng(pt.x, pt.y);
-      const circle = L.circleMarker(latlng, {
-        radius: 6,
-        fillColor: '#f59e0b',
-        color: '#ffffff',
-        weight: 2,
-        fillOpacity: 1,
-      });
-
-      circle.bindTooltip(`จุดที่ ${index + 1}`, {
-        permanent: true,
-        direction: 'top',
-        className: 'bg-slate-900 text-amber-300 font-mono text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40',
-      });
-
-      group.addLayer(circle);
-    });
-  }, [isDistanceMode, distancePoints]);
-
   // Pan to selected spot safely
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -1128,9 +1062,7 @@ export const MapView = ({
   return (
     <div
       ref={mapContainerRef}
-      className={`w-full h-full relative cursor-crosshair transition-all duration-300 ${
-        isDistanceMode ? 'cursor-cell' : ''
-      }`}
+      className="w-full h-full relative cursor-crosshair transition-all duration-300"
     />
   );
 };
