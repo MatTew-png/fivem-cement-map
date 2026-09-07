@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   customGTA_CRS,
@@ -73,16 +73,18 @@ function getMarkerIcon(
           <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
         ` : ''}
         <div 
-          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125 pointer-events-auto"
+          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125 pointer-events-auto select-none"
           style="
             background-color: ${isUrgent ? '#ef4444' : spotColor};
             border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
             transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
             box-shadow: ${isCurrentSelected ? '0 0 10px #ffffff' : '0 2px 6px rgba(0,0,0,0.6)'};
+            font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
+            line-height: 1;
           "
           title="${spot.name} (${spot.x}, ${spot.y})"
         >
-          ${spotIcon}
+          <span>${spotIcon}</span>
         </div>
         ${isUrgent ? `
           <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
@@ -120,7 +122,7 @@ function getMarkerIcon(
           </div>
         ` : ''}
 
-        <div class="relative flex flex-col items-center pointer-events-auto">
+        <div class="relative flex flex-col items-center pointer-events-auto select-none">
           <div 
             class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
             style="
@@ -128,6 +130,8 @@ function getMarkerIcon(
               border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
               transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
               box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
+              font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
+              line-height: 1;
             "
           >
             <span>${spotIcon}</span>
@@ -407,6 +411,8 @@ export const MapView = ({
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
+  const [mapReady, setMapReady] = useState(false);
+
   const activeCooldownsRef = useRef(activeCooldowns);
   activeCooldownsRef.current = activeCooldowns;
   const selectedSpotRef = useRef(selectedSpot);
@@ -498,6 +504,7 @@ export const MapView = ({
     lockedLayerGroupRef.current = lockedGroup;
 
     mapInstanceRef.current = map;
+    setMapReady(true);
 
     // Zoom listener
     map.on('zoomend', () => {
@@ -551,8 +558,13 @@ export const MapView = ({
       map.off('move', handleMapMove);
       map.off('moveend', handleMapMove);
       map.getContainer().removeEventListener('mouseleave', handleMouseLeave);
+      markersMapRef.current.clear();
+      markersLayerGroupRef.current = null;
+      distanceLayerGroupRef.current = null;
+      lockedLayerGroupRef.current = null;
       map.remove();
       mapInstanceRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
@@ -699,7 +711,7 @@ export const MapView = ({
       map.off('dblclick', handleMapDblClick);
       container.removeEventListener('dblclick', handleNativeDblClick);
     };
-  }, [isDistanceMode, isGhostMode]);
+  }, [mapReady, isDistanceMode, isGhostMode]);
 
   // Synchronize Markers on Map (only when spots, mode, or selection changes)
   useEffect(() => {
@@ -727,6 +739,9 @@ export const MapView = ({
 
       const existing = markersMapRef.current.get(spot.id);
       if (existing) {
+        if (!group.hasLayer(existing)) {
+          group.addLayer(existing);
+        }
         // Update position and icon
         existing.setLatLng(latlng);
         existing.setIcon(icon);
@@ -787,7 +802,7 @@ export const MapView = ({
         markersMapRef.current.set(spot.id, marker);
       }
     });
-  }, [spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+  }, [mapReady, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
   // Synchronize cooldown marker badges ONLY when activeCooldowns actually changes for a spot
   useEffect(() => {
