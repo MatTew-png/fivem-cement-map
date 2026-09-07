@@ -225,74 +225,129 @@ function createPopupNode(
       </button>
     </div>
 
-    <!-- Cooldown Selection & Status Section -->
+    <!-- Cooldown Section -->
     <div class="mt-2 pt-2 border-t border-slate-700/80">
-      <div class="flex items-center justify-between mb-1.5">
-        <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
-          <span>⏱️</span>
-          <span>จับเวลาคูลดาวน์</span>
-        </span>
-        <div id="popup-cd-status-box-${spot.id}">
-          ${isCooldown ? `
-            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold ${isUrgent ? 'text-red-400 animate-pulse' : 'text-amber-400'}">
-              ${isUrgent ? '🔥 ใกล้เกิด: ' : '⏳ เหลือ '}<span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
-            </span>
-          ` : isReady ? `
-            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>
-          ` : `
-            <span id="popup-cd-status-${spot.id}" class="text-[10px] text-slate-400">ค่าเริ่มต้น: ${spot.cooldownMinutes || 10}น.</span>
-          `}
+      ${isCooldown || isReady ? `
+        <!-- Active Cooldown Running View -->
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+            <span>⏱️</span>
+            <span>สถานะคูลดาวน์</span>
+          </span>
+          <div id="popup-cd-status-box-${spot.id}">
+            ${isUrgent ? `
+              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-black text-red-400 animate-pulse">
+                🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+              </span>
+            ` : isReady ? `
+              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">
+                ✅ ถึงเวลาเกิดแล้ว!
+              </span>
+            ` : `
+              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-amber-400">
+                ⏳ เหลือ <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+              </span>
+            `}
+          </div>
         </div>
-      </div>
 
-      <!-- Quick Preset Chips -->
-      <div class="text-[10px] text-slate-400 mb-1 font-medium">เลือกเวลานับถอยหลังทันที:</div>
-      <div class="grid grid-cols-4 gap-1 mb-2">
-        ${[3, 5, 8, 10, 15, 20, 30, 60].map((m) => `
-          <button 
-            type="button" 
-            class="popup-preset-cd-btn py-1 rounded bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 font-mono font-bold text-[11px] transition-all border border-slate-700/80 ${m <= 3 ? 'hover:bg-red-500 hover:text-white border-red-500/30' : ''}" 
-            data-minutes="${m}"
-          >
-            ${m <= 3 ? '🔥 ' : ''}${m}น.
-          </button>
-        `).join('')}
-      </div>
-
-      <!-- Custom Minutes Input Row -->
-      <div class="flex items-center gap-1.5 mb-2">
-        <div class="relative flex-1">
-          <input 
-            type="number" 
-            id="popup-custom-min-input-${spot.id}" 
-            min="1" 
-            max="180" 
-            placeholder="นาที เช่น 8 หรือ 20" 
-            value="${spot.cooldownMinutes || 10}" 
-            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-          />
-          <span class="absolute right-2 top-1 text-[10px] text-slate-400 pointer-events-none">นาที</span>
-        </div>
-        <button 
-          id="popup-start-custom-cd-${spot.id}" 
-          class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow-sm"
-        >
-          เริ่มนับ
-        </button>
-      </div>
-
-      <!-- Action buttons: Cancel & Edit -->
-      <div class="flex items-center gap-1.5">
-        ${isCooldown || isReady ? `
+        <div class="flex items-center gap-1.5 mb-2">
           <button 
             id="popup-cancel-cd-${spot.id}" 
-            class="flex-1 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[11px] font-medium transition-colors text-center"
+            type="button"
+            class="flex-1 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 border border-red-500/40 text-[11px] font-bold transition-all text-center cursor-pointer shadow-sm"
           >
-            ยกเลิกการนับ
+            🛑 ยกเลิกจับเวลา
           </button>
-        ` : ''}
-        <button id="popup-edit-${spot.id}" class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700">
-          แก้ไขหมุด
+          <button 
+            id="popup-reset-cd-${spot.id}" 
+            type="button"
+            class="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all cursor-pointer"
+            title="กดเพื่อตั้งเวลาใหม่"
+          >
+            🔄 ตั้งเวลาใหม่
+          </button>
+        </div>
+      ` : `
+        <!-- Interactive Numpad Cooldown View (No default time) -->
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+            <span>⏱️</span>
+            <span>จับเวลาคูลดาวน์</span>
+          </span>
+          <span class="text-[10px] text-slate-400">กดเลขเวลาเอง (นาที)</span>
+        </div>
+
+        <!-- Numpad Display Screen -->
+        <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
+          <div class="flex items-baseline gap-1">
+            <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
+            <span class="text-xs text-slate-400">นาที</span>
+          </div>
+          <button 
+            type="button" 
+            id="numpad-btn-clear-${spot.id}" 
+            class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            ✕ ล้าง
+          </button>
+        </div>
+
+        <!-- 3x4 Numpad Keypad -->
+        <div class="grid grid-cols-3 gap-1 mb-2 select-none">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
+            <button 
+              type="button" 
+              class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+              data-key="${num}"
+            >
+              ${num}
+            </button>
+          `).join('')}
+          <button 
+            type="button" 
+            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+            data-key="C"
+            title="ล้างตัวเลข"
+          >
+            C
+          </button>
+          <button 
+            type="button" 
+            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+            data-key="0"
+          >
+            0
+          </button>
+          <button 
+            type="button" 
+            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+            data-key="BACK"
+            title="ลบตัวล่าสุด"
+          >
+            ⌫
+          </button>
+        </div>
+
+        <!-- Big Start Cooldown Button -->
+        <button 
+          type="button" 
+          id="numpad-btn-start-${spot.id}" 
+          class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
+        >
+          <span>⏱️</span>
+          <span>เริ่มจับเวลา</span>
+        </button>
+      `}
+
+      <!-- Edit Spot Button -->
+      <div class="flex items-center justify-end">
+        <button 
+          type="button"
+          id="popup-edit-${spot.id}" 
+          class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer"
+        >
+          ✏️ แก้ไขข้อมูลหมุด
         </button>
       </div>
     </div>
@@ -311,48 +366,95 @@ function createPopupNode(
     };
   }
 
-  const presetBtns = popupNode.querySelectorAll('.popup-preset-cd-btn');
-  presetBtns.forEach((btn) => {
-    (btn as HTMLElement).onclick = (e) => {
+  // Interactive Numpad Logic
+  let enteredMinutes = '';
+  const displayEl = popupNode.querySelector(`#numpad-display-${spot.id}`) as HTMLElement | null;
+
+  const updateDisplay = () => {
+    if (displayEl) {
+      if (enteredMinutes) {
+        displayEl.textContent = enteredMinutes;
+        displayEl.className = 'text-xl font-mono font-black text-amber-400';
+      } else {
+        displayEl.textContent = '_';
+        displayEl.className = 'text-xl font-mono font-bold text-slate-600';
+      }
+    }
+  };
+
+  const handleDigit = (digit: string) => {
+    if (enteredMinutes.length >= 3) return; // Limit to 3 digits (e.g. up to 999 mins)
+    if (enteredMinutes === '' && digit === '0') return; // Disallow leading zero
+    enteredMinutes += digit;
+    updateDisplay();
+  };
+
+  const handleClear = () => {
+    enteredMinutes = '';
+    updateDisplay();
+  };
+
+  const handleBackspace = () => {
+    enteredMinutes = enteredMinutes.slice(0, -1);
+    updateDisplay();
+  };
+
+  const handleStart = () => {
+    const mins = parseInt(enteredMinutes, 10);
+    if (!mins || mins <= 0) {
+      if (displayEl) {
+        displayEl.textContent = 'กดเลขก่อน';
+        displayEl.className = 'text-sm font-sans font-bold text-red-400 animate-pulse';
+        setTimeout(updateDisplay, 800);
+      }
+      return;
+    }
+    callbacksRef.current.onStartCooldown(spot, mins);
+    const updatedCd: ActiveCooldown = {
+      spotId: spot.id,
+      startedAt: Date.now(),
+      expiresAt: Date.now() + mins * 60 * 1000,
+      durationSeconds: mins * 60,
+    };
+    marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
+  };
+
+  const numpadKeys = popupNode.querySelectorAll('.numpad-key');
+  numpadKeys.forEach((keyBtn) => {
+    (keyBtn as HTMLElement).onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      const mins = parseInt(btn.getAttribute('data-minutes') || '10', 10);
-      callbacksRef.current.onStartCooldown(spot, mins);
-      // Keep popup open and transition seamlessly to running countdown in place!
-      const updatedCd: ActiveCooldown = {
-        spotId: spot.id,
-        startedAt: Date.now(),
-        expiresAt: Date.now() + mins * 60 * 1000,
-        durationSeconds: mins * 60,
-      };
-      marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
+      const k = keyBtn.getAttribute('data-key');
+      if (k === 'C') handleClear();
+      else if (k === 'BACK') handleBackspace();
+      else if (k) handleDigit(k);
     };
   });
 
-  const customInput = popupNode.querySelector(`#popup-custom-min-input-${spot.id}`) as HTMLInputElement | null;
-  const customBtn = popupNode.querySelector(`#popup-start-custom-cd-${spot.id}`) as HTMLElement | null;
-  if (customBtn && customInput) {
-    const handleStartCustom = (e?: Event) => {
-      e?.stopPropagation();
-      e?.preventDefault();
-      const mins = Math.max(1, parseInt(customInput.value, 10) || 10);
-      callbacksRef.current.onStartCooldown(spot, mins);
-      // Keep popup open and transition seamlessly to running countdown in place!
-      const updatedCd: ActiveCooldown = {
-        spotId: spot.id,
-        startedAt: Date.now(),
-        expiresAt: Date.now() + mins * 60 * 1000,
-        durationSeconds: mins * 60,
-      };
-      marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
-    };
-    customBtn.onclick = handleStartCustom;
-    customInput.onkeydown = (e) => {
+  const clearBtn = popupNode.querySelector(`#numpad-btn-clear-${spot.id}`) as HTMLElement | null;
+  if (clearBtn) {
+    clearBtn.onclick = (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleStartCustom();
-      }
+      e.preventDefault();
+      handleClear();
+    };
+  }
+
+  const startBtn = popupNode.querySelector(`#numpad-btn-start-${spot.id}`) as HTMLElement | null;
+  if (startBtn) {
+    startBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      handleStart();
+    };
+  }
+
+  const resetBtn = popupNode.querySelector(`#popup-reset-cd-${spot.id}`) as HTMLElement | null;
+  if (resetBtn) {
+    resetBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
     };
   }
 
@@ -362,7 +464,6 @@ function createPopupNode(
       e.stopPropagation();
       e.preventDefault();
       callbacksRef.current.onCancelCooldown(spot.id);
-      // Reset popup view to idle state without closing!
       marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
     };
   }
@@ -376,6 +477,24 @@ function createPopupNode(
       marker.closePopup();
     };
   }
+
+  // Keyboard support when popup has focus
+  popupNode.tabIndex = 0;
+  popupNode.onkeydown = (e: KeyboardEvent) => {
+    if (e.key >= '0' && e.key <= '9') {
+      e.stopPropagation();
+      handleDigit(e.key);
+    } else if (e.key === 'Backspace') {
+      e.stopPropagation();
+      handleBackspace();
+    } else if (e.key === 'Enter') {
+      e.stopPropagation();
+      handleStart();
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      marker.closePopup();
+    }
+  };
 
   return popupNode;
 }
@@ -471,7 +590,7 @@ export const MapView = ({
       attributionControl: false,
       zoomControl: false,
       doubleClickZoom: false,
-      closePopupOnClick: false,
+      closePopupOnClick: true,
     });
 
     // Add custom zoom control at bottom right
@@ -637,6 +756,9 @@ export const MapView = ({
         return;
       }
 
+      // Close open popup when clicking outside on the map
+      map.closePopup();
+
       if (isDistanceMode) {
         const coords = latLngToGameCoords(e.latlng);
         callbacksRef.current.onAddDistancePoint(coords);
@@ -771,7 +893,7 @@ export const MapView = ({
           minWidth: 260,
           className: 'custom-fivem-popup',
           autoClose: false,
-          closeOnClick: false,
+          closeOnClick: true,
           autoPan: false,
         });
 
