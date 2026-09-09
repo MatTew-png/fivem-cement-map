@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MapView } from './components/MapView';
 import { Sidebar } from './components/Sidebar';
 import { CoordinatesHUD } from './components/CoordinatesHUD';
@@ -7,7 +7,8 @@ import { PinModal } from './components/PinModal';
 import { CooldownTracker } from './components/CooldownTracker';
 import { ExportImportModal } from './components/ExportImportModal';
 import { GtaCrosshair } from './components/GtaCrosshair';
-import type { CementSpot, MapTileLayer, ActiveCooldown } from './types/map';
+import { DistanceTool, type RouteSegment } from './components/DistanceTool';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from './types/map';
 import { DEFAULT_SPOTS, MAP_LAYERS } from './data/defaultSpots';
 import {
   loadSpotsFromStorage,
@@ -15,6 +16,7 @@ import {
   loadCooldownsFromStorage,
   saveCooldownsToStorage,
 } from './utils/storage';
+import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
 
 export function App() {
@@ -46,6 +48,31 @@ export function App() {
   // State: Precision tools (Compact Mode & Ghost Mode)
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [isGhostMode, setIsGhostMode] = useState(false);
+
+  // State: Distance Measuring & Farming Route Tool
+  const [isDistanceMode, setIsDistanceMode] = useState(false);
+  const [distancePoints, setDistancePoints] = useState<DistancePoint[]>([]);
+
+  // Computed: Total Distance & Route Segments
+  const { totalDistance, segments } = useMemo(() => {
+    if (distancePoints.length < 2) {
+      return { totalDistance: 0, segments: [] as RouteSegment[] };
+    }
+    let total = 0;
+    const segs: RouteSegment[] = [];
+    for (let i = 0; i < distancePoints.length - 1; i++) {
+      const p1 = distancePoints[i];
+      const p2 = distancePoints[i + 1];
+      const dist = calculateGameDistance(p1, p2);
+      total += dist;
+      segs.push({
+        fromLabel: p1.label || `จุดที่ ${i + 1}`,
+        toLabel: p2.label || `จุดที่ ${i + 2}`,
+        distance: dist,
+      });
+    }
+    return { totalDistance: total, segments: segs };
+  }, [distancePoints]);
 
   // State: Modals & Sidebar
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -226,6 +253,66 @@ export function App() {
     }
   }, []);
 
+  // Distance Tool handlers
+  const handleToggleDistance = useCallback(() => {
+    setIsDistanceMode((prev) => !prev);
+  }, []);
+
+  const handleAddDistancePoint = useCallback((point: DistancePoint) => {
+    setDistancePoints((prev) => {
+      if (prev.length > 0) {
+        const last = prev[prev.length - 1];
+        if (Math.abs(last.x - point.x) < 0.5 && Math.abs(last.y - point.y) < 0.5) {
+          return prev;
+        }
+      }
+      return [...prev, point];
+    });
+  }, []);
+
+  const handleUndoDistancePoint = useCallback(() => {
+    setDistancePoints((prev) => prev.slice(0, -1));
+    soundEffects.playUnlock();
+  }, []);
+
+  const handleLoopDistance = useCallback(() => {
+    setDistancePoints((prev) => {
+      if (prev.length < 2) return prev;
+      const start = prev[0];
+      const last = prev[prev.length - 1];
+      if (Math.abs(start.x - last.x) < 0.5 && Math.abs(start.y - last.y) < 0.5) {
+        return prev;
+      }
+      soundEffects.playPinPlaced();
+      return [
+        ...prev,
+        {
+          x: start.x,
+          y: start.y,
+          label: `${start.label || 'จุดที่ 1'} (จบลูป)`,
+          spotId: start.spotId,
+        },
+      ];
+    });
+  }, []);
+
+  const handleClearDistance = useCallback(() => {
+    setDistancePoints([]);
+  }, []);
+
+  const handleStartMeasureFromSpot = useCallback((spot: CementSpot) => {
+    setIsDistanceMode(true);
+    setDistancePoints([
+      {
+        x: spot.x,
+        y: spot.y,
+        label: spot.name,
+        spotId: spot.id,
+      },
+    ]);
+    soundEffects.playPinPlaced();
+  }, []);
+
   const activeLayerConfig = MAP_LAYERS.find((l) => l.id === activeLayer) || MAP_LAYERS[0];
 
   return (
@@ -273,6 +360,10 @@ export function App() {
           isGhostMode={isGhostMode}
           isCoordsLocked={isCoordsLocked}
           lockedCoords={lockedCoords}
+          isDistanceMode={isDistanceMode}
+          distancePoints={distancePoints}
+          onAddDistancePoint={handleAddDistancePoint}
+          onStartMeasureFromSpot={handleStartMeasureFromSpot}
         />
 
         {/* GTA V In-Game Reticle / Crosshair */}
@@ -282,6 +373,18 @@ export function App() {
         <LayerSwitcher
           activeLayer={activeLayer}
           onLayerChange={setActiveLayer}
+        />
+
+        {/* Distance Measurement & Farming Route Planner Tool */}
+        <DistanceTool
+          isActive={isDistanceMode}
+          onToggle={handleToggleDistance}
+          points={distancePoints}
+          totalDistance={totalDistance}
+          segments={segments}
+          onClear={handleClearDistance}
+          onUndo={handleUndoDistancePoint}
+          onLoop={handleLoopDistance}
         />
 
         {/* Active Cooldowns Floating Card */}

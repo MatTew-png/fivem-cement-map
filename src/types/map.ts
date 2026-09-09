@@ -50,3 +50,10 @@ export interface MapLayerConfig {
   bgColor: string;
   className?: string;
 }
+
+export interface DistancePoint {
+  x: number;
+  y: number;
+  label?: string;
+  spotId?: string;
+}
