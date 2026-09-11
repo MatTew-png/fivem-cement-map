@@ -12,8 +12,89 @@ interface PinModalProps {
   onDelete?: (id: string) => void;
 }
 
+export function renderSpotIcon(icon: string, className: string = 'w-5 h-5') {
+  if (!icon) return <span>🧱</span>;
+  if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        className={`${className} object-contain inline-block pointer-events-none drop-shadow-sm align-middle`}
+      />
+    );
+  }
+  return <span className="inline-block leading-none align-middle">{icon}</span>;
+}
+
 // คลังไอคอนยอดนิยมสำหรับ GTA V FiveM
 const ICON_CATEGORIES = [
+  {
+    group: '⭐ FiveM Blips (ทางการ)',
+    icons: [
+      // 439 King
+      { emoji: '/blips/radar_player_king_white.png', name: '[439] King มงกุฎ - ขาว (White)' },
+      { emoji: '/blips/radar_player_king_yellow.png', name: '[439] King มงกุฎ - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_player_king_red.png', name: '[439] King มงกุฎ - แดง (Red)' },
+      { emoji: '/blips/radar_player_king_orange.png', name: '[439] King มงกุฎ - ส้ม (Orange)' },
+      { emoji: '/blips/radar_player_king_green.png', name: '[439] King มงกุฎ - เขียว (Green)' },
+      { emoji: '/blips/radar_player_king_cyan.png', name: '[439] King มงกุฎ - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_player_king_blue.png', name: '[439] King มงกุฎ - น้ำเงิน (Blue)' },
+      { emoji: '/blips/radar_player_king_mint.png', name: '[439] King มงกุฎ - มิ้นต์ (Mint)' },
+      { emoji: '/blips/radar_player_king_purple.png', name: '[439] King มงกุฎ - ม่วง (Purple)' },
+      { emoji: '/blips/radar_player_king_brown.png', name: '[439] King มงกุฎ - น้ำตาล (Brown)' },
+      { emoji: '/blips/radar_player_king_pink.png', name: '[439] King มงกุฎ - ชมพู (Pink)' },
+
+      // 67 Security Van
+      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
+
+      // 669 Arena ZR380
+      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
+
+      // 225 Gang Vehicle
+      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
+      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
+      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ปกติ' },
+
+      // 71 Barber
+      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
+      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ปกติ' },
+
+      // 73 Clothes Store
+      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
+      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ปกติ' },
+
+      // 75 Tattoo
+      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
+
+      // 61 Hospital
+      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล / หมอ - เขียว' },
+      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ปกติ' },
+
+      // 60 Police Station
+      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า' },
+      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ปกติ' },
+
+      // 524 Warehouse Vehicle
+      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
+      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
+
+      // 361 Jerry Can
+      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
+
+      // 478 Contraband
+      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ขาว' },
+      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เหลือง' },
+      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ชมพู' },
+      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - น้ำตาล' },
+      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ปกติ' },
+
+      // 318 Garbage
+      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา' },
+      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
+      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
+      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
+    ],
+  },
   {
     group: 'ปูน & ก่อสร้าง',
     icons: [
@@ -178,7 +259,7 @@ export const PinModal = ({
     }
     if (iconSearch.trim()) {
       const q = iconSearch.toLowerCase().trim();
-      list = list.filter((i) => i.name.toLowerCase().includes(q) || i.emoji.includes(q));
+      list = list.filter((i) => i.name.toLowerCase().includes(q) || i.emoji.toLowerCase().includes(q));
     }
     return list;
   }, [allIcons, activeGroup, iconSearch]);
@@ -281,7 +362,7 @@ export const PinModal = ({
               className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-lg border"
               style={{ backgroundColor: `${color}22`, borderColor: color }}
             >
-              <span>{icon}</span>
+              {renderSpotIcon(icon, 'w-6 h-6')}
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-wide">
@@ -324,30 +405,36 @@ export const PinModal = ({
                 <span>2. เลือกไอคอนหมุด</span>
               </label>
               <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-500/30">
-                <span className="text-base">{icon}</span>
+                <span className="text-base flex items-center justify-center">{renderSpotIcon(icon, 'w-5 h-5')}</span>
                 <span>ไอคอนที่เลือก</span>
               </div>
             </div>
 
             {/* Custom Emoji Input & Search */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
-                <span className="text-xs text-slate-400 shrink-0">พิมพ์/วางอิโมจิ:</span>
-                <input
-                  type="text"
-                  value={icon}
-                  onChange={(e) => setIcon(e.target.value.trim() || '🧱')}
-                  placeholder="เช่น 🧱 หรือ 👑"
-                  maxLength={4}
-                  className="w-16 bg-transparent text-center text-lg font-bold text-white focus:outline-none"
-                />
+              <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 overflow-hidden">
+                <span className="text-xs text-slate-400 shrink-0">ไอคอน/อิโมจิ:</span>
+                {icon.startsWith('/') || icon.endsWith('.png') ? (
+                  <span className="text-[11px] text-amber-300 font-mono truncate" title={icon}>
+                    {icon.split('/').pop()}
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    value={icon}
+                    onChange={(e) => setIcon(e.target.value.trim() || '🧱')}
+                    placeholder="เช่น 🧱 หรือ 👑"
+                    maxLength={4}
+                    className="w-16 bg-transparent text-center text-lg font-bold text-white focus:outline-none"
+                  />
+                )}
               </div>
 
               <input
                 type="text"
                 value={iconSearch}
                 onChange={(e) => setIconSearch(e.target.value)}
-                placeholder="🔍 ค้นหาไอคอน (เช่น มงกุฎ, ปูน, รถ, ปืน, หมู)..."
+                placeholder="🔍 ค้นหาไอคอน (เช่น 439, มงกุฎ, ตำรวจ, รถ)..."
                 className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
               />
             </div>
@@ -370,8 +457,8 @@ export const PinModal = ({
               ))}
             </div>
 
-            {/* Grid of Emojis */}
-            <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-40 overflow-y-auto pr-1">
+            {/* Grid of Emojis & Blips */}
+            <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-48 overflow-y-auto pr-1">
               {filteredIcons.map((item, idx) => {
                 const isSelected = icon === item.emoji;
                 return (
@@ -386,7 +473,7 @@ export const PinModal = ({
                         : 'bg-slate-800/80 border border-slate-700/60 hover:bg-slate-750 hover:scale-105'
                     }`}
                   >
-                    <span>{item.emoji}</span>
+                    {renderSpotIcon(item.emoji, 'w-6 h-6')}
                   </button>
                 );
               })}
@@ -442,7 +529,7 @@ export const PinModal = ({
                       borderColor: '#ffffff',
                     }}
                   >
-                    <span>{icon}</span>
+                    {renderSpotIcon(icon, 'w-4 h-4')}
                   </div>
                   <div
                     className="w-0 h-0 border-x-4 border-x-transparent border-t-[5px] -mt-0.5"

@@ -20,6 +20,7 @@ import {
 import type { CementSpot, SpotCategory, ActiveCooldown } from '../types/map';
 import { CATEGORIES } from '../data/defaultSpots';
 import { formatFiveMCommand } from '../utils/storage';
+import { renderSpotIcon } from './PinModal';
 
 interface SidebarProps {
   spots: CementSpot[];
@@ -240,7 +241,7 @@ export const Sidebar = ({
                         : 'bg-slate-800/80 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <span>{cat.icon}</span>
+                    <span>{renderSpotIcon(cat.icon, 'w-3.5 h-3.5')}</span>
                     <span className="truncate max-w-[120px]">{cat.name}</span>
                     <span className="text-[10px] opacity-70">({count})</span>
                   </button>
@@ -257,9 +258,10 @@ export const Sidebar = ({
               <option value="all">🔍 กรองดูทุกประเภท ({spots.length} หมุด)</option>
               {Object.values(CATEGORIES).map((cat) => {
                 const count = spots.filter((s) => s.category === cat.id).length;
+                const optIcon = cat.icon.startsWith('/') || cat.icon.endsWith('.png') ? '📍' : cat.icon;
                 return (
                   <option key={cat.id} value={cat.id}>
-                    {cat.icon} {cat.name} {count > 0 ? `(${count})` : ''}
+                    {optIcon} {cat.name} {count > 0 ? `(${count})` : ''}
                   </option>
                 );
               })}
@@ -367,7 +369,7 @@ export const Sidebar = ({
                         color: spotColor,
                       }}
                     >
-                      <span className="text-xs">{spotIcon}</span>
+                      <span className="text-xs flex items-center justify-center">{renderSpotIcon(spotIcon, 'w-3.5 h-3.5')}</span>
                       <span>{cat.name}</span>
                     </span>
 
@@ -380,7 +382,7 @@ export const Sidebar = ({
 
                   {/* Spot Name */}
                   <h3 className="font-bold text-slate-100 text-sm mb-1 group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                    <span className="text-base">{spotIcon}</span>
+                    <span className="text-base flex items-center justify-center">{renderSpotIcon(spotIcon, 'w-4 h-4')}</span>
                     <span>{spot.name}</span>
                   </h3>
 

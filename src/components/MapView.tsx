@@ -38,6 +38,15 @@ interface MapViewProps {
   onStartMeasureFromSpot?: (spot: CementSpot) => void;
 }
 
+// Helper to render emoji or image blip icon as HTML string
+export function renderSpotIconHtml(icon: string, sizeClass: string = 'w-4 h-4'): string {
+  if (!icon) return '🧱';
+  if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
+    return `<img src="${icon}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" />`;
+  }
+  return `<span class="inline-block leading-none align-middle">${icon}</span>`;
+}
+
 // Helper to generate marker icon with cooldown badge
 function getMarkerIcon(
   spot: CementSpot,
@@ -86,7 +95,7 @@ function getMarkerIcon(
           "
           title="${spot.name} (${spot.x}, ${spot.y})"
         >
-          <span>${spotIcon}</span>
+          ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
         </div>
         ${isUrgent ? `
           <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
@@ -136,7 +145,7 @@ function getMarkerIcon(
               line-height: 1;
             "
           >
-            <span>${spotIcon}</span>
+            ${renderSpotIconHtml(spotIcon, 'w-5 h-5')}
           </div>
           <div 
             class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
@@ -192,14 +201,15 @@ function createPopupNode(
 
   popupNode.innerHTML = `
     <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
-        ${spotIcon} ${cat.name}
+      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+        ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
+        <span>${cat.name}</span>
       </span>
       ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
     </div>
 
     <h4 class="font-bold text-sm text-white mb-1.5 leading-snug flex items-center gap-1.5">
-      <span class="text-base">${spotIcon}</span>
+      <span class="text-base flex items-center justify-center">${renderSpotIconHtml(spotIcon, 'w-5 h-5')}</span>
       <span>${spot.name}</span>
     </h4>
 
