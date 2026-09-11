@@ -49,6 +49,25 @@ export function App() {
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [isGhostMode, setIsGhostMode] = useState(false);
 
+  // State: Filter Cement Spots Visibility (Default to false so cement spots don't overlap landmarks)
+  const [showCementSpots, setShowCementSpots] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fivem_map_show_cement');
+    return saved !== null ? saved === 'true' : false;
+  });
+
+  const handleToggleCementSpots = useCallback(() => {
+    setShowCementSpots((prev) => {
+      const next = !prev;
+      localStorage.setItem('fivem_map_show_cement', String(next));
+      return next;
+    });
+  }, []);
+
+  const cementCount = useMemo(() => {
+    return spots.filter((s) => s.category === 'cement_mine').length;
+  }, [spots]);
+
+
   // State: Distance Measuring & Farming Route Tool
   const [isDistanceMode, setIsDistanceMode] = useState(false);
   const [distancePoints, setDistancePoints] = useState<DistancePoint[]>([]);
@@ -83,6 +102,17 @@ export function App() {
     return loaded.length > 0 ? loaded[0] : null;
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Spots visible on map (cement spots hidden by default to keep landmarks clear)
+  const visibleSpotsOnMap = useMemo(() => {
+    return spots.filter((spot) => {
+      const isCement = spot.category === 'cement_mine';
+      if (isCement && !showCementSpots && selectedSpot?.id !== spot.id) {
+        return false;
+      }
+      return true;
+    });
+  }, [spots, showCementSpots, selectedSpot?.id]);
 
   // Auto-save spots
   useEffect(() => {
@@ -332,6 +362,8 @@ export function App() {
         selectedSpotId={selectedSpot?.id}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        showCementSpots={showCementSpots}
+        onToggleCementSpots={handleToggleCementSpots}
       />
 
       {/* Main Map Area */}
@@ -342,7 +374,7 @@ export function App() {
       >
         {/* Leaflet Map Engine */}
         <MapView
-          spots={spots}
+          spots={visibleSpotsOnMap}
           activeLayer={activeLayer}
           activeCooldowns={activeCooldowns}
           onMapClickToCreatePin={handleMapClickToCreatePin}
@@ -410,6 +442,9 @@ export function App() {
           isCoordsLocked={isCoordsLocked}
           onToggleLockCoords={handleToggleLockCoords}
           onPinAtLocked={handlePinAtLocked}
+          showCementSpots={showCementSpots}
+          onToggleCementSpots={handleToggleCementSpots}
+          cementCount={cementCount}
         />
       </main>
 

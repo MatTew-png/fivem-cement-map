@@ -4,8 +4,8 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
   // === งานปูน (Cement Jobs) ===
   cement_mine: {
     id: 'cement_mine',
-    name: 'จุดจกปูน / ตักปูน',
-    nameEn: 'Cement Mine',
+    name: 'จุดปูน',
+    nameEn: 'Cement',
     icon: '🧱',
     color: '#f59e0b',
     bgColor: 'bg-amber-500/20',

@@ -89,7 +89,7 @@ export function parseImportedSpots(jsonString: string): CementSpot[] {
     }
     return {
       id: item.id || `spot-${Date.now()}-${index}`,
-      name: item.name || `จุดจกปูน #${index + 1}`,
+      name: item.name || `จุดปูน #${index + 1}`,
       category: item.category || 'cement_mine',
       x: item.x,
       y: item.y,

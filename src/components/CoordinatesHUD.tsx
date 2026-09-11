@@ -15,6 +15,9 @@ interface CoordinatesHUDProps {
   isCoordsLocked?: boolean;
   onToggleLockCoords?: () => void;
   onPinAtLocked?: () => void;
+  showCementSpots?: boolean;
+  onToggleCementSpots?: () => void;
+  cementCount?: number;
 }
 
 export const CoordinatesHUD = ({
@@ -31,6 +34,9 @@ export const CoordinatesHUD = ({
   isCoordsLocked = false,
   onToggleLockCoords,
   onPinAtLocked,
+  showCementSpots = false,
+  onToggleCementSpots,
+  cementCount,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -208,6 +214,22 @@ export const CoordinatesHUD = ({
           >
             <Crosshair className="w-3 h-3" />
             <span>🎯 ปักตรงเป้า</span>
+          </button>
+        )}
+
+        {/* Toggle Cement Spots Filter */}
+        {onToggleCementSpots && (
+          <button
+            onClick={onToggleCementSpots}
+            title="เปิด/ปิดการแสดงจุดปูนบนแผนที่ (เพื่อไม่ให้บังแลนด์มาร์ค)"
+            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] transition-colors ${
+              showCementSpots
+                ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 font-bold shadow-sm'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+            }`}
+          >
+            <span>🧱</span>
+            <span>{showCementSpots ? `จุดปูน (${cementCount ?? ''})` : 'จุดปูน (ซ่อน)'}</span>
           </button>
         )}
 

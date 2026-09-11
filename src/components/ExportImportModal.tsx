@@ -163,7 +163,7 @@ export const ExportImportModal = ({
               <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
                 <div>
                   <span className="font-semibold text-slate-300 block">รีเซ็ตข้อมูลเริ่มต้น</span>
-                  <span className="text-slate-500 text-[11px]">โหลดจุดจกปูนยอดนิยมดั้งเดิมของระบบ</span>
+                  <span className="text-slate-500 text-[11px]">โหลดจุดปูนยอดนิยมดั้งเดิมของระบบ</span>
                 </div>
                 <button
                   onClick={() => {

@@ -98,7 +98,7 @@ const ICON_CATEGORIES = [
   {
     group: 'ปูน & ก่อสร้าง',
     icons: [
-      { emoji: '🧱', name: 'ปูนซีเมนต์ / ตักปูน' },
+      { emoji: '🧱', name: 'ปูนซีเมนต์ / จุดปูน' },
       { emoji: '🏗️', name: 'ไซต์ก่อสร้าง' },
       { emoji: '⛏️', name: 'พลั่ว / อีเตอร์' },
       { emoji: '🔨', name: 'ค้อนช่าง' },

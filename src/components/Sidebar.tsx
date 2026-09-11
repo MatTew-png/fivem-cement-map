@@ -36,6 +36,8 @@ interface SidebarProps {
   selectedSpotId?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  showCementSpots?: boolean;
+  onToggleCementSpots?: () => void;
 }
 
 export const Sidebar = ({
@@ -52,6 +54,8 @@ export const Sidebar = ({
   selectedSpotId,
   isCollapsed,
   onToggleCollapse,
+  showCementSpots = false,
+  onToggleCementSpots,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all' | 'urgent'>('all');
@@ -143,7 +147,7 @@ export const Sidebar = ({
                 <h1 className="text-sm font-black text-white tracking-wider flex items-center gap-1.5">
                   <span>FIVEM CEMENT MAP</span>
                   <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
-                    จกปูน
+                    จุดปูน
                   </span>
                 </h1>
                 <p className="text-[11px] text-slate-400">แผนที่มาร์คจุดปูน & พิกัด FiveM</p>
@@ -234,7 +238,12 @@ export const Sidebar = ({
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      if (cat.id === 'cement_mine' && !showCementSpots && onToggleCementSpots) {
+                        onToggleCementSpots();
+                      }
+                    }}
                     className={`px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 transition-all ${
                       isSelected
                         ? `${cat.bgColor} ${cat.borderColor} border text-white font-bold`
@@ -252,7 +261,13 @@ export const Sidebar = ({
           {spots.length > 0 && (
             <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value as SpotCategory | 'all' | 'urgent';
+                setSelectedCategory(val);
+                if (val === 'cement_mine' && !showCementSpots && onToggleCementSpots) {
+                  onToggleCementSpots();
+                }
+              }}
               className="w-full px-2 py-1 rounded-lg bg-slate-850 border border-slate-700/80 text-[11px] text-slate-300 focus:outline-none focus:border-amber-500"
             >
               <option value="all">🔍 กรองดูทุกประเภท ({spots.length} หมุด)</option>
@@ -266,6 +281,28 @@ export const Sidebar = ({
                 );
               })}
             </select>
+          )}
+
+          {/* Quick Toggle: Show/Hide Cement Spots on Map */}
+          {onToggleCementSpots && (
+            <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-850/80 rounded-xl border border-slate-700/60 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <span className="text-sm">🧱</span>
+                <span className="text-[11px] font-medium">จุดปูนบนแผนที่:</span>
+              </div>
+              <button
+                type="button"
+                onClick={onToggleCementSpots}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1 ${
+                  showCementSpots
+                    ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <span>{showCementSpots ? '✓ กำลังแสดง' : '✕ ซ่อนอยู่'}</span>
+                <span className="opacity-70 text-[9px]">({spots.filter((s) => s.category === 'cement_mine').length})</span>
+              </button>
+            </div>
           )}
         </div>
 
