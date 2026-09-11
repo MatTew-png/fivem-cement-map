@@ -1,5 +1,13 @@
 import type { CementSpot, SpotCategoryInfo, MapLayerConfig } from '../types/map';
 
+/**
+ * ตรวจสอบว่าเป็นจุดปูนหรือไม่
+ * กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
+ */
+export function isCementSpot(spot?: { name?: string } | null): boolean {
+  return (spot?.name || '').trim() === 'ปูน';
+}
+
 export const CATEGORIES: Record<string, SpotCategoryInfo> = {
   // === งานปูน (Cement Jobs) ===
   cement_mine: {
@@ -11,6 +19,18 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
     bgColor: 'bg-amber-500/20',
     borderColor: 'border-amber-500',
     group: 'งานปูน',
+  },
+
+  // === แลนด์มาร์คทั่วไป (General Landmarks) ===
+  landmark: {
+    id: 'landmark',
+    name: 'แลนด์มาร์ค',
+    nameEn: 'Landmark',
+    icon: '/blips/radar_player_king_white.png',
+    color: '#38bdf8',
+    bgColor: 'bg-sky-500/20',
+    borderColor: 'border-sky-500',
+    group: 'แลนด์มาร์ค',
   },
 
   // === Landmark Crowns (มงกุฎแลนด์มาร์ค) ===
@@ -1902,7 +1922,7 @@ export const DEFAULT_SPOTS: CementSpot[] = [
   {
     "id": "spot-1788676937650",
     "name": "อู่",
-    "category": "cement_mine",
+    "category": "landmark",
     "icon": "🔧",
     "color": "#ef4444",
     "x": -3065.5,

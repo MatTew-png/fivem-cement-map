@@ -9,9 +9,18 @@ import {
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from '../types/map';
-import { MAP_LAYERS, CATEGORIES } from '../data/defaultSpots';
+import { MAP_LAYERS, CATEGORIES, isCementSpot } from '../data/defaultSpots';
 import { formatFiveMCommand } from '../utils/storage';
 import { soundEffects } from '../utils/sound';
+
+// กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
+function getSpotCategoryInfo(spot: CementSpot) {
+  if (isCementSpot(spot)) return CATEGORIES.cement_mine;
+  if (spot.category && spot.category !== 'cement_mine' && CATEGORIES[spot.category]) {
+    return CATEGORIES[spot.category];
+  }
+  return CATEGORIES.landmark || CATEGORIES.cement_mine;
+}
 
 interface MapViewProps {
   spots: CementSpot[];
@@ -55,7 +64,7 @@ function getMarkerIcon(
   isGhostMode: boolean,
   activeCd?: ActiveCooldown
 ): L.DivIcon {
-  const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
+  const cat = getSpotCategoryInfo(spot);
   const now = Date.now();
   const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
   const isCooldown = !!activeCd && remainingSec > 0;
@@ -177,7 +186,7 @@ function createPopupNode(
   }>,
   marker: L.Marker
 ): HTMLElement {
-  const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
+  const cat = getSpotCategoryInfo(spot);
   const spotIcon = spot.icon || cat?.icon || '🧱';
   const spotColor = spot.color || cat?.color || '#f59e0b';
   const cmd = formatFiveMCommand(spot);

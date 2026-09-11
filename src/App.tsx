@@ -9,7 +9,7 @@ import { ExportImportModal } from './components/ExportImportModal';
 import { GtaCrosshair } from './components/GtaCrosshair';
 import { DistanceTool, type RouteSegment } from './components/DistanceTool';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from './types/map';
-import { DEFAULT_SPOTS, MAP_LAYERS } from './data/defaultSpots';
+import { DEFAULT_SPOTS, MAP_LAYERS, isCementSpot } from './data/defaultSpots';
 import {
   loadSpotsFromStorage,
   saveSpotsToStorage,
@@ -64,7 +64,7 @@ export function App() {
   }, []);
 
   const cementCount = useMemo(() => {
-    return spots.filter((s) => s.category === 'cement_mine').length;
+    return spots.filter(isCementSpot).length;
   }, [spots]);
 
 
@@ -103,14 +103,14 @@ export function App() {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Spots visible on map (cement spots hidden by default to keep landmarks clear)
+  // Spots visible on map: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือคือแลนด์มาร์ค
   const visibleSpotsOnMap = useMemo(() => {
     return spots.filter((spot) => {
-      const isCement = spot.category === 'cement_mine';
+      const isCement = isCementSpot(spot);
       if (isCement && !showCementSpots && selectedSpot?.id !== spot.id) {
         return false;
       }
-      return true;
+      return true; // All landmarks are always visible!
     });
   }, [spots, showCementSpots, selectedSpot?.id]);
 
@@ -143,7 +143,9 @@ export function App() {
       x: cursorCoordsRef.current?.x || 0,
       y: cursorCoordsRef.current?.y || 0,
       z: 30.0,
-      category: 'cement_mine',
+      category: 'landmark',
+      icon: '/blips/radar_player_king_white.png',
+      color: '#38bdf8',
       cooldownMinutes: 10,
     });
     setIsPinModalOpen(true);
@@ -154,7 +156,9 @@ export function App() {
       x: coords.x,
       y: coords.y,
       z: 30.0,
-      category: 'cement_mine',
+      category: 'landmark',
+      icon: '/blips/radar_player_king_white.png',
+      color: '#38bdf8',
       cooldownMinutes: 10,
     });
     setIsPinModalOpen(true);

@@ -18,9 +18,18 @@ import {
   X,
 } from 'lucide-react';
 import type { CementSpot, SpotCategory, ActiveCooldown } from '../types/map';
-import { CATEGORIES } from '../data/defaultSpots';
+import { CATEGORIES, isCementSpot } from '../data/defaultSpots';
 import { formatFiveMCommand } from '../utils/storage';
 import { renderSpotIcon } from './PinModal';
+
+// กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
+const getEffectiveCategoryId = (spot: CementSpot): string => {
+  if (isCementSpot(spot)) return 'cement_mine';
+  if (spot.category && spot.category !== 'cement_mine' && CATEGORIES[spot.category]) {
+    return spot.category;
+  }
+  return 'landmark';
+};
 
 interface SidebarProps {
   spots: CementSpot[];
@@ -92,7 +101,7 @@ export const Sidebar = ({
         const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
         matchCat = rem > 0 && rem <= 180;
       } else if (selectedCategory !== 'all') {
-        matchCat = spot.category === selectedCategory;
+        matchCat = getEffectiveCategoryId(spot) === selectedCategory;
       }
 
       const query = searchQuery.toLowerCase().trim();
@@ -231,9 +240,9 @@ export const Sidebar = ({
               </button>
             )}
             {Object.values(CATEGORIES)
-              .filter((cat) => spots.some((s) => s.category === cat.id))
+              .filter((cat) => spots.some((s) => getEffectiveCategoryId(s) === cat.id))
               .map((cat) => {
-                const count = spots.filter((s) => s.category === cat.id).length;
+                const count = spots.filter((s) => getEffectiveCategoryId(s) === cat.id).length;
                 const isSelected = selectedCategory === cat.id;
                 return (
                   <button
@@ -271,15 +280,17 @@ export const Sidebar = ({
               className="w-full px-2 py-1 rounded-lg bg-slate-850 border border-slate-700/80 text-[11px] text-slate-300 focus:outline-none focus:border-amber-500"
             >
               <option value="all">🔍 กรองดูทุกประเภท ({spots.length} หมุด)</option>
-              {Object.values(CATEGORIES).map((cat) => {
-                const count = spots.filter((s) => s.category === cat.id).length;
-                const optIcon = cat.icon.startsWith('/') || cat.icon.endsWith('.png') ? '📍' : cat.icon;
-                return (
-                  <option key={cat.id} value={cat.id}>
-                    {optIcon} {cat.name} {count > 0 ? `(${count})` : ''}
-                  </option>
-                );
-              })}
+              {Object.values(CATEGORIES)
+                .filter((cat) => spots.some((s) => getEffectiveCategoryId(s) === cat.id))
+                .map((cat) => {
+                  const count = spots.filter((s) => getEffectiveCategoryId(s) === cat.id).length;
+                  const optIcon = cat.icon.startsWith('/') || cat.icon.endsWith('.png') ? '📍' : cat.icon;
+                  return (
+                    <option key={cat.id} value={cat.id}>
+                      {optIcon} {cat.name} {count > 0 ? `(${count})` : ''}
+                    </option>
+                  );
+                })}
             </select>
           )}
 
@@ -300,7 +311,7 @@ export const Sidebar = ({
                 }`}
               >
                 <span>{showCementSpots ? '✓ กำลังแสดง' : '✕ ซ่อนอยู่'}</span>
-                <span className="opacity-70 text-[9px]">({spots.filter((s) => s.category === 'cement_mine').length})</span>
+                <span className="opacity-70 text-[9px]">({spots.filter(isCementSpot).length})</span>
               </button>
             </div>
           )}
@@ -334,7 +345,8 @@ export const Sidebar = ({
             )
           ) : (
             filteredSpots.map((spot) => {
-              const cat = CATEGORIES[spot.category] || CATEGORIES.cement_mine;
+              const catId = getEffectiveCategoryId(spot);
+              const cat = CATEGORIES[catId] || CATEGORIES.landmark || CATEGORIES.cement_mine;
               const isSelected = selectedSpotId === spot.id;
               const activeCooldown = getActiveCooldown(spot.id);
               const spotIcon = spot.icon || cat.icon;

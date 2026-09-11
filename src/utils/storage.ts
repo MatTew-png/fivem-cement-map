@@ -15,7 +15,14 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      return parsed.map((item: CementSpot) => {
+        // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
+        const isCement = (item.name || '').trim() === 'ปูน';
+        if (!isCement && item.category === 'cement_mine') {
+          return { ...item, category: 'landmark' };
+        }
+        return item;
+      });
     }
   } catch (err) {
     console.error('Failed to load spots from storage:', err);
@@ -90,7 +97,7 @@ export function parseImportedSpots(jsonString: string): CementSpot[] {
     return {
       id: item.id || `spot-${Date.now()}-${index}`,
       name: item.name || `จุดปูน #${index + 1}`,
-      category: item.category || 'cement_mine',
+      category: item.name?.trim() === 'ปูน' ? 'cement_mine' : (item.category && item.category !== 'cement_mine' ? item.category : 'landmark'),
       x: item.x,
       y: item.y,
       z: item.z ?? 30.0,

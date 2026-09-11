@@ -269,8 +269,9 @@ export const PinModal = ({
     setCoordsPasteStatus(null);
     if (initialSpot) {
       setName(initialSpot.name || '');
-      setIcon(initialSpot.icon || '🧱');
-      setColor(initialSpot.color || '#f59e0b');
+      const isCement = initialSpot.name?.trim() === 'ปูน';
+      setIcon(initialSpot.icon || (isCement ? '🧱' : '/blips/radar_player_king_white.png'));
+      setColor(initialSpot.color || (isCement ? '#f59e0b' : '#38bdf8'));
       setX(initialSpot.x !== undefined ? initialSpot.x : 0);
       setY(initialSpot.y !== undefined ? initialSpot.y : 0);
       setZ(initialSpot.z !== undefined ? initialSpot.z : 30.0);
@@ -281,15 +282,15 @@ export const PinModal = ({
       setNotes(initialSpot.notes || '');
     } else {
       setName('');
-      setIcon('🧱');
-      setColor('#f59e0b');
+      setIcon('/blips/radar_player_king_white.png');
+      setColor('#38bdf8');
       setX(0);
       setY(0);
       setZ(30.0);
       setPostal('');
       setCooldownMinutes(10);
       setYieldDescription('');
-      setRequiredItemsStr('พลั่วตักทราย, ถุงกระสอบ');
+      setRequiredItemsStr('');
       setNotes('');
     }
   }, [initialSpot, isOpen]);
@@ -311,11 +312,21 @@ export const PinModal = ({
     const safeZ = Number.isFinite(numZ) ? numZ : 30.0;
     const safeCd = Math.max(0, parseInt(String(cooldownMinutes), 10) || 0);
 
+    const trimmedName = name.trim();
+    // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือคือแลนด์มาร์ค
+    const isCement = trimmedName === 'ปูน';
+    let assignedCategory = initialSpot?.category || (isCement ? 'cement_mine' : 'landmark');
+    if (isCement) {
+      assignedCategory = 'cement_mine';
+    } else if (assignedCategory === 'cement_mine') {
+      assignedCategory = 'landmark';
+    }
+
     const updated: CementSpot = {
       id: initialSpot?.id || `spot-${Date.now()}`,
-      name: name.trim(),
-      category: initialSpot?.category || 'cement_mine',
-      icon: icon.trim() || '🧱',
+      name: trimmedName,
+      category: assignedCategory,
+      icon: icon.trim() || (isCement ? '🧱' : '/blips/radar_player_king_white.png'),
       color,
       x: safeX,
       y: safeY,
@@ -392,7 +403,7 @@ export const PinModal = ({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="เช่น จุดจกปูนลับ, มงกุฎแดง แลนด์มาร์ค, โรงเลื่อยไม้, อู่ซ่อมรถ..."
+              placeholder="เช่น มงกุฎแดง, แลนด์มาร์ค, อู่ (หรือตั้งชื่อ 'ปูน' สำหรับจุดปูน)..."
               className="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm font-medium"
             />
           </div>
