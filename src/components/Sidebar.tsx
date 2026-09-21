@@ -154,7 +154,7 @@ export const Sidebar = ({
               </div>
               <div>
                 <h1 className="text-sm font-black text-white tracking-wider flex items-center gap-1.5">
-                  <span>FIVEM CEMENT MAP</span>
+                  <span>รันทุกเวิบ COOLDOWN</span>
                   <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
                     จุดปูน
                   </span>
