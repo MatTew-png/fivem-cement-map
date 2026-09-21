@@ -30,7 +30,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
     }
 
     if (!pin.trim()) {
-      setError('กรุณากรอกรหัสผ่าน 4 หลัก');
+      setError('กรุณากรอกรหัสผ่าน 6 หลัก');
       return;
     }
 
@@ -126,10 +126,10 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
             <input
               type="password"
               inputMode="numeric"
-              maxLength={8}
+              maxLength={6}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              placeholder="กรอกรหัส 4 หลักจาก Discord แก๊ง"
+              placeholder="กรอกรหัส 6 หลักจาก Discord แก๊ง"
               className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 text-sm tracking-widest font-mono text-center font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-base"
             />
           </div>

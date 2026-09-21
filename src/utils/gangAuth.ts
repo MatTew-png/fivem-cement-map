@@ -21,7 +21,7 @@ const SESSION_STORAGE_KEY = 'runthukverb_gang_session';
 const ACTIVITY_LOGS_KEY = 'runthukverb_activity_logs';
 
 // Default Master PIN สำหรับหัวหน้าแก๊ง (สามารถใช้เข้าได้ทุกวันและดูตารางรหัส)
-export const DEFAULT_MASTER_PIN = '9999';
+export const DEFAULT_MASTER_PIN = '999999';
 
 // ฟังก์ชันแปลง Date เป็นสตริง YYYY-MM-DD ในเขตเวลาท้องถิ่น (Local Time)
 export function getLocalDateString(date: Date = new Date()): string {
@@ -31,7 +31,7 @@ export function getLocalDateString(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-// DJB2 Hash Algorithm สำหรับสร้างรหัส 4 หลักที่แน่นอนในแต่ละวัน
+// DJB2 Hash Algorithm สำหรับสร้างรหัส 6 หลักที่แน่นอนในแต่ละวัน
 function hashDateToPIN(dateStr: string): string {
   const input = `${dateStr}_${GANG_SECRET_SEED}`;
   let hash = 5381;
@@ -39,7 +39,7 @@ function hashDateToPIN(dateStr: string): string {
     hash = ((hash << 5) + hash) + input.charCodeAt(i);
     hash |= 0;
   }
-  const pinNum = (Math.abs(hash) % 9000) + 1000;
+  const pinNum = (Math.abs(hash) % 900000) + 100000;
   return String(pinNum);
 }
 
@@ -55,7 +55,7 @@ export function getMasterPIN(): string {
 
 // บันทึก Master PIN ใหม่ (สำหรับหัวหน้า)
 export function setMasterPIN(newPin: string): boolean {
-  if (!newPin || newPin.length < 4) return false;
+  if (!newPin || newPin.length < 6) return false;
   localStorage.setItem(MASTER_PIN_KEY, newPin);
   return true;
 }
