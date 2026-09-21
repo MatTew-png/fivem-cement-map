@@ -47,6 +47,9 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   showCementSpots?: boolean;
   onToggleCementSpots?: () => void;
+  onlineCount?: number;
+  onOpenPresence?: () => void;
+  memberName?: string;
 }
 
 export const Sidebar = ({
@@ -65,6 +68,9 @@ export const Sidebar = ({
   onToggleCollapse,
   showCementSpots = false,
   onToggleCementSpots,
+  onlineCount,
+  onOpenPresence,
+  memberName,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all' | 'urgent'>('all');
@@ -160,6 +166,22 @@ export const Sidebar = ({
                   </span>
                 </h1>
                 <p className="text-[11px] text-slate-400">แผนที่มาร์คจุดปูน & พิกัด FiveM</p>
+                {onOpenPresence && (
+                  <button
+                    type="button"
+                    onClick={onOpenPresence}
+                    className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-400 text-[10px] font-bold transition-all cursor-pointer shadow-sm w-fit group"
+                    title="คลิกเพื่อดูสมาชิกที่กำลังออนไลน์และตารางรหัสแก๊ง"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>ออนไลน์ {onlineCount ?? 1} คน</span>
+                    {memberName && (
+                      <span className="text-slate-400 font-normal ml-0.5 group-hover:text-slate-200">
+                        ({memberName})
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 

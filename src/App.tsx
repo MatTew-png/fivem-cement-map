@@ -18,6 +18,10 @@ import {
 } from './utils/storage';
 import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
+import { GangAuthModal } from './components/GangAuthModal';
+import { GangPresenceModal } from './components/GangPresenceModal';
+import { gangPresence, type OnlineMember } from './utils/presence';
+import { getGangSession, type GangSession, type ActivityLog } from './utils/gangAuth';
 
 export function App() {
   // State: Spots
@@ -66,6 +70,45 @@ export function App() {
   const cementCount = useMemo(() => {
     return spots.filter(isCementSpot).length;
   }, [spots]);
+
+  // State: Gang Authentication & Presence
+  const [gangSession, setGangSession] = useState<GangSession | null>(() => getGangSession());
+  const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
+  const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
+  // Effect: Connect to gang presence & cooldown synchronization
+  useEffect(() => {
+    if (!gangSession) return;
+
+    gangPresence.start(gangSession);
+
+    const unsubPresence = gangPresence.subscribe((members, logs) => {
+      setOnlineMembers(members);
+      setActivityLogs(logs);
+    });
+
+    const unsubCdSync = gangPresence.subscribeCooldownSync((syncData) => {
+      if (syncData.action === 'start') {
+        const durationSeconds = syncData.durationMinutes * 60;
+        const now = Date.now();
+        const expiresAt = now + durationSeconds * 1000;
+        setActiveCooldowns((prev) => {
+          const filtered = prev.filter((c) => c.spotId !== syncData.spotId);
+          return [...filtered, { spotId: syncData.spotId, startedAt: now, expiresAt, durationSeconds }];
+        });
+        soundEffects.playCooldownStarted();
+      } else if (syncData.action === 'cancel') {
+        setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== syncData.spotId));
+      }
+    });
+
+    return () => {
+      unsubPresence();
+      unsubCdSync();
+      gangPresence.stop();
+    };
+  }, [gangSession]);
 
 
   // State: Distance Measuring & Farming Route Tool
@@ -255,11 +298,13 @@ export function App() {
       return [...filtered, { spotId: spot.id, startedAt: now, expiresAt, durationSeconds }];
     });
 
+    gangPresence.broadcastCooldown(spot.id, spot.name, mins, 'start');
     soundEffects.playCooldownStarted();
   }, []);
 
   const handleCancelCooldown = useCallback((spotId: string) => {
     setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== spotId));
+    gangPresence.broadcastCooldown(spotId, '', 0, 'cancel');
   }, []);
 
   const handleFocusSpot = useCallback((spot: CementSpot) => {
@@ -368,6 +413,9 @@ export function App() {
         onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
         showCementSpots={showCementSpots}
         onToggleCementSpots={handleToggleCementSpots}
+        onlineCount={onlineMembers.length}
+        onOpenPresence={() => setIsPresenceModalOpen(true)}
+        memberName={gangSession?.memberName}
       />
 
       {/* Main Map Area */}
@@ -471,6 +519,24 @@ export function App() {
         spots={spots}
         onImport={handleImport}
         onResetDefault={handleResetDefault}
+      />
+
+      {/* Gang Security Gate Modal */}
+      {!gangSession && (
+        <GangAuthModal onSuccess={(session) => setGangSession(session)} />
+      )}
+
+      {/* Gang Presence & Boss Modal */}
+      <GangPresenceModal
+        isOpen={isPresenceModalOpen}
+        onClose={() => setIsPresenceModalOpen(false)}
+        onlineMembers={onlineMembers}
+        activityLogs={activityLogs}
+        currentSession={gangSession}
+        onLogout={() => {
+          setGangSession(null);
+          setIsPresenceModalOpen(false);
+        }}
       />
     </div>
   );
