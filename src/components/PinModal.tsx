@@ -12,12 +12,23 @@ interface PinModalProps {
   onDelete?: (id: string) => void;
 }
 
+export function resolveAssetUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const base = import.meta.env.BASE_URL || './';
+  const cleanBase = base.endsWith('/') ? base : `${base}/`;
+  const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+  return `${cleanBase}${cleanPath}`;
+}
+
 export function renderSpotIcon(icon: string, className: string = 'w-5 h-5') {
   if (!icon) return <span>🧱</span>;
   if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
     return (
       <img
-        src={icon}
+        src={resolveAssetUrl(icon)}
         alt=""
         className={`${className} object-contain inline-block pointer-events-none drop-shadow-sm align-middle`}
       />

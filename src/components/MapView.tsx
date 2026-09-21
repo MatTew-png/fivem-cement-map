@@ -12,6 +12,7 @@ import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from '..
 import { MAP_LAYERS, CATEGORIES, isCementSpot } from '../data/defaultSpots';
 import { formatFiveMCommand } from '../utils/storage';
 import { soundEffects } from '../utils/sound';
+import { resolveAssetUrl } from './PinModal';
 
 // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
 function getSpotCategoryInfo(spot: CementSpot) {
@@ -51,7 +52,8 @@ interface MapViewProps {
 export function renderSpotIconHtml(icon: string, sizeClass: string = 'w-4 h-4'): string {
   if (!icon) return '🧱';
   if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
-    return `<img src="${icon}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" />`;
+    const src = resolveAssetUrl(icon);
+    return `<img src="${src}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" />`;
   }
   return `<span class="inline-block leading-none align-middle">${icon}</span>`;
 }
