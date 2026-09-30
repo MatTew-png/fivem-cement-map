@@ -44,6 +44,15 @@ const ICON_CATEGORIES = [
   {
     group: '⭐ FiveM Blips (ทางการ)',
     icons: [
+      // 469 Weed Pickup / Drug Dealer
+      { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - เขียว (Green)' },
+      { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ขาว (White)' },
+      { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_pickup_weed_red.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - แดง (Red)' },
+      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ม่วง (Purple)' },
+      { emoji: '/blips/radar_pickup_weed_cyan.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_pickup_weed_orange.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ส้ม (Orange)' },
+
       // 439 King
       { emoji: '/blips/radar_player_king_white.png', name: '[439] King มงกุฎ - ขาว (White)' },
       { emoji: '/blips/radar_player_king_yellow.png', name: '[439] King มงกุฎ - เหลือง (Yellow)' },
@@ -205,6 +214,23 @@ const ICON_CATEGORIES = [
       { emoji: '🛑', name: 'จุดตรวจ / ด่าน' },
       { emoji: '🏠', name: 'เซฟเฮ้าส์ / บ้านพัก' },
       { emoji: '🗝️', name: 'Rebel / กล่องลับ' },
+    ],
+  },
+  {
+    group: 'ยาเสพติด & ของเถื่อน',
+    icons: [
+      { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา (เขียว) / จุดขายยา Dealer' },
+      { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา (ขาว) / จุดขายยา Dealer' },
+      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา (ม่วง Purple Haze)' },
+      { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา (เหลือง)' },
+      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ' },
+      { emoji: '🌿', name: 'ใบกัญชา / สมุนไพร' },
+      { emoji: '💊', name: 'เม็ดยา / สารเคมี' },
+      { emoji: '💉', name: 'เข็มฉีดยา / ยาชา' },
+      { emoji: '🧪', name: 'หลอดทดลองเคมี' },
+      { emoji: '🚬', name: 'บุหรี่ / กัญชาอัดแท่ง' },
+      { emoji: '🍄', name: 'เห็ดเมา' },
+      { emoji: '📦', name: 'กล่องของเถื่อนลับ' },
     ],
   },
 ];
