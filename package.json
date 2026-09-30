@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:surge": "npm run build && surge ./dist runthukverb-cooldown.surge.sh"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
