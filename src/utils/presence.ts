@@ -1,6 +1,7 @@
 // Realtime Presence & Gang Activity Hub
 // รองรับทั้ง Cross-device WebSockets (ntfy.sh) และ Local Cross-tab (BroadcastChannel)
 
+import type { CementSpot } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
 import { logActivity, getActivityLogs } from './gangAuth';
 
@@ -13,11 +14,34 @@ export interface OnlineMember {
   device?: string;
 }
 
+export type SpotSyncAction = 'add' | 'update' | 'delete' | 'move';
+
+export interface SpotSyncEvent {
+  action: SpotSyncAction;
+  spot?: CementSpot;
+  spotId?: string;
+  memberName: string;
+  timestamp: number;
+}
+
+export type SpotSyncListener = (event: SpotSyncEvent) => void;
+
+export interface GangNotification {
+  id: string;
+  type: 'member_join' | 'cooldown_start' | 'cooldown_cancel' | 'spot_add' | 'spot_update' | 'spot_delete' | 'spot_move';
+  title: string;
+  subtitle?: string;
+  timestamp: number;
+  icon?: string;
+}
+
+export type NotificationListener = (notification: GangNotification) => void;
 export type PresenceListener = (members: OnlineMember[], logs: ActivityLog[]) => void;
 export type CooldownSyncListener = (data: { spotId: string; spotName: string; durationMinutes: number; action: 'start' | 'cancel'; memberName: string }) => void;
+export type SpotManifestListener = (customSpots: CementSpot[], senderName: string) => void;
 
 const PRESENCE_TOPIC = 'runthukverb_gang_presence_hub_v1';
-const WS_ENDPOINT = `wss://ntfy.sh/${PRESENCE_TOPIC}/ws`;
+const WS_ENDPOINT = `wss://ntfy.sh/${PRESENCE_TOPIC}/ws?since=now`;
 const POST_ENDPOINT = `https://ntfy.sh/${PRESENCE_TOPIC}`;
 const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
 
@@ -32,6 +56,9 @@ class GangPresenceManager {
   private membersMap: Map<string, OnlineMember> = new Map();
   private listeners: Set<PresenceListener> = new Set();
   private cdListeners: Set<CooldownSyncListener> = new Set();
+  private spotListeners: Set<SpotSyncListener> = new Set();
+  private notifListeners: Set<NotificationListener> = new Set();
+  private manifestListeners: Set<SpotManifestListener> = new Set();
   private isConnected: boolean = false;
 
   constructor() {
@@ -98,11 +125,49 @@ class GangPresenceManager {
     return () => this.cdListeners.delete(callback);
   }
 
+  public subscribeSpotSync(callback: SpotSyncListener): () => void {
+    this.spotListeners.add(callback);
+    return () => this.spotListeners.delete(callback);
+  }
+
+  public subscribeNotification(callback: NotificationListener): () => void {
+    this.notifListeners.add(callback);
+    return () => this.notifListeners.delete(callback);
+  }
+
+  public subscribeSpotManifest(callback: SpotManifestListener): () => void {
+    this.manifestListeners.add(callback);
+    return () => this.manifestListeners.delete(callback);
+  }
+
+  // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกใหม่ได้รับข้อมูลครบถ้วน
+  public broadcastSpotManifest(customSpots: CementSpot[]) {
+    if (!this.session || customSpots.length === 0) return;
+    const payload = {
+      type: 'spot_manifest',
+      clientId: this.clientId,
+      memberName: this.session.memberName,
+      customSpots,
+      timestamp: Date.now(),
+    };
+    this.publish(payload);
+  }
+
+  public triggerNotification(notif: Omit<GangNotification, 'id' | 'timestamp'>) {
+    const fullNotif: GangNotification = {
+      ...notif,
+      id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: Date.now(),
+    };
+    this.notifListeners.forEach((cb) => cb(fullNotif));
+  }
+
   // สมาชิกกดจับเวลาปูน ให้กระจายแจ้งเตือนทั้งแก๊ง
   public broadcastCooldown(spotId: string, spotName: string, durationMinutes: number, action: 'start' | 'cancel') {
     if (!this.session) return;
     const payload = {
       type: 'cooldown_sync',
+      clientId: this.clientId,
       spotId,
       spotName,
       durationMinutes,
@@ -116,6 +181,38 @@ class GangPresenceManager {
       logActivity(this.session.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotName} (${durationMinutes} นาที)`);
       this.notifyListeners();
     }
+  }
+
+  // สมาชิกปักจุด / แก้ไข / ลบ / ย้ายหมุด ให้กระจายอัปเดตทั้งแก๊งสดๆ ทันที
+  public broadcastSpotChange(action: SpotSyncAction, spot?: CementSpot, spotId?: string) {
+    if (!this.session) return;
+    const id = spotId || spot?.id || '';
+    const name = spot?.name || 'จุดมาร์คเกอร์';
+
+    const payload = {
+      type: 'spot_sync',
+      clientId: this.clientId,
+      action,
+      spot,
+      spotId: id,
+      memberName: this.session.memberName,
+      timestamp: Date.now(),
+    };
+
+    this.publish(payload);
+
+    // บันทึก Activity Log
+    if (action === 'add') {
+      logActivity(this.session.memberName, 'spot_add', `ปักหมุดใหม่: ${name}`);
+    } else if (action === 'delete') {
+      logActivity(this.session.memberName, 'spot_delete', `ลบหมุด: ${name}`);
+    } else if (action === 'move') {
+      logActivity(this.session.memberName, 'spot_move', `ย้ายพิกัด: ${name}`);
+    } else if (action === 'update') {
+      logActivity(this.session.memberName, 'spot_update', `แก้ไขข้อมูล: ${name}`);
+    }
+
+    this.notifyListeners();
   }
 
   public getOnlineMembers(): OnlineMember[] {
@@ -255,6 +352,12 @@ class GangPresenceManager {
   private handleMessage(data: any) {
     if (!data || !data.type) return;
 
+    // ละทิ้งข้อความที่เก่าเกิน 45 วินาที เพื่อไม่ให้เบราว์เซอร์กระตุกตอนเปิดหน้าใหม่
+    if (data.timestamp && Date.now() - data.timestamp > 45000) {
+      return;
+    }
+
+    // 1. Presence Ping
     if (data.type === 'presence_ping') {
       if (data.clientId === this.clientId) return; // ตัวเอง
 
@@ -272,16 +375,87 @@ class GangPresenceManager {
 
       if (isNewMember) {
         logActivity(data.memberName, 'login', 'ออนไลน์เปิดใช้งานแผนที่');
+        this.triggerNotification({
+          type: 'member_join',
+          title: `${data.memberName} เข้าสู่ระบบ`,
+          subtitle: `ออนไลน์จาก ${data.device || 'อุปกรณ์'}`,
+          icon: '🟢',
+        });
+        // ส่ง Heartbeat ตอบกลับ เพื่อให้สมาชิกใหม่เห็นเราทันทีในรายชื่อ
+        this.sendHeartbeat();
       }
 
       this.notifyListeners();
-    } else if (data.type === 'presence_leave') {
+    }
+    // 2. Presence Leave
+    else if (data.type === 'presence_leave') {
       if (data.clientId === this.clientId) return;
       this.membersMap.delete(data.clientId);
       this.notifyListeners();
-    } else if (data.type === 'cooldown_sync') {
-      if (data.memberName === this.session?.memberName) return; // ทำเองไม่ต้องซ้ำ
+    }
+    // 3. Cooldown Sync
+    else if (data.type === 'cooldown_sync') {
+      if (data.clientId === this.clientId) return; // ตัวเอง
       this.cdListeners.forEach((cb) => cb(data));
+
+      if (data.action === 'start') {
+        this.triggerNotification({
+          type: 'cooldown_start',
+          title: `${data.memberName} เริ่มจับเวลา`,
+          subtitle: `${data.spotName} (${data.durationMinutes} นาที)`,
+          icon: '⏳',
+        });
+      } else if (data.action === 'cancel') {
+        this.triggerNotification({
+          type: 'cooldown_cancel',
+          title: `${data.memberName} ยกเลิกจับเวลา`,
+          subtitle: `${data.spotName || ''}`,
+          icon: '⏹️',
+        });
+      }
+    }
+    // 4. Spot Sync (ปักจุด / แก้ไข / ลบ / ย้ายหมุด แบบ Real-time)
+    else if (data.type === 'spot_sync') {
+      if (data.clientId === this.clientId) return; // ตัวเอง
+      this.spotListeners.forEach((cb) => cb(data));
+
+      const spotName = data.spot?.name || data.spotId || 'จุดมาร์คเกอร์';
+      if (data.action === 'add') {
+        this.triggerNotification({
+          type: 'spot_add',
+          title: `${data.memberName} ปักหมุดใหม่`,
+          subtitle: `${spotName}`,
+          icon: '🧱',
+        });
+      } else if (data.action === 'update') {
+        this.triggerNotification({
+          type: 'spot_update',
+          title: `${data.memberName} แก้ไขหมุด`,
+          subtitle: `${spotName}`,
+          icon: '✏️',
+        });
+      } else if (data.action === 'move') {
+        this.triggerNotification({
+          type: 'spot_move',
+          title: `${data.memberName} ย้ายพิกัด`,
+          subtitle: `${spotName}`,
+          icon: '📍',
+        });
+      } else if (data.action === 'delete') {
+        this.triggerNotification({
+          type: 'spot_delete',
+          title: `${data.memberName} ลบหมุด`,
+          subtitle: `${spotName}`,
+          icon: '🗑️',
+        });
+      }
+    }
+    // 5. Spot Manifest Sync (เมื่อสมาชิกเข้ามาใหม่ ได้รับชุดหมุดที่เพื่อนๆ อัปเดตไว้)
+    else if (data.type === 'spot_manifest') {
+      if (data.clientId === this.clientId) return; // ตัวเอง
+      if (Array.isArray(data.customSpots) && data.customSpots.length > 0) {
+        this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'สมาชิกแก๊ง'));
+      }
     }
   }
 

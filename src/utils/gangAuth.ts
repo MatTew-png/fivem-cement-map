@@ -10,7 +10,7 @@ export interface GangSession {
 export interface ActivityLog {
   id: string;
   memberName: string;
-  action: 'login' | 'cooldown_start' | 'pin_copied';
+  action: 'login' | 'cooldown_start' | 'pin_copied' | 'spot_add' | 'spot_update' | 'spot_delete' | 'spot_move';
   details?: string;
   timestamp: number;
 }

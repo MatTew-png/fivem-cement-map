@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check } from 'lucide-react';
+import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown } from 'lucide-react';
 import type { CementSpot } from '../types/map';
+import { DEFAULT_SPOTS } from '../data/defaultSpots';
 import { parseFiveMCoords } from '../utils/crs';
 
 interface PinModalProps {
@@ -10,6 +11,7 @@ interface PinModalProps {
   onSave: (spot: CementSpot) => void;
   initialSpot?: Partial<CementSpot> | null;
   onDelete?: (id: string) => void;
+  isMaster?: boolean;
 }
 
 export function resolveAssetUrl(url: string): string {
@@ -223,13 +225,17 @@ const PRESET_COLORS = [
   { hex: '#334155', name: 'เทาเข้ม (Slate)' },
 ];
 
+const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+
 export const PinModal = ({
   isOpen,
   onClose,
   onSave,
   initialSpot,
   onDelete,
+  isMaster = false,
 }: PinModalProps) => {
+  const isOfficial = Boolean(initialSpot?.id && officialSpotIds.has(initialSpot.id));
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🧱');
   const [color, setColor] = useState('#f59e0b');
@@ -387,10 +393,28 @@ export const PinModal = ({
               {renderSpotIcon(icon, 'w-6 h-6')}
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-wide">
-                {initialSpot?.id ? 'แก้ไขหมุดมาร์คเกอร์' : 'สร้างหมุดใหม่บนแผนที่'}
-              </h2>
-              <p className="text-xs text-slate-400">ตั้งชื่อหมุดและเลือกไอคอนตามต้องการได้อย่างอิสระ</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white tracking-wide">
+                  {initialSpot?.id ? 'แก้ไขหมุดมาร์คเกอร์' : 'สร้างหมุดใหม่บนแผนที่'}
+                </h2>
+                {isOfficial && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-semibold">
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>จุดหลักของแก๊ง</span>
+                  </span>
+                )}
+                {isOfficial && isMaster && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1 font-bold">
+                    <Crown className="w-3 h-3 text-red-400" />
+                    <span>หัวหน้า</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400">
+                {isOfficial && !isMaster
+                  ? 'หมุดหลักทางการของแก๊ง พิกัดจะถูกล็อคไว้เพื่อความปลอดภัย'
+                  : 'ตั้งชื่อหมุดและเลือกไอคอนตามต้องการได้อย่างอิสระ'}
+              </p>
             </div>
           </div>
           <button
@@ -720,18 +744,26 @@ export const PinModal = ({
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-3 border-t border-slate-800">
             {initialSpot?.id && onDelete ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('คุณต้องการลบหมุดนี้ใช่หรือไม่?')) {
-                    onDelete(initialSpot.id!);
-                    onClose();
-                  }
-                }}
-                className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30"
-              >
-                ลบหมุดนี้
-              </button>
+              isOfficial && !isMaster ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('คุณต้องการลบหมุดนี้ใช่หรือไม่?')) {
+                      onDelete(initialSpot.id!);
+                      onClose();
+                    }
+                  }}
+                  className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
+                  <span>ลบหมุดนี้</span>
+                </button>
+              )
             ) : (
               <div />
             )}

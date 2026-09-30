@@ -9,10 +9,13 @@ import {
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from '../types/map';
-import { MAP_LAYERS, CATEGORIES, isCementSpot } from '../data/defaultSpots';
+import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
 import { formatFiveMCommand } from '../utils/storage';
 import { soundEffects } from '../utils/sound';
 import { resolveAssetUrl } from './PinModal';
+
+const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
 
 // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
 function getSpotCategoryInfo(spot: CementSpot) {
@@ -46,6 +49,7 @@ interface MapViewProps {
   distancePoints?: DistancePoint[];
   onAddDistancePoint?: (point: DistancePoint) => void;
   onStartMeasureFromSpot?: (spot: CementSpot) => void;
+  isMaster?: boolean;
 }
 
 // Helper to render emoji or image blip icon as HTML string
@@ -53,7 +57,7 @@ export function renderSpotIconHtml(icon: string, sizeClass: string = 'w-4 h-4'):
   if (!icon) return '🧱';
   if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
     const src = resolveAssetUrl(icon);
-    return `<img src="${src}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" />`;
+    return `<img src="${src}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" loading="lazy" decoding="async" />`;
   }
   return `<span class="inline-block leading-none align-middle">${icon}</span>`;
 }
@@ -565,6 +569,7 @@ export const MapView = ({
   distancePoints = [],
   onAddDistancePoint,
   onStartMeasureFromSpot,
+  isMaster = false,
 }: MapViewProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -582,6 +587,7 @@ export const MapView = ({
   const selectedSpotRef = useRef(selectedSpot);
   selectedSpotRef.current = selectedSpot;
   const prevActiveCooldownsRef = useRef<ActiveCooldown[]>(activeCooldowns);
+  const isInitialMountRef = useRef(true);
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
@@ -954,33 +960,43 @@ export const MapView = ({
         existing.setIcon(icon);
         existing.setZIndexOffset(existing.isPopupOpen() ? 3500 : zIndexOffset);
 
-        // Crucial: Only update popup content if popup is NOT open, so user typing is NEVER lost!
-        if (!existing.isPopupOpen()) {
+        // Only update popup content if popup IS open (saves thousands of DOM operations on load)
+        if (existing.isPopupOpen()) {
           existing.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, existing));
         }
 
-        // Draggable handling
-        if (isCurrentSelected) {
+        // Draggable handling (Only boss or creator of custom spots can drag)
+        const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
+        if (canDrag) {
           if (!existing.dragging?.enabled()) existing.dragging?.enable();
         } else {
           if (existing.dragging?.enabled()) existing.dragging?.disable();
         }
       } else {
         // Create new marker
+        const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
         const marker = L.marker(latlng, {
           icon,
-          draggable: isCurrentSelected,
+          draggable: canDrag,
           zIndexOffset,
         });
 
-        marker.bindPopup(createPopupNode(spot, activeCd, callbacksRef, marker), {
-          maxWidth: 320,
-          minWidth: 260,
-          className: 'custom-fivem-popup',
-          autoClose: false,
-          closeOnClick: true,
-          autoPan: false,
-        });
+        // Lazy Popup Factory: Leaflet only evaluates this when the user clicks the marker!
+        // Prevents generating 2,000+ DOM nodes synchronously during page startup
+        marker.bindPopup(
+          () => {
+            const cd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
+            return createPopupNode(spot, cd, callbacksRef, marker);
+          },
+          {
+            maxWidth: 320,
+            minWidth: 260,
+            className: 'custom-fivem-popup',
+            autoClose: false,
+            closeOnClick: true,
+            autoPan: false,
+          }
+        );
 
         marker.on('click', (e) => {
           if (callbacksRef.current.isDistanceMode) {
@@ -1028,7 +1044,7 @@ export const MapView = ({
         markersMapRef.current.set(spot.id, marker);
       }
     });
-  }, [mapReady, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+  }, [mapReady, spots, selectedSpot?.id, isCompactMode, isGhostMode, isMaster]);
 
   // Synchronize cooldown marker badges ONLY when activeCooldowns actually changes for a spot
   useEffect(() => {
@@ -1058,7 +1074,7 @@ export const MapView = ({
       marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd));
       const zIndex = marker.isPopupOpen() ? 3500 : isCurrentSelected ? 2000 : activeCd ? 300 : 0;
       marker.setZIndexOffset(zIndex);
-      if (!marker.isPopupOpen()) {
+      if (marker.isPopupOpen()) {
         marker.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, marker));
       }
     });
@@ -1131,10 +1147,15 @@ export const MapView = ({
     return () => clearInterval(interval);
   }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
-  // Pan to selected spot safely
+  // Pan to selected spot safely (Only when user explicitly clicks a spot, not on initial mount)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !selectedSpot) return;
+
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return; // Do not flyTo on initial page load - renders initial map overview smoothly at 60fps
+    }
 
     if (Number.isFinite(selectedSpot.x) && Number.isFinite(selectedSpot.y)) {
       try {

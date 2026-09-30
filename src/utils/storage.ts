@@ -30,9 +30,69 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
   return null;
 }
 
+const BACKUP_STORAGE_KEY = 'fivem_map_auto_backups_v1';
+
+export interface SpotBackupSnapshot {
+  id: string;
+  timestamp: number;
+  dateStr: string;
+  spotsCount: number;
+  spots: CementSpot[];
+}
+
+export function saveBackupSnapshot(spots: CementSpot[]): void {
+  try {
+    if (!spots || spots.length === 0) return;
+    const raw = localStorage.getItem(BACKUP_STORAGE_KEY);
+    const backups: SpotBackupSnapshot[] = raw ? JSON.parse(raw) : [];
+
+    const last = backups[0];
+    if (last && last.spotsCount === spots.length && Date.now() - last.timestamp < 30000) {
+      return;
+    }
+
+    const newSnapshot: SpotBackupSnapshot = {
+      id: `backup_${Date.now()}`,
+      timestamp: Date.now(),
+      dateStr: new Date().toLocaleString('th-TH'),
+      spotsCount: spots.length,
+      spots,
+    };
+
+    const updated = [newSnapshot, ...backups].slice(0, 15);
+    localStorage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.error('Failed to save backup snapshot:', err);
+  }
+}
+
+export function getBackupSnapshots(): SpotBackupSnapshot[] {
+  try {
+    const raw = localStorage.getItem(BACKUP_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function restoreBackupSnapshot(id: string): CementSpot[] | null {
+  try {
+    const backups = getBackupSnapshots();
+    const target = backups.find((b) => b.id === id);
+    if (target && Array.isArray(target.spots) && target.spots.length > 0) {
+      saveSpotsToStorage(target.spots);
+      return target.spots;
+    }
+  } catch (err) {
+    console.error('Failed to restore backup snapshot:', err);
+  }
+  return null;
+}
+
 export function saveSpotsToStorage(spots: CementSpot[]): void {
   try {
     localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(spots));
+    saveBackupSnapshot(spots);
   } catch (err) {
     console.error('Failed to save spots to storage:', err);
   }

@@ -20,7 +20,8 @@ import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
 import { GangAuthModal } from './components/GangAuthModal';
 import { GangPresenceModal } from './components/GangPresenceModal';
-import { gangPresence, type OnlineMember } from './utils/presence';
+import { GangToast } from './components/GangToast';
+import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
 import { getGangSession, type GangSession, type ActivityLog } from './utils/gangAuth';
 
 export function App() {
@@ -49,8 +50,20 @@ export function App() {
   const [zoom, setZoom] = useState(3);
   const [mapCenterCoords, setMapCenterCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // State: Precision tools (Compact Mode & Ghost Mode)
-  const [isCompactMode, setIsCompactMode] = useState(false);
+  // State: Precision tools (เปิดโหมดหมุดจิ๋วเป็นค่าเริ่มต้นเสมอตามคำสั่ง)
+  const [isCompactMode, setIsCompactMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fivem_map_compact_mode');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const handleToggleCompactMode = useCallback(() => {
+    setIsCompactMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('fivem_map_compact_mode', String(next));
+      return next;
+    });
+  }, []);
+
   const [isGhostMode, setIsGhostMode] = useState(false);
 
   // State: Filter Cement Spots Visibility (Default to false so cement spots don't overlap landmarks)
@@ -76,8 +89,9 @@ export function App() {
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [notifications, setNotifications] = useState<GangNotification[]>([]);
 
-  // Effect: Connect to gang presence & cooldown synchronization
+  // Effect: Connect to gang presence & cooldown & spot synchronization
   useEffect(() => {
     if (!gangSession) return;
 
@@ -103,9 +117,74 @@ export function App() {
       }
     });
 
+    const unsubNotification = gangPresence.subscribeNotification((notification) => {
+      setNotifications((prev) => [notification, ...prev.slice(0, 6)]);
+    });
+
+    const unsubSpotSync = gangPresence.subscribeSpotSync((event) => {
+      if (event.action === 'add' && event.spot) {
+        setSpots((prev) => {
+          if (prev.some((s) => s.id === event.spot!.id)) return prev;
+          return [event.spot!, ...prev];
+        });
+      } else if (event.action === 'update' && event.spot) {
+        setSpots((prev) => prev.map((s) => (s.id === event.spot!.id ? event.spot! : s)));
+        setSelectedSpot((prev) => (prev?.id === event.spot!.id ? event.spot! : prev));
+      } else if (event.action === 'move' && event.spot) {
+        setSpots((prev) =>
+          prev.map((s) =>
+            s.id === event.spot!.id
+              ? { ...s, x: event.spot!.x, y: event.spot!.y, updatedAt: Date.now() }
+              : s
+          )
+        );
+      } else if (event.action === 'delete') {
+        setSpots((prev) => prev.filter((s) => s.id !== event.spotId));
+        setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== event.spotId));
+        setSelectedSpot((prev) => (prev?.id === event.spotId ? null : prev));
+      }
+    });
+
+    // Auto-link & Sync all custom spots across all members
+    const unsubManifest = gangPresence.subscribeSpotManifest((customSpots, senderName) => {
+      setSpots((prev) => {
+        const existingMap = new Map(prev.map((s) => [s.id, s]));
+        let addedCount = 0;
+        customSpots.forEach((cs) => {
+          const old = existingMap.get(cs.id);
+          if (!old) {
+            existingMap.set(cs.id, cs);
+            addedCount++;
+          } else if (cs.updatedAt > (old.updatedAt || 0)) {
+            existingMap.set(cs.id, cs);
+          }
+        });
+        if (addedCount > 0) {
+          soundEffects.playPinPlaced();
+          gangPresence.triggerNotification({
+            type: 'spot_add',
+            title: 'ซิงค์จุดจากเพื่อนในแก๊ง',
+            subtitle: `ได้รับ ${addedCount} จุดเพิ่มเติมจาก ${senderName}`,
+            icon: '🔄',
+          });
+        }
+        return Array.from(existingMap.values());
+      });
+    });
+
+    // Broadcast our custom spots to any online peer on join
+    const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+    const currentCustom = (loadSpotsFromStorage() || []).filter((s) => !defaultIds.has(s.id));
+    if (currentCustom.length > 0) {
+      gangPresence.broadcastSpotManifest(currentCustom);
+    }
+
     return () => {
       unsubPresence();
       unsubCdSync();
+      unsubNotification();
+      unsubSpotSync();
+      unsubManifest();
       gangPresence.stop();
     };
   }, [gangSession]);
@@ -213,8 +292,10 @@ export function App() {
   }, []);
 
   const handleSaveSpot = useCallback((spot: CementSpot) => {
+    let isNew = false;
     setSpots((prev) => {
       const exists = prev.some((s) => s.id === spot.id);
+      isNew = !exists;
       if (exists) {
         return prev.map((s) => (s.id === spot.id ? spot : s));
       } else {
@@ -223,22 +304,30 @@ export function App() {
     });
     setSelectedSpot(spot);
     soundEffects.playPinPlaced();
+    gangPresence.broadcastSpotChange(isNew ? 'add' : 'update', spot);
   }, []);
 
   const handleDeleteSpot = useCallback((id: string) => {
     setSpots((prev) => prev.filter((s) => s.id !== id));
     setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== id));
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
+    gangPresence.broadcastSpotChange('delete', undefined, id);
   }, []);
 
   const handleSpotMoved = useCallback((spotId: string, newCoords: { x: number; y: number }) => {
+    let movedSpot: CementSpot | undefined;
     setSpots((prev) =>
-      prev.map((s) =>
-        s.id === spotId
-          ? { ...s, x: newCoords.x, y: newCoords.y, updatedAt: Date.now() }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id === spotId) {
+          movedSpot = { ...s, x: newCoords.x, y: newCoords.y, updatedAt: Date.now() };
+          return movedSpot;
+        }
+        return s;
+      })
     );
+    if (movedSpot) {
+      gangPresence.broadcastSpotChange('move', movedSpot);
+    }
   }, []);
 
   const handlePinAtCrosshair = useCallback(() => {
@@ -448,6 +537,7 @@ export function App() {
           distancePoints={distancePoints}
           onAddDistancePoint={handleAddDistancePoint}
           onStartMeasureFromSpot={handleStartMeasureFromSpot}
+          isMaster={gangSession?.isMaster}
         />
 
         {/* GTA V In-Game Reticle / Crosshair */}
@@ -488,7 +578,7 @@ export function App() {
           onToggleCrosshair={() => setShowCrosshair((prev) => !prev)}
           onPinAtCrosshair={handlePinAtCrosshair}
           isCompactMode={isCompactMode}
-          onToggleCompactMode={() => setIsCompactMode((prev) => !prev)}
+          onToggleCompactMode={handleToggleCompactMode}
           isGhostMode={isGhostMode}
           onToggleGhostMode={() => setIsGhostMode((prev) => !prev)}
           isCoordsLocked={isCoordsLocked}
@@ -510,6 +600,13 @@ export function App() {
         onSave={handleSaveSpot}
         initialSpot={editingSpot}
         onDelete={handleDeleteSpot}
+        isMaster={gangSession?.isMaster}
+      />
+
+      {/* GTA V HUD Floating Gang Notifications */}
+      <GangToast
+        notifications={notifications}
+        onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
       />
 
       {/* Export / Import Modal */}
