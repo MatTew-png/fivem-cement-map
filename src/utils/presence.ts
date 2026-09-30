@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
-import { logActivity, getActivityLogs } from './gangAuth';
+import { logActivity, getActivityLogs, GANG_SECRET_SEED } from './gangAuth';
 
 export interface OnlineMember {
   clientId: string;
@@ -41,6 +41,55 @@ export type SpotManifestListener = (customSpots: CementSpot[], senderName: strin
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v1';
 const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
+
+// E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่าย
+function encryptPayload(data: object): string {
+  try {
+    const jsonStr = JSON.stringify(data);
+    const bytes = new TextEncoder().encode(jsonStr);
+    const keyBytes = new TextEncoder().encode(GANG_SECRET_SEED);
+    const cipherBytes = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) {
+      cipherBytes[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
+    }
+    let binary = '';
+    const len = cipherBytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(cipherBytes[i]);
+    }
+    return 'GANG_ENC:' + btoa(binary);
+  } catch {
+    return JSON.stringify(data);
+  }
+}
+
+function decryptPayload(raw: string): any {
+  if (typeof raw !== 'string') return null;
+  if (!raw.startsWith('GANG_ENC:')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const base64Data = raw.slice(9);
+    const binary = atob(base64Data);
+    const cipherBytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      cipherBytes[i] = binary.charCodeAt(i);
+    }
+    const keyBytes = new TextEncoder().encode(GANG_SECRET_SEED);
+    const plainBytes = new Uint8Array(cipherBytes.length);
+    for (let i = 0; i < cipherBytes.length; i++) {
+      plainBytes[i] = cipherBytes[i] ^ keyBytes[i % keyBytes.length];
+    }
+    const jsonStr = new TextDecoder().decode(plainBytes);
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
 
 class GangPresenceManager {
   private clientId: string = `client_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -266,8 +315,11 @@ class GangPresenceManager {
 
       this.client.on('message', (_topic, payload) => {
         try {
-          const data = JSON.parse(payload.toString());
-          this.handleMessage(data);
+          const raw = payload.toString();
+          const data = decryptPayload(raw);
+          if (data) {
+            this.handleMessage(data);
+          }
         } catch {
           // Ignore parse errors
         }
@@ -286,8 +338,6 @@ class GangPresenceManager {
   }
 
   private publish(data: object) {
-    const jsonStr = JSON.stringify(data);
-
     // ส่งในแท็บเครื่องเดียวกันผ่าน BroadcastChannel
     if (this.bc) {
       try {
@@ -297,10 +347,11 @@ class GangPresenceManager {
       }
     }
 
-    // ส่งข้ามเครื่องผ่าน HiveMQ MQTT WebSocket Broker (เสถียร 100% ไม่ติด Rate Limit)
+    // เข้ารหัส E2EE ก่อนส่งข้ามเครื่องผ่าน HiveMQ MQTT Broker
     if (this.client && this.client.connected) {
       try {
-        this.client.publish(MQTT_TOPIC, jsonStr, { qos: 1 });
+        const encryptedStr = encryptPayload(data);
+        this.client.publish(MQTT_TOPIC, encryptedStr, { qos: 1 });
       } catch {
         // Ignore network errors
       }

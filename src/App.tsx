@@ -21,6 +21,8 @@ import { soundEffects } from './utils/sound';
 import { GangAuthModal } from './components/GangAuthModal';
 import { GangPresenceModal } from './components/GangPresenceModal';
 import { GangToast } from './components/GangToast';
+import { GangWatermark } from './components/GangWatermark';
+import { setupAntiTamper } from './utils/antiTamper';
 import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
 import { getGangSession, type GangSession, type ActivityLog } from './utils/gangAuth';
 
@@ -90,6 +92,12 @@ export function App() {
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [notifications, setNotifications] = useState<GangNotification[]>([]);
+
+  // Effect: Anti-Tamper Protection (Disable contextmenu, F12, DevTools shortcuts)
+  useEffect(() => {
+    const cleanup = setupAntiTamper();
+    return cleanup;
+  }, []);
 
   // Effect: Connect to gang presence & cooldown & spot synchronization
   useEffect(() => {
@@ -485,6 +493,9 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
+      {/* Subtle Dynamic Watermark Overlay (Anti-Screenshot/Leak) */}
+      <GangWatermark memberName={gangSession?.memberName} authDate={gangSession?.authDate} />
+
       {/* Collapsible Left Sidebar */}
       <Sidebar
         spots={spots}
@@ -505,6 +516,7 @@ export function App() {
         onlineCount={onlineMembers.length}
         onOpenPresence={() => setIsPresenceModalOpen(true)}
         memberName={gangSession?.memberName}
+        isMaster={gangSession?.isMaster}
       />
 
       {/* Main Map Area */}
@@ -616,6 +628,7 @@ export function App() {
         spots={spots}
         onImport={handleImport}
         onResetDefault={handleResetDefault}
+        isMaster={gangSession?.isMaster}
       />
 
       {/* Gang Security Gate Modal */}

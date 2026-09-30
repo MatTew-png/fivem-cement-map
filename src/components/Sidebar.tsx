@@ -16,6 +16,7 @@ import {
   Package,
   Flame,
   X,
+  Lock,
 } from 'lucide-react';
 import type { CementSpot, SpotCategory, ActiveCooldown } from '../types/map';
 import { CATEGORIES, isCementSpot } from '../data/defaultSpots';
@@ -50,6 +51,7 @@ interface SidebarProps {
   onlineCount?: number;
   onOpenPresence?: () => void;
   memberName?: string;
+  isMaster?: boolean;
 }
 
 export const Sidebar = ({
@@ -71,6 +73,7 @@ export const Sidebar = ({
   onlineCount,
   onOpenPresence,
   memberName,
+  isMaster = false,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all' | 'urgent'>('all');
@@ -206,10 +209,15 @@ export const Sidebar = ({
 
             <button
               onClick={onOpenExportImport}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-all"
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl font-medium text-xs border transition-all cursor-pointer ${
+                isMaster
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  : 'bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800'
+              }`}
+              title={isMaster ? 'ส่งออก / นำเข้าพิกัด' : 'การส่งออกพิกัดถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊ง'}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>แชร์ / ข้อมูล</span>
+              {isMaster ? <Download className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-amber-500/70" />}
+              <span>{isMaster ? 'ส่งออก / นำเข้า' : 'นำเข้าหมุด'}</span>
             </button>
           </div>
 

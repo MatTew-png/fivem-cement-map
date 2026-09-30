@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { X, Download, Upload, Copy, Check, FileJson, Code2, RefreshCw, AlertCircle } from 'lucide-react';
+import { X, Download, Upload, Copy, Check, FileJson, Code2, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 import type { CementSpot } from '../types/map';
 import {
   exportSpotsToJSON,
@@ -14,6 +14,7 @@ interface ExportImportModalProps {
   spots: CementSpot[];
   onImport: (importedSpots: CementSpot[]) => void;
   onResetDefault: () => void;
+  isMaster?: boolean;
 }
 
 export const ExportImportModal = ({
@@ -22,6 +23,7 @@ export const ExportImportModal = ({
   spots,
   onImport,
   onResetDefault,
+  isMaster = false,
 }: ExportImportModalProps) => {
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua'>('export');
   const [importText, setImportText] = useState('');
@@ -138,27 +140,45 @@ export const ExportImportModal = ({
         <div className="p-6 overflow-y-auto space-y-4 text-xs">
           {activeTab === 'export' && (
             <div className="space-y-3">
-              <p className="text-slate-300">
-                คุณมีหมุดทั้งหมด <strong className="text-amber-400">{spots.length}</strong> จุด
-                สามารถบันทึกเป็นไฟล์เพื่อส่งให้เพื่อนในแก๊งเปิดดูร่วมกันได้
-              </p>
+              {!isMaster ? (
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
+                  <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
+                    <Lock className="w-4 h-4 text-red-400" />
+                    <span>ระบบป้องกันความปลอดภัย: สิทธิ์เฉพาะหัวหน้าแก๊ง</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    การดาวน์โหลดและส่งออกฐานข้อมูลพิกัดทั้งหมด (<strong className="text-amber-400">{spots.length} จุด</strong>) 
+                    ถูกจำกัดสิทธิ์เพื่อป้องกันข้อมูลพิกัดลับรั่วไหลไปยังแก๊งอื่น อนุญาตให้เฉพาะผู้ถือ <strong>Master PIN (หัวหน้าแก๊ง)</strong> เท่านั้นที่สามารถดาวน์โหลดได้
+                  </p>
+                  <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[10px] text-amber-300/90 font-mono">
+                    💡 หากคุณคือหัวหน้าแก๊ง กรุณาเข้าสู่ระบบด้วย Master PIN (999999) เพื่อปลดล็อคการดาวน์โหลด
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-slate-300">
+                    คุณมีหมุดทั้งหมด <strong className="text-amber-400">{spots.length}</strong> จุด
+                    สามารถบันทึกเป็นไฟล์เพื่อส่งให้เพื่อนในแก๊งเปิดดูร่วมกันได้
+                  </p>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => exportSpotsToJSON(spots)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>ดาวน์โหลดไฟล์ JSON (.json)</span>
-                </button>
-                <button
-                  onClick={handleCopyJSON}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 transition-all"
-                >
-                  {copiedJSON ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedJSON ? 'คัดลอกเรียบร้อยแล้ว!' : 'คัดลอก JSON Text'}</span>
-                </button>
-              </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => exportSpotsToJSON(spots)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>ดาวน์โหลดไฟล์ JSON (.json)</span>
+                    </button>
+                    <button
+                      onClick={handleCopyJSON}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 transition-all cursor-pointer"
+                    >
+                      {copiedJSON ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedJSON ? 'คัดลอกเรียบร้อยแล้ว!' : 'คัดลอก JSON Text'}</span>
+                    </button>
+                  </div>
+                </>
+              )}
 
               <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
                 <div>
@@ -232,22 +252,36 @@ export const ExportImportModal = ({
 
           {activeTab === 'lua' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-300">
-                  โค้ดตาราง Lua สำหรับนำไปใส่ในสคริปต์ FiveM (เช่น <code>config.lua</code>):
-                </span>
-                <button
-                  onClick={handleCopyLua}
-                  className="flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold transition-all"
-                >
-                  {copiedLua ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedLua ? 'Copied' : 'คัดลอกโค้ด Lua'}</span>
-                </button>
-              </div>
+              {!isMaster ? (
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
+                  <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
+                    <Lock className="w-4 h-4 text-red-400" />
+                    <span>ระบบป้องกันความปลอดภัย: สิทธิ์เฉพาะหัวหน้าแก๊ง</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    โค้ดตาราง FiveM Lua สำหรับ Server Script ถูกจำกัดสิทธิ์เฉพาะ <strong>Master PIN (หัวหน้าแก๊ง)</strong> เพื่อป้องกันการคัดลอกพิกัดแบบ Bulk Export
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300">
+                      โค้ดตาราง Lua สำหรับนำไปใส่ในสคริปต์ FiveM (เช่น <code>config.lua</code>):
+                    </span>
+                    <button
+                      onClick={handleCopyLua}
+                      className="flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold transition-all cursor-pointer"
+                    >
+                      {copiedLua ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLua ? 'Copied' : 'คัดลอกโค้ด Lua'}</span>
+                    </button>
+                  </div>
 
-              <pre className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[11px] overflow-x-auto max-h-64 leading-relaxed">
-                {luaContent}
-              </pre>
+                  <pre className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[11px] overflow-x-auto max-h-64 leading-relaxed">
+                    {luaContent}
+                  </pre>
+                </>
+              )}
             </div>
           )}
         </div>

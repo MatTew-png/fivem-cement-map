@@ -15,7 +15,7 @@ export interface ActivityLog {
   timestamp: number;
 }
 
-const GANG_SECRET_SEED = 'RUNTHUKVERB_GANG_SECRET_KEY_2026';
+export const GANG_SECRET_SEED = 'RUNTHUKVERB_GANG_SECRET_KEY_2026';
 const MASTER_PIN_KEY = 'runthukverb_master_pin';
 const SESSION_STORAGE_KEY = 'runthukverb_gang_session';
 const ACTIVITY_LOGS_KEY = 'runthukverb_activity_logs';
