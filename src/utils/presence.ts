@@ -1,6 +1,4 @@
-// Realtime Presence & Gang Activity Hub
-// รองรับทั้ง Cross-device WebSockets (ntfy.sh) และ Local Cross-tab (BroadcastChannel)
-
+import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
 import { logActivity, getActivityLogs } from './gangAuth';
@@ -40,15 +38,14 @@ export type PresenceListener = (members: OnlineMember[], logs: ActivityLog[]) =>
 export type CooldownSyncListener = (data: { spotId: string; spotName: string; durationMinutes: number; action: 'start' | 'cancel'; memberName: string }) => void;
 export type SpotManifestListener = (customSpots: CementSpot[], senderName: string) => void;
 
-const PRESENCE_TOPIC = 'runthukverb_gang_presence_hub_v1';
-const WS_ENDPOINT = `wss://ntfy.sh/${PRESENCE_TOPIC}/ws?since=now`;
-const POST_ENDPOINT = `https://ntfy.sh/${PRESENCE_TOPIC}`;
+const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
+const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v1';
 const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
 
 class GangPresenceManager {
   private clientId: string = `client_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   private session: GangSession | null = null;
-  private ws: WebSocket | null = null;
+  private client: MqttClient | null = null;
   private bc: BroadcastChannel | null = null;
   private heartbeatTimer: number | null = null;
   private pruneTimer: number | null = null;
@@ -101,13 +98,13 @@ class GangPresenceManager {
 
     this.sendLeave();
 
-    if (this.ws) {
+    if (this.client) {
       try {
-        this.ws.close();
+        this.client.end(true);
       } catch {
         // Ignore
       }
-      this.ws = null;
+      this.client = null;
     }
 
     this.membersMap.clear();
@@ -251,36 +248,38 @@ class GangPresenceManager {
     if (typeof window === 'undefined' || !this.session) return;
 
     try {
-      this.ws = new WebSocket(WS_ENDPOINT);
+      this.client = mqtt.connect(MQTT_BROKER_URL, {
+        clientId: this.clientId,
+        keepalive: 30,
+        reconnectPeriod: 4000,
+        clean: true,
+      });
 
-      this.ws.onopen = () => {
+      this.client.on('connect', () => {
         this.isConnected = true;
-        this.sendHeartbeat();
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const raw = JSON.parse(event.data);
-          if (raw.event === 'message' && raw.message) {
-            const data = JSON.parse(raw.message);
-            this.handleMessage(data);
+        this.client?.subscribe(MQTT_TOPIC, { qos: 1 }, (err) => {
+          if (!err) {
+            this.sendHeartbeat();
           }
+        });
+      });
+
+      this.client.on('message', (_topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          this.handleMessage(data);
         } catch {
           // Ignore parse errors
         }
-      };
+      });
 
-      this.ws.onclose = () => {
+      this.client.on('close', () => {
         this.isConnected = false;
-        // พยายามต่อใหม่ใน 8 วินาที
-        this.reconnectTimer = window.setTimeout(() => {
-          if (this.session) this.connectWebSocket();
-        }, 8000);
-      };
+      });
 
-      this.ws.onerror = () => {
+      this.client.on('error', () => {
         this.isConnected = false;
-      };
+      });
     } catch {
       this.isConnected = false;
     }
@@ -298,16 +297,14 @@ class GangPresenceManager {
       }
     }
 
-    // ส่งข้ามเครื่องผ่าน ntfy.sh
-    fetch(POST_ENDPOINT, {
-      method: 'POST',
-      body: jsonStr,
-      headers: {
-        'Title': 'Gang Presence Event',
-      },
-    }).catch(() => {
-      // Ignore network errors
-    });
+    // ส่งข้ามเครื่องผ่าน HiveMQ MQTT WebSocket Broker (เสถียร 100% ไม่ติด Rate Limit)
+    if (this.client && this.client.connected) {
+      try {
+        this.client.publish(MQTT_TOPIC, jsonStr, { qos: 1 });
+      } catch {
+        // Ignore network errors
+      }
+    }
   }
 
   private sendHeartbeat() {
