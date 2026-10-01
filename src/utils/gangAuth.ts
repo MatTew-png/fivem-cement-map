@@ -116,7 +116,7 @@ export function verifyPIN(
   const cleanName = memberName.trim();
 
   if (!cleanName) {
-    return { success: false, isMaster: false, error: 'กรุณากรอกชื่อเล่นหรือเลขสมาชิกในแก๊ง' };
+    return { success: false, isMaster: false, error: 'กรุณากรอกชื่อเล่น' };
   }
 
   const todayPIN = getDailyPIN();

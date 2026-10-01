@@ -394,7 +394,7 @@ export const Sidebar = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ค้นหาชื่อจุด, พิกัด, รหัสไปรษณีย์..."
+                placeholder="ค้นหาชื่อจุด..."
                 className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-850 border border-slate-750 text-white placeholder-slate-500 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition-all"
               />
               {searchQuery ? (

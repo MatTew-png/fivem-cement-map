@@ -491,7 +491,7 @@ export const PinModal = ({
           {/* 1. ชื่อจุด / สถานที่ */}
           <div>
             <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1.5">
-              1. ชื่อจุด / สถานที่ *
+              1. ชื่อจุด *
             </label>
             <input
               type="text"
@@ -499,7 +499,7 @@ export const PinModal = ({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="เช่น มงกุฎแดง, แลนด์มาร์ค, อู่ (หรือตั้งชื่อ 'ปูน' สำหรับจุดปูน)..."
+              placeholder="เช่น ปูน, จุดขายยา, แลนด์มาร์ค..."
               className="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm font-medium"
             />
           </div>

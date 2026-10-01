@@ -25,7 +25,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
     setError(null);
 
     if (!name.trim()) {
-      setError('กรุณากรอกชื่อเล่นหรือเลขประจำตัวในแก๊ง');
+      setError('กรุณากรอกชื่อเล่น');
       return;
     }
 
@@ -102,13 +102,13 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
           <div>
             <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-amber-400" />
-              <span>ชื่อเล่น หรือ เลขประจำตัวในแก๊ง</span>
+              <span>ชื่อเล่น</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="ตัวอย่าง: [01] หัวหน้าทิว หรือ บอย"
+              placeholder="กรอกชื่อเล่น..."
               className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-medium"
               autoFocus
             />
