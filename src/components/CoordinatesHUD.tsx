@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Volume2, VolumeX } from 'lucide-react';
+import { coordsBus } from '../utils/coordsBus';
 
 interface CoordinatesHUDProps {
-  cursorCoords: { x: number; y: number } | null;
+  cursorCoords?: { x: number; y: number } | null;
+  lockedCoords?: { x: number; y: number } | null;
   zoom: number;
   activeLayerName: string;
   showCrosshair: boolean;
@@ -22,8 +24,9 @@ interface CoordinatesHUDProps {
   onToggleSound?: () => void;
 }
 
-export const CoordinatesHUD = ({
-  cursorCoords,
+export const CoordinatesHUD = memo(({
+  cursorCoords: propCoords,
+  lockedCoords,
   zoom,
   activeLayerName,
   showCrosshair,
@@ -43,10 +46,19 @@ export const CoordinatesHUD = ({
   onToggleSound,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
+  const [liveCoords, setLiveCoords] = useState<{ x: number; y: number } | null>(() => coordsBus.getCoords());
+
+  useEffect(() => {
+    return coordsBus.subscribe((coords) => {
+      setLiveCoords(coords);
+    });
+  }, []);
+
+  const activeCoords = isCoordsLocked && lockedCoords ? lockedCoords : (propCoords || liveCoords);
 
   const handleCopy = () => {
-    if (!cursorCoords) return;
-    const text = `${cursorCoords.x.toFixed(1)}, ${cursorCoords.y.toFixed(1)}`;
+    if (!activeCoords) return;
+    const text = `${activeCoords.x.toFixed(1)}, ${activeCoords.y.toFixed(1)}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
@@ -85,7 +97,7 @@ export const CoordinatesHUD = ({
                   : 'text-emerald-400'
               }`}
             >
-              {cursorCoords ? cursorCoords.x.toFixed(1) : '---.-'}
+              {activeCoords ? activeCoords.x.toFixed(1) : '---.-'}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -97,7 +109,7 @@ export const CoordinatesHUD = ({
                   : 'text-emerald-400'
               }`}
             >
-              {cursorCoords ? cursorCoords.y.toFixed(1) : '---.-'}
+              {activeCoords ? activeCoords.y.toFixed(1) : '---.-'}
             </span>
           </div>
         </div>
@@ -105,14 +117,14 @@ export const CoordinatesHUD = ({
         {/* Copy Coordinates button */}
         <button
           onClick={handleCopy}
-          disabled={!cursorCoords}
+          disabled={!activeCoords}
           title={
-            cursorCoords
+            activeCoords
               ? `คลิกเพื่อคัดลอกพิกัด X, Y (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
               : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'
           }
           className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
-            cursorCoords
+            activeCoords
               ? isCoordsLocked
                 ? 'bg-cyan-950/80 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border-cyan-500/50 cursor-pointer shadow-sm'
                 : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-slate-700 cursor-pointer'
@@ -296,5 +308,5 @@ export const CoordinatesHUD = ({
       </div>
     </div>
   );
-};
+});
 

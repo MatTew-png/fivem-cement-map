@@ -21,6 +21,7 @@ import {
 } from './utils/storage';
 import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
+import { coordsBus } from './utils/coordsBus';
 import { GangAuthModal } from './components/GangAuthModal';
 import { GangPresenceModal } from './components/GangPresenceModal';
 import { GangBentoModal } from './components/GangBentoModal';
@@ -47,14 +48,18 @@ export function App() {
     return loadCooldownsFromStorage();
   });
 
-  // State: Coordinates HUD & Zoom & Lock
-  const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number } | null>(null);
-  const cursorCoordsRef = useRef(cursorCoords);
-  cursorCoordsRef.current = cursorCoords;
+  // State: Coordinates HUD & Zoom & Lock (Decoupled from root re-renders for buttery 144 FPS)
+  const cursorCoordsRef = useRef<{ x: number; y: number } | null>(null);
   const [isCoordsLocked, setIsCoordsLocked] = useState(false);
   const [lockedCoords, setLockedCoords] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(3);
   const [mapCenterCoords, setMapCenterCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    return coordsBus.subscribe((coords) => {
+      cursorCoordsRef.current = coords;
+    });
+  }, []);
 
   // State: Precision tools (เปิดโหมดหมุดจิ๋วเป็นค่าเริ่มต้นเสมอตามคำสั่ง)
   const [isCompactMode, setIsCompactMode] = useState<boolean>(() => {
@@ -649,7 +654,6 @@ export function App() {
           activeLayer={activeLayer}
           activeCooldowns={activeCooldowns}
           onMapClickToCreatePin={handleMapClickToCreatePin}
-          onCursorMove={setCursorCoords}
           onCenterCoordsChange={setMapCenterCoords}
           onZoomChange={setZoom}
           onEditSpot={handleEditSpot}
@@ -731,7 +735,7 @@ export function App() {
 
         {/* Bottom Left: Coordinates HUD */}
         <CoordinatesHUD
-          cursorCoords={isCoordsLocked && lockedCoords ? lockedCoords : cursorCoords}
+          lockedCoords={lockedCoords}
           zoom={zoom}
           activeLayerName={activeLayerConfig.name.split(' ')[0]}
           showCrosshair={showCrosshair}

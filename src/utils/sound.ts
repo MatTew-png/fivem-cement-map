@@ -2,15 +2,21 @@
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
-  private isMuted: boolean = false;
+  private isMuted: boolean = true;
 
   constructor() {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('fivem_map_sound_muted');
-        this.isMuted = saved === 'true';
+        const saved = localStorage.getItem('fivem_map_sound_muted_v2');
+        if (saved !== null) {
+          this.isMuted = saved === 'true';
+        } else {
+          // บังคับปิดเสียงเริ่มต้นเสมอ (Default Muted) ตามคำสั่งของผู้ใช้
+          this.isMuted = true;
+          localStorage.setItem('fivem_map_sound_muted_v2', 'true');
+        }
       } catch {
-        this.isMuted = false;
+        this.isMuted = true;
       }
     }
   }
@@ -23,7 +29,7 @@ class SoundEffects {
     this.isMuted = muted;
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('fivem_map_sound_muted', String(muted));
+        localStorage.setItem('fivem_map_sound_muted_v2', String(muted));
       } catch {}
     }
   }

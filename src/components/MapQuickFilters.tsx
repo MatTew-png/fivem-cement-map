@@ -1,4 +1,4 @@
-import React from 'react';
+import { memo } from 'react';
 import { Sparkles } from 'lucide-react';
 import { soundEffects } from '../utils/sound';
 import type { QuickCategory } from '../utils/clustering';
@@ -12,14 +12,14 @@ export interface MapQuickFiltersProps {
   sidebarCollapsed?: boolean;
 }
 
-export const MapQuickFilters: React.FC<MapQuickFiltersProps> = ({
+export const MapQuickFilters = memo(({
   categoriesState,
   onToggleCategory,
   isClusteringEnabled,
   onToggleClustering,
   counts,
   sidebarCollapsed = false,
-}) => {
+}: MapQuickFiltersProps) => {
   const handleCategoryClick = (cat: QuickCategory) => {
     soundEffects.playPinPlaced();
     onToggleCategory(cat);
@@ -168,4 +168,4 @@ export const MapQuickFilters: React.FC<MapQuickFiltersProps> = ({
       </div>
     </div>
   );
-};
+});

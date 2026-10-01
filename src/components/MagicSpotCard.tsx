@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
   Clock,
   Crosshair,
@@ -30,7 +30,7 @@ interface MagicSpotCardProps {
   onSearchTag: (tag: string) => void;
 }
 
-export const MagicSpotCard = ({
+export const MagicSpotCard = memo(({
   spot,
   isSelected,
   activeCooldown,
@@ -531,4 +531,4 @@ export const MagicSpotCard = ({
       )}
     </div>
   );
-};
+});

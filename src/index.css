@@ -73,6 +73,11 @@
   z-index: 2500 !important;
 }
 
+.custom-compact-marker {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
 /* Radar Pulse effect on Cooldown or Highlighted markers */
 @keyframes radar-pulse {
   0% {
@@ -100,6 +105,7 @@
   border-radius: 9999px;
   pointer-events: none;
   animation: radar-pulse 2s infinite cubic-bezier(0.24, 0, 0.38, 1);
+  will-change: transform, opacity;
 }
 
 /* Urgent / Ready Soon (< 3 min) Alert Animations */
@@ -121,10 +127,12 @@
 
 @keyframes urgent-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.9)) drop-shadow(0 0 20px rgba(245, 158, 11, 0.7));
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.8));
+    transform: scale(1.2);
   }
   50% {
-    filter: drop-shadow(0 0 18px rgba(239, 68, 68, 1)) drop-shadow(0 0 32px rgba(234, 179, 8, 0.9));
+    filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.85));
+    transform: scale(1.24);
   }
 }
 
@@ -141,6 +149,7 @@
   pointer-events: none;
   animation: urgent-beacon 1.4s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
   box-shadow: 0 0 14px #ef4444;
+  will-change: transform, opacity;
 }
 
 .marker-urgent-pulse-ring-delayed {
@@ -157,6 +166,7 @@
   animation: urgent-beacon 1.4s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
   animation-delay: 0.7s;
   box-shadow: 0 0 10px #f59e0b;
+  will-change: transform, opacity;
 }
 
 .marker-ready-pulse-ring {
@@ -172,11 +182,12 @@
   pointer-events: none;
   animation: radar-pulse 1.6s infinite ease-out;
   box-shadow: 0 0 16px rgba(16, 185, 129, 0.8);
+  will-change: transform, opacity;
 }
 
 .urgent-pin-highlight {
-  animation: urgent-glow 1.2s infinite ease-in-out;
-  transform: scale(1.22);
+  animation: urgent-glow 1.4s infinite ease-in-out;
+  transform: translateZ(0);
 }
 
 /* GTA V Crosshair / Reticle (From in-game pause map) */

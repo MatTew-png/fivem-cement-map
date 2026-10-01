@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, memo } from 'react';
 import { Clock, CheckCircle2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { ActiveCooldown, CementSpot } from '../types/map';
@@ -11,7 +11,7 @@ interface CooldownTrackerProps {
   onFocusSpot: (spot: CementSpot) => void;
 }
 
-export const CooldownTracker = ({
+export const CooldownTracker = memo(({
   cooldowns,
   spots,
   onCancelCooldown,
@@ -177,4 +177,4 @@ export const CooldownTracker = ({
       </div>
     </div>
   );
-};
+});

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, memo } from 'react';
 import {
   Search,
   Plus,
@@ -47,7 +47,7 @@ interface SidebarProps {
 
 type FilterTab = 'all' | 'dealers' | 'cement' | 'fuel' | 'urgent' | 'landmarks';
 
-export const Sidebar = ({
+export const Sidebar = memo(({
   spots,
   activeCooldowns,
   onSelectSpot,
@@ -835,4 +835,4 @@ export const Sidebar = ({
       )}
     </>
   );
-};
+});

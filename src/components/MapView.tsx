@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import L from 'leaflet';
 import {
   customGTA_CRS,
@@ -11,6 +11,7 @@ import {
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, SpotCategoryInfo } from '../types/map';
 import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
 import { soundEffects } from '../utils/sound';
+import { coordsBus } from '../utils/coordsBus';
 import { resolveAssetUrl } from './PinModal';
 import { computeClusters, createClusterDivIcon, type ClusterItem } from '../utils/clustering';
 
@@ -37,7 +38,7 @@ interface MapViewProps {
   activeLayer: MapTileLayer;
   activeCooldowns: ActiveCooldown[];
   onMapClickToCreatePin: (coords: { x: number; y: number }) => void;
-  onCursorMove: (coords: { x: number; y: number } | null) => void;
+  onCursorMove?: (coords: { x: number; y: number } | null) => void;
   onCenterCoordsChange?: (coords: { x: number; y: number }) => void;
   onZoomChange: (zoom: number) => void;
   onEditSpot: (spot: CementSpot) => void;
@@ -127,7 +128,7 @@ function getMarkerIcon(
         </div>
         <!-- Floating Countdown Badge above compact dot (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-bounce">
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-pulse">
             <span>🔥</span>
             <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
@@ -157,7 +158,7 @@ function getMarkerIcon(
 
         <!-- Floating Countdown Badge above teardrop (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-bounce">
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-pulse">
             <span>🔥</span>
             <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
@@ -648,7 +649,7 @@ function createClusterPopupNode(
   return container;
 }
 
-export const MapView = ({
+export const MapView = memo(({
   spots,
   activeLayer,
   activeCooldowns,
@@ -849,7 +850,8 @@ export const MapView = ({
       if (rafId === null) {
         rafId = requestAnimationFrame(() => {
           if (lastCoords) {
-            callbacksRef.current.onCursorMove(lastCoords);
+            coordsBus.emit(lastCoords);
+            callbacksRef.current.onCursorMove?.(lastCoords);
           }
           rafId = null;
         });
@@ -1569,4 +1571,4 @@ export const MapView = ({
       }`}
     />
   );
-};
+});
