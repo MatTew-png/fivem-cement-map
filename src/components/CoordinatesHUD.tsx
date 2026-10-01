@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock } from 'lucide-react';
+import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Volume2, VolumeX } from 'lucide-react';
 
 interface CoordinatesHUDProps {
   cursorCoords: { x: number; y: number } | null;
@@ -18,6 +18,8 @@ interface CoordinatesHUDProps {
   showCementSpots?: boolean;
   onToggleCementSpots?: () => void;
   cementCount?: number;
+  isSoundMuted?: boolean;
+  onToggleSound?: () => void;
 }
 
 export const CoordinatesHUD = ({
@@ -37,12 +39,14 @@ export const CoordinatesHUD = ({
   showCementSpots = false,
   onToggleCementSpots,
   cementCount,
+  isSoundMuted = false,
+  onToggleSound,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
     if (!cursorCoords) return;
-    const text = `/tp ${cursorCoords.x.toFixed(1)} ${cursorCoords.y.toFixed(1)} 30.0`;
+    const text = `${cursorCoords.x.toFixed(1)}, ${cursorCoords.y.toFixed(1)}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
@@ -98,16 +102,16 @@ export const CoordinatesHUD = ({
           </div>
         </div>
 
-        {/* Fixed Width /tp button */}
+        {/* Copy Coordinates button */}
         <button
           onClick={handleCopy}
           disabled={!cursorCoords}
           title={
             cursorCoords
-              ? `คลิกเพื่อคัดลอก /tp x y z (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
+              ? `คลิกเพื่อคัดลอกพิกัด X, Y (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
               : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'
           }
-          className={`flex items-center justify-center gap-1 w-[54px] py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
+          className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
             cursorCoords
               ? isCoordsLocked
                 ? 'bg-cyan-950/80 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border-cyan-500/50 cursor-pointer shadow-sm'
@@ -123,7 +127,7 @@ export const CoordinatesHUD = ({
           ) : (
             <>
               <Copy className="w-3 h-3" />
-              <span>/tp</span>
+              <span>พิกัด</span>
             </>
           )}
         </button>
@@ -262,6 +266,31 @@ export const CoordinatesHUD = ({
           >
             <span>👻</span>
             <span>{isGhostMode ? 'โปร่งแสง (เปิด)' : 'โปร่งแสง'}</span>
+          </button>
+        )}
+
+        {/* Sound Mute/Unmute Toggle (Streamer Mode) */}
+        {onToggleSound && (
+          <button
+            onClick={onToggleSound}
+            title={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์ (ขณะนี้ปิดเสียงโหมดสตรีม)' : 'ปิดเสียงเอฟเฟกต์ (เหมาะสำหรับเปิดตอนสตรีม)'}
+            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] transition-all cursor-pointer ${
+              isSoundMuted
+                ? 'bg-red-500/20 text-red-300 border-red-500/60 font-bold shadow-sm shadow-red-500/20'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+            }`}
+          >
+            {isSoundMuted ? (
+              <>
+                <VolumeX className="w-3 h-3 text-red-400" />
+                <span>ปิดเสียง (สตรีม)</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-3 h-3 text-emerald-400" />
+                <span>เปิดเสียง</span>
+              </>
+            )}
           </button>
         )}
       </div>

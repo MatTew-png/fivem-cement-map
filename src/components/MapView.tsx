@@ -10,9 +10,9 @@ import {
 } from '../utils/crs';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from '../types/map';
 import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
-import { formatFiveMCommand } from '../utils/storage';
 import { soundEffects } from '../utils/sound';
 import { resolveAssetUrl } from './PinModal';
+import { computeClusters, createClusterDivIcon, type ClusterItem } from '../utils/clustering';
 
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
@@ -50,6 +50,9 @@ interface MapViewProps {
   onAddDistancePoint?: (point: DistancePoint) => void;
   onStartMeasureFromSpot?: (spot: CementSpot) => void;
   isMaster?: boolean;
+  isClusteringEnabled?: boolean;
+  onFocusSpot?: (spot: CementSpot) => void;
+  onClearSelection?: () => void;
 }
 
 // Helper to render emoji or image blip icon as HTML string
@@ -189,13 +192,13 @@ function createPopupNode(
     onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
     onCancelCooldown: (spotId: string) => void;
     onStartMeasureFromSpot?: (spot: CementSpot) => void;
+    onClearSelection?: () => void;
   }>,
   marker: L.Marker
 ): HTMLElement {
   const cat = getSpotCategoryInfo(spot);
   const spotIcon = spot.icon || cat?.icon || '🧱';
   const spotColor = spot.color || cat?.color || '#f59e0b';
-  const cmd = formatFiveMCommand(spot);
 
   const now = Date.now();
   const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
@@ -214,162 +217,67 @@ function createPopupNode(
   L.DomEvent.disableClickPropagation(popupNode);
   L.DomEvent.disableScrollPropagation(popupNode);
 
-  popupNode.innerHTML = `
-    <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
-      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
-        ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
-        <span>${cat.name}</span>
-      </span>
-      ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
-    </div>
-
-    <h4 class="font-bold text-sm text-white mb-1.5 leading-snug flex items-center gap-1.5">
-      <span class="text-base flex items-center justify-center">${renderSpotIconHtml(spotIcon, 'w-5 h-5')}</span>
-      <span>${spot.name}</span>
-    </h4>
-
-    ${spot.yieldDescription ? `
-      <div class="text-[11px] text-emerald-300 mb-1 flex items-start gap-1">
-        <span>📦</span> <span>${spot.yieldDescription}</span>
+  if (isCooldown || isReady) {
+    // ==============================================================
+    // IMAGE 2: Active Cooldown View (Coordinates row removed per user)
+    // ==============================================================
+    popupNode.innerHTML = `
+      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+          ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
+          <span>${cat.name}</span>
+        </span>
+        ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
       </div>
-    ` : ''}
 
-    ${spot.requiredItems && spot.requiredItems.length > 0 ? `
-      <div class="text-[11px] text-purple-300 mb-1 flex items-start gap-1">
-        <span>🔧</span> <span>ต้องใช้: ${spot.requiredItems.join(', ')}</span>
-      </div>
-    ` : ''}
+      <h4 class="font-bold text-sm text-white mb-2 leading-snug flex items-center gap-1.5">
+        <span class="text-base flex items-center justify-center">${renderSpotIconHtml(spotIcon, 'w-5 h-5')}</span>
+        <span>${spot.name}</span>
+      </h4>
 
-    ${spot.notes ? `
-      <p class="text-[11px] text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800 my-1.5 leading-relaxed">
-        ${spot.notes}
-      </p>
-    ` : ''}
-
-    <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 font-mono text-[11px] my-2 text-slate-300 flex items-center justify-between">
-      <span>X: <strong class="text-emerald-400">${spot.x.toFixed(1)}</strong> Y: <strong class="text-emerald-400">${spot.y.toFixed(1)}</strong></span>
-      <button id="popup-copy-cmd-${spot.id}" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-[10px] text-slate-300 border border-slate-700 transition-colors">
-        Copy /tp
-      </button>
-    </div>
-
-    <!-- Cooldown Section -->
-    <div class="mt-2 pt-2 border-t border-slate-700/80">
-      ${isCooldown || isReady ? `
-        <!-- Active Cooldown Running View -->
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
-            <span>⏱️</span>
-            <span>สถานะคูลดาวน์</span>
-          </span>
-          <div id="popup-cd-status-box-${spot.id}">
-            ${isUrgent ? `
-              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-black text-red-400 animate-pulse">
-                🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
-              </span>
-            ` : isReady ? `
-              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">
-                ✅ ถึงเวลาเกิดแล้ว!
-              </span>
-            ` : `
-              <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-amber-400">
-                ⏳ เหลือ <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
-              </span>
-            `}
-          </div>
-        </div>
-
-        <div class="flex items-center gap-1.5 mb-2">
-          <button 
-            id="popup-cancel-cd-${spot.id}" 
-            type="button"
-            class="flex-1 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 border border-red-500/40 text-[11px] font-bold transition-all text-center cursor-pointer shadow-sm"
-          >
-            🛑 ยกเลิกจับเวลา
-          </button>
-          <button 
-            id="popup-reset-cd-${spot.id}" 
-            type="button"
-            class="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all cursor-pointer"
-            title="กดเพื่อตั้งเวลาใหม่"
-          >
-            🔄 ตั้งเวลาใหม่
-          </button>
-        </div>
-      ` : `
-        <!-- Interactive Numpad Cooldown View (No default time) -->
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
-            <span>⏱️</span>
-            <span>จับเวลาคูลดาวน์</span>
-          </span>
-          <span class="text-[10px] text-slate-400">กดเลขเวลาเอง (นาที)</span>
-        </div>
-
-        <!-- Numpad Display Screen -->
-        <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
-          <div class="flex items-baseline gap-1">
-            <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
-            <span class="text-xs text-slate-400">นาที</span>
-          </div>
-          <button 
-            type="button" 
-            id="numpad-btn-clear-${spot.id}" 
-            class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            ✕ ล้าง
-          </button>
-        </div>
-
-        <!-- 3x4 Numpad Keypad -->
-        <div class="grid grid-cols-3 gap-1 mb-2 select-none">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
-            <button 
-              type="button" 
-              class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
-              data-key="${num}"
-            >
-              ${num}
-            </button>
-          `).join('')}
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="C"
-            title="ล้างตัวเลข"
-          >
-            C
-          </button>
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="0"
-          >
-            0
-          </button>
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="BACK"
-            title="ลบตัวล่าสุด"
-          >
-            ⌫
-          </button>
-        </div>
-
-        <!-- Big Start Cooldown Button -->
-        <button 
-          type="button" 
-          id="numpad-btn-start-${spot.id}" 
-          class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
-        >
+      <!-- Cooldown Status Display -->
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
           <span>⏱️</span>
-          <span>เริ่มจับเวลา</span>
+          <span>สถานะคูลดาวน์</span>
+        </span>
+        <div id="popup-cd-status-box-${spot.id}">
+          ${isUrgent ? `
+            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-black text-red-400 animate-pulse">
+              🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+            </span>
+          ` : isReady ? `
+            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">
+              ✅ ถึงเวลาเกิดแล้ว!
+            </span>
+          ` : `
+            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-amber-400">
+              ⏳ เหลือ <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+            </span>
+          `}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 mb-2">
+        <button 
+          id="popup-cancel-cd-${spot.id}" 
+          type="button"
+          class="flex-1 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 border border-red-500/40 text-[11px] font-bold transition-all text-center cursor-pointer shadow-sm"
+        >
+          🛑 ยกเลิกจับเวลา
         </button>
-      `}
+        <button 
+          id="popup-reset-cd-${spot.id}" 
+          type="button"
+          class="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all cursor-pointer"
+          title="กดเพื่อตั้งเวลาใหม่"
+        >
+          🔄 ตั้งเวลาใหม่
+        </button>
+      </div>
 
       <!-- Actions: Measure & Edit -->
-      <div class="flex items-center justify-between gap-1.5 pt-1">
+      <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
         <button 
           type="button"
           id="popup-measure-${spot.id}" 
@@ -387,20 +295,101 @@ function createPopupNode(
           ✏️ แก้ไข
         </button>
       </div>
-    </div>
-  `;
+    `;
+  } else {
+    // ==============================================================
+    // IMAGE 1: Cooldown Numpad Picker (Exact match of Image 1)
+    // ==============================================================
+    popupNode.innerHTML = `
+      <div class="flex items-center justify-between mb-1.5">
+        <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+          <span>⏱️</span>
+          <span>จับเวลาคูลดาวน์</span>
+        </span>
+        <span class="text-[10px] text-slate-400">กดเลขเวลาเอง (นาที)</span>
+      </div>
 
-  // Attach event listeners
-  const copyBtn = popupNode.querySelector(`#popup-copy-cmd-${spot.id}`) as HTMLElement | null;
-  if (copyBtn) {
-    copyBtn.onclick = (e) => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(cmd);
-      copyBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy /tp';
-      }, 1800);
-    };
+      <!-- Numpad Display Screen -->
+      <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
+        <div class="flex items-baseline gap-1">
+          <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
+          <span class="text-xs text-slate-400">นาที</span>
+        </div>
+        <button 
+          type="button" 
+          id="numpad-btn-clear-${spot.id}" 
+          class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+        >
+          ✕ ล้าง
+        </button>
+      </div>
+
+      <!-- 3x4 Numpad Keypad -->
+      <div class="grid grid-cols-3 gap-1 mb-2 select-none">
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
+          <button 
+            type="button" 
+            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+            data-key="${num}"
+          >
+            ${num}
+          </button>
+        `).join('')}
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="C"
+          title="ล้างตัวเลข"
+        >
+          C
+        </button>
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="0"
+        >
+          0
+        </button>
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="BACK"
+          title="ลบตัวล่าสุด"
+        >
+          ⌫
+        </button>
+      </div>
+
+      <!-- Big Start Cooldown Button -->
+      <button 
+        type="button" 
+        id="numpad-btn-start-${spot.id}" 
+        class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
+      >
+        <span>⏱️</span>
+        <span>เริ่มจับเวลา</span>
+      </button>
+
+      <!-- Actions: Measure & Edit -->
+      <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
+        <button 
+          type="button"
+          id="popup-measure-${spot.id}" 
+          class="py-1 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+          title="เริ่มวัดระยะทางจากจุดนี้"
+        >
+          <span>📏</span>
+          <span>วัดระยะจากจุดนี้</span>
+        </button>
+        <button 
+          type="button"
+          id="popup-edit-${spot.id}" 
+          class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer"
+        >
+          ✏️ แก้ไข
+        </button>
+      </div>
+    `;
   }
 
   // Interactive Numpad Logic
@@ -454,6 +443,9 @@ function createPopupNode(
       durationSeconds: mins * 60,
     };
     marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
+    // Auto-close dialog immediately after setting timer per user instruction
+    marker.closePopup();
+    callbacksRef.current.onClearSelection?.();
   };
 
   const numpadKeys = popupNode.querySelectorAll('.numpad-key');
@@ -546,6 +538,92 @@ function createPopupNode(
   return popupNode;
 }
 
+function createClusterPopupNode(
+  cluster: ClusterItem,
+  callbacksRef: React.MutableRefObject<any>,
+  marker: L.Marker
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'p-1 text-slate-200 text-xs font-sans min-w-[260px] max-w-[320px]';
+  L.DomEvent.disableClickPropagation(container);
+  L.DomEvent.disableScrollPropagation(container);
+
+  const count = cluster.spots.length;
+
+  container.innerHTML = `
+    <div class="flex items-center justify-between pb-2 border-b border-slate-700/80 mb-2">
+      <div class="flex items-center gap-1.5 font-bold text-white text-xs">
+        <span class="text-sm">📦</span>
+        <span>กลุ่มหมุดใกล้กัน</span>
+      </div>
+      <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+        ${count} จุด
+      </span>
+    </div>
+
+    <p class="text-[10px] text-slate-400 mb-2">
+      คลิก "เลือก" เพื่อโฟกัสหรือเปิดดูรายละเอียดของจุดนั้น
+    </p>
+
+    <div class="max-h-56 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+      ${cluster.spots
+        .map((spot) => {
+          const cat = getSpotCategoryInfo(spot);
+          const icon = spot.icon || cat?.icon || '🧱';
+          const activeCd = callbacksRef.current.activeCooldowns?.find(
+            (c: any) => c.spotId === spot.id
+          );
+          const now = Date.now();
+          const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
+          const isUrgent = remSec > 0 && remSec <= 180;
+          const cdMinutes = Math.floor(remSec / 60);
+          const cdSeconds = remSec % 60;
+          const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
+
+          return `
+          <div class="p-2 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-amber-500/40 transition-colors flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="shrink-0 flex items-center justify-center">${renderSpotIconHtml(icon, 'w-4 h-4')}</span>
+              <div class="min-w-0">
+                <div class="font-bold text-white truncate text-[11px] leading-tight">${spot.name}</div>
+                <div class="text-[10px] text-slate-400 font-mono">
+                  ${
+                    remSec > 0
+                      ? `<span class="${isUrgent ? 'text-red-400 font-bold animate-pulse' : 'text-amber-300 font-semibold'}">⏱️ ${cdTimeStr}</span>`
+                      : `X: ${spot.x.toFixed(0)}, Y: ${spot.y.toFixed(0)}`
+                  }
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-1 shrink-0">
+              <button id="cluster-spot-focus-${spot.id}" class="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition-colors shadow-sm cursor-pointer">
+                เลือก
+              </button>
+            </div>
+          </div>
+        `;
+        })
+        .join('')}
+    </div>
+  `;
+
+  // Attach click listeners to "เลือก" (focus) buttons
+  cluster.spots.forEach((spot) => {
+    const focusBtn = container.querySelector(`#cluster-spot-focus-${spot.id}`) as HTMLElement | null;
+    if (focusBtn) {
+      focusBtn.onclick = (e) => {
+        e.stopPropagation();
+        marker.closePopup();
+        callbacksRef.current.onFocusSpot?.(spot);
+        soundEffects.playPinPlaced();
+      };
+    }
+  });
+
+  return container;
+}
+
 export const MapView = ({
   spots,
   activeLayer,
@@ -570,24 +648,28 @@ export const MapView = ({
   onAddDistancePoint,
   onStartMeasureFromSpot,
   isMaster = false,
+  isClusteringEnabled = true,
+  onFocusSpot,
+  onClearSelection,
 }: MapViewProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
+  const clusterMarkersMapRef = useRef<Map<string, L.Marker>>(new Map());
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const rubberbandPolylineRef = useRef<L.Polyline | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
+  const [currentMapZoom, setCurrentMapZoom] = useState<number>(3);
 
   const activeCooldownsRef = useRef(activeCooldowns);
   activeCooldownsRef.current = activeCooldowns;
   const selectedSpotRef = useRef(selectedSpot);
   selectedSpotRef.current = selectedSpot;
   const prevActiveCooldownsRef = useRef<ActiveCooldown[]>(activeCooldowns);
-  const isInitialMountRef = useRef(true);
 
   // Store callbacks in ref to avoid re-binding map events on parent re-renders
   const callbacksRef = useRef({
@@ -606,6 +688,9 @@ export const MapView = ({
     distancePoints,
     onAddDistancePoint,
     onStartMeasureFromSpot,
+    onFocusSpot,
+    onClearSelection,
+    activeCooldowns,
   });
 
   useEffect(() => {
@@ -625,6 +710,9 @@ export const MapView = ({
       distancePoints,
       onAddDistancePoint,
       onStartMeasureFromSpot,
+      onFocusSpot,
+      onClearSelection,
+      activeCooldowns,
     };
   });
 
@@ -684,8 +772,11 @@ export const MapView = ({
 
     // Zoom listener
     map.on('zoomend', () => {
-      callbacksRef.current.onZoomChange(map.getZoom());
+      const z = map.getZoom();
+      setCurrentMapZoom(z);
+      callbacksRef.current.onZoomChange(z);
     });
+    setCurrentMapZoom(map.getZoom());
     callbacksRef.current.onZoomChange(map.getZoom());
 
     // Center coordinates listener (for Pin at Crosshair)
@@ -749,7 +840,7 @@ export const MapView = ({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      // Keep last known coordinates active when leaving map so HUD buttons (/tp, pin) remain stable without vanishing or jitter
+      // Keep last known coordinates active when leaving map so HUD buttons (พิกัด, pin) remain stable without vanishing or jitter
     };
 
     map.on('mousemove', handleMouseMove);
@@ -845,8 +936,9 @@ export const MapView = ({
         return;
       }
 
-      // Close open popup when clicking outside on the map
+      // Close open popup when clicking outside on the map & clear highlight
       map.closePopup();
+      callbacksRef.current.onClearSelection?.();
 
       if (callbacksRef.current.isDistanceMode) {
         const coords = latLngToGameCoords(e.latlng);
@@ -926,125 +1018,236 @@ export const MapView = ({
     };
   }, [mapReady, isGhostMode]);
 
-  // Synchronize Markers on Map (only when spots, mode, or selection changes)
+  // Synchronize Markers & Clusters on Map (only when spots, clusters, mode, or selection changes)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const group = markersLayerGroupRef.current;
     if (!map || !group) return;
 
-    const currentSpotIds = new Set(spots.map((s) => s.id));
+    // 1. Calculate clusters based on current zoom, spots, and activeCooldowns
+    const clusters = computeClusters(
+      map,
+      spots,
+      currentMapZoom,
+      activeCooldowns,
+      selectedSpot?.id,
+      isClusteringEnabled
+    );
 
-    // 1. Remove deleted spots
+    const activeSingleSpotIds = new Set<string>();
+    const activeClusterIds = new Set<string>();
+
+    clusters.forEach((item) => {
+      if (item.isCluster) {
+        activeClusterIds.add(item.id);
+      } else {
+        activeSingleSpotIds.add(item.spots[0].id);
+      }
+    });
+
+    // 2. Remove obsolete single markers
     markersMapRef.current.forEach((marker, id) => {
-      if (!currentSpotIds.has(id)) {
+      if (!activeSingleSpotIds.has(id)) {
         group.removeLayer(marker);
         markersMapRef.current.delete(id);
       }
     });
 
-    // 2. Add or update spots
-    spots.forEach((spot) => {
-      const latlng = gameCoordsToLatLng(spot.x, spot.y);
-      const isCurrentSelected = selectedSpot?.id === spot.id;
-      const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
-      const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
-      const zIndexOffset = isCurrentSelected ? 2000 : activeCd ? 300 : 0;
-
-      const existing = markersMapRef.current.get(spot.id);
-      if (existing) {
-        if (!group.hasLayer(existing)) {
-          group.addLayer(existing);
-        }
-        // Update position and icon
-        existing.setLatLng(latlng);
-        existing.setIcon(icon);
-        existing.setZIndexOffset(existing.isPopupOpen() ? 3500 : zIndexOffset);
-
-        // Only update popup content if popup IS open (saves thousands of DOM operations on load)
-        if (existing.isPopupOpen()) {
-          existing.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, existing));
-        }
-
-        // Draggable handling (Only boss or creator of custom spots can drag)
-        const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
-        if (canDrag) {
-          if (!existing.dragging?.enabled()) existing.dragging?.enable();
-        } else {
-          if (existing.dragging?.enabled()) existing.dragging?.disable();
-        }
-      } else {
-        // Create new marker
-        const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
-        const marker = L.marker(latlng, {
-          icon,
-          draggable: canDrag,
-          zIndexOffset,
-        });
-
-        // Lazy Popup Factory: Leaflet only evaluates this when the user clicks the marker!
-        // Prevents generating 2,000+ DOM nodes synchronously during page startup
-        marker.bindPopup(
-          () => {
-            const cd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
-            return createPopupNode(spot, cd, callbacksRef, marker);
-          },
-          {
-            maxWidth: 320,
-            minWidth: 260,
-            className: 'custom-fivem-popup',
-            autoClose: false,
-            closeOnClick: true,
-            autoPan: false,
-          }
-        );
-
-        marker.on('click', (e) => {
-          if (callbacksRef.current.isDistanceMode) {
-            L.DomEvent.stopPropagation(e);
-            marker.closePopup();
-            callbacksRef.current.onAddDistancePoint?.({
-              x: spot.x,
-              y: spot.y,
-              label: spot.name,
-              spotId: spot.id,
-            });
-            soundEffects.playPinPlaced();
-            return;
-          }
-        });
-
-        marker.on('popupopen', () => {
-          if (callbacksRef.current.isDistanceMode) {
-            marker.closePopup();
-            return;
-          }
-          // Cleanly close other popups so only 1 popup is open at a time without race conditions
-          markersMapRef.current.forEach((otherMarker, otherId) => {
-            if (otherId !== spot.id && otherMarker.isPopupOpen()) {
-              otherMarker.closePopup();
-            }
-          });
-          marker.setZIndexOffset(3500);
-        });
-
-        marker.on('popupclose', () => {
-          const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
-          const isSelected = selectedSpotRef.current?.id === spot.id;
-          marker.setZIndexOffset(isSelected ? 2000 : currentCd ? 300 : 0);
-        });
-
-        marker.on('dragend', () => {
-          const newLatLng = marker.getLatLng();
-          const newCoords = latLngToGameCoords(newLatLng);
-          callbacksRef.current.onSpotMoved?.(spot.id, newCoords);
-          soundEffects.playPinPlaced();
-        });
-
-        group.addLayer(marker);
-        markersMapRef.current.set(spot.id, marker);
+    // 3. Remove obsolete cluster markers
+    clusterMarkersMapRef.current.forEach((marker, id) => {
+      if (!activeClusterIds.has(id)) {
+        group.removeLayer(marker);
+        clusterMarkersMapRef.current.delete(id);
       }
     });
-  }, [mapReady, spots, selectedSpot?.id, isCompactMode, isGhostMode, isMaster]);
+
+    // 4. Add or update spots / clusters
+    clusters.forEach((item) => {
+      if (!item.isCluster) {
+        const spot = item.spots[0];
+        const latlng = item.latlng;
+        const isCurrentSelected = selectedSpot?.id === spot.id;
+        const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
+        const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
+        const zIndexOffset = isCurrentSelected ? 2000 : activeCd ? 300 : 0;
+
+        const existing = markersMapRef.current.get(spot.id);
+        if (existing) {
+          if (!group.hasLayer(existing)) {
+            group.addLayer(existing);
+          }
+          existing.setLatLng(latlng);
+          existing.setIcon(icon);
+          existing.setZIndexOffset(existing.isPopupOpen() ? 3500 : zIndexOffset);
+
+          if (existing.isPopupOpen()) {
+            existing.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, existing));
+          }
+
+          const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
+          if (canDrag) {
+            if (!existing.dragging?.enabled()) existing.dragging?.enable();
+          } else {
+            if (existing.dragging?.enabled()) existing.dragging?.disable();
+          }
+        } else {
+          const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
+          const marker = L.marker(latlng, {
+            icon,
+            draggable: canDrag,
+            zIndexOffset,
+          });
+
+          marker.bindPopup(
+            () => {
+              const cd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
+              return createPopupNode(spot, cd, callbacksRef, marker);
+            },
+            {
+              maxWidth: 320,
+              minWidth: 260,
+              className: 'custom-fivem-popup',
+              autoClose: false,
+              closeOnClick: true,
+              autoPan: false,
+            }
+          );
+
+          marker.on('click', (e) => {
+            if (callbacksRef.current.isDistanceMode) {
+              L.DomEvent.stopPropagation(e);
+              marker.closePopup();
+              callbacksRef.current.onAddDistancePoint?.({
+                x: spot.x,
+                y: spot.y,
+                label: spot.name,
+                spotId: spot.id,
+              });
+              soundEffects.playPinPlaced();
+              return;
+            }
+            callbacksRef.current.onFocusSpot?.(spot);
+          });
+
+          marker.on('popupopen', () => {
+            if (callbacksRef.current.isDistanceMode) {
+              marker.closePopup();
+              return;
+            }
+            markersMapRef.current.forEach((otherMarker, otherId) => {
+              if (otherId !== spot.id && otherMarker.isPopupOpen()) {
+                otherMarker.closePopup();
+              }
+            });
+            clusterMarkersMapRef.current.forEach((cMarker) => {
+              if (cMarker.isPopupOpen()) cMarker.closePopup();
+            });
+            marker.setZIndexOffset(3500);
+          });
+
+          marker.on('popupclose', () => {
+            const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
+            const isSelected = selectedSpotRef.current?.id === spot.id;
+            marker.setZIndexOffset(isSelected ? 2000 : currentCd ? 300 : 0);
+            if (isSelected) {
+              callbacksRef.current.onClearSelection?.();
+            }
+          });
+
+          marker.on('dragend', () => {
+            const newLatLng = marker.getLatLng();
+            const newCoords = latLngToGameCoords(newLatLng);
+            callbacksRef.current.onSpotMoved?.(spot.id, newCoords);
+            soundEffects.playPinPlaced();
+          });
+
+          group.addLayer(marker);
+          markersMapRef.current.set(spot.id, marker);
+        }
+      } else {
+        // Multi-spot Cluster
+        const cluster = item;
+        const icon = createClusterDivIcon(cluster);
+        const zIndexOffset = cluster.urgentCooldown ? 1500 : cluster.hasActiveCooldown ? 800 : 100;
+
+        const existingCluster = clusterMarkersMapRef.current.get(cluster.id);
+        if (existingCluster) {
+          if (!group.hasLayer(existingCluster)) {
+            group.addLayer(existingCluster);
+          }
+          existingCluster.setLatLng(cluster.latlng);
+          existingCluster.setIcon(icon);
+          existingCluster.setZIndexOffset(zIndexOffset);
+
+          if (existingCluster.isPopupOpen()) {
+            existingCluster.setPopupContent(createClusterPopupNode(cluster, callbacksRef, existingCluster));
+          }
+        } else {
+          const clusterMarker = L.marker(cluster.latlng, {
+            icon,
+            zIndexOffset,
+          });
+
+          clusterMarker.bindPopup(
+            () => createClusterPopupNode(cluster, callbacksRef, clusterMarker),
+            {
+              maxWidth: 340,
+              minWidth: 280,
+              className: 'custom-fivem-popup',
+              autoClose: false,
+              closeOnClick: true,
+              autoPan: false,
+            }
+          );
+
+          clusterMarker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            soundEffects.playPinPlaced();
+
+            const currentZ = map.getZoom();
+            const lls = cluster.spots.map((s) => gameCoordsToLatLng(s.x, s.y));
+            const bounds = L.latLngBounds(lls);
+
+            // If spots have geographical spread and we aren't near max zoom, smoothly zoom in!
+            if (currentZ < 8 && bounds.isValid() && bounds.getNorthEast().distanceTo(bounds.getSouthWest()) > 0.04) {
+              map.flyToBounds(bounds, {
+                padding: [70, 70],
+                maxZoom: Math.min(10, currentZ + 2),
+                duration: 0.45,
+              });
+            } else {
+              // Extremely close or identical spots -> Open the Cluster Popup!
+              clusterMarker.openPopup();
+            }
+          });
+
+          clusterMarker.on('popupopen', () => {
+            markersMapRef.current.forEach((otherMarker) => {
+              if (otherMarker.isPopupOpen()) otherMarker.closePopup();
+            });
+            clusterMarkersMapRef.current.forEach((otherCMarker, cId) => {
+              if (cId !== cluster.id && otherCMarker.isPopupOpen()) {
+                otherCMarker.closePopup();
+              }
+            });
+          });
+
+          group.addLayer(clusterMarker);
+          clusterMarkersMapRef.current.set(cluster.id, clusterMarker);
+        }
+      }
+    });
+  }, [
+    mapReady,
+    spots,
+    selectedSpot?.id,
+    isCompactMode,
+    isGhostMode,
+    isMaster,
+    currentMapZoom,
+    isClusteringEnabled,
+    activeCooldowns,
+  ]);
 
   // Synchronize cooldown marker badges ONLY when activeCooldowns actually changes for a spot
   useEffect(() => {
@@ -1147,22 +1350,32 @@ export const MapView = ({
     return () => clearInterval(interval);
   }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
 
-  // Pan to selected spot safely (Only when user explicitly clicks a spot, not on initial mount)
+  // Pan to selected spot safely and open popup (starts from null, so any selection is explicit)
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !selectedSpot) return;
+    if (!map) return;
 
-    if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      return; // Do not flyTo on initial page load - renders initial map overview smoothly at 60fps
+    if (!selectedSpot) {
+      return;
     }
 
     if (Number.isFinite(selectedSpot.x) && Number.isFinite(selectedSpot.y)) {
       try {
         const latlng = gameCoordsToLatLng(selectedSpot.x, selectedSpot.y);
         map.flyTo(latlng, Math.max(map.getZoom(), 4), {
-          duration: 0.8,
+          duration: 0.6,
         });
+
+        // Open popup of selected marker
+        const openPopup = () => {
+          const marker = markersMapRef.current.get(selectedSpot.id);
+          if (marker && !marker.isPopupOpen()) {
+            marker.openPopup();
+          }
+        };
+        openPopup();
+        const timer = setTimeout(openPopup, 300);
+        return () => clearTimeout(timer);
       } catch (err) {
         console.error('Failed to flyTo spot:', err);
       }

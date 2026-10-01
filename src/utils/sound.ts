@@ -2,8 +2,40 @@
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
+  private isMuted: boolean = false;
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('fivem_map_sound_muted');
+        this.isMuted = saved === 'true';
+      } catch {
+        this.isMuted = false;
+      }
+    }
+  }
+
+  isMutedState(): boolean {
+    return this.isMuted;
+  }
+
+  setMuted(muted: boolean): void {
+    this.isMuted = muted;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('fivem_map_sound_muted', String(muted));
+      } catch {}
+    }
+  }
+
+  toggleMuted(): boolean {
+    const next = !this.isMuted;
+    this.setMuted(next);
+    return next;
+  }
 
   private getContext(): AudioContext | null {
+    if (this.isMuted) return null;
     if (typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -19,6 +51,7 @@ class SoundEffects {
 
   // Click / Pin placed sound (short snappy blip)
   playPinPlaced(): void {
+    if (this.isMuted) return;
     try {
       const ctx = this.getContext();
       if (!ctx) return;
@@ -45,6 +78,7 @@ class SoundEffects {
 
   // Cooldown started sound
   playCooldownStarted(): void {
+    if (this.isMuted) return;
     try {
       const ctx = this.getContext();
       if (!ctx) return;
@@ -71,6 +105,7 @@ class SoundEffects {
 
   // Cooldown finished / Cement Respawned! (Triumph double bell chime)
   playCooldownFinished(): void {
+    if (this.isMuted) return;
     try {
       const ctx = this.getContext();
       if (!ctx) return;
@@ -99,6 +134,7 @@ class SoundEffects {
 
   // Lock coordinates sound (crisp double-click lock tone)
   playLock(): void {
+    if (this.isMuted) return;
     try {
       const ctx = this.getContext();
       if (!ctx) return;
@@ -122,6 +158,7 @@ class SoundEffects {
 
   // Unlock coordinates sound (soft descending blip)
   playUnlock(): void {
+    if (this.isMuted) return;
     try {
       const ctx = this.getContext();
       if (!ctx) return;

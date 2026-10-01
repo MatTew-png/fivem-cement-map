@@ -99,41 +99,43 @@ export const ExportImportModal = ({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-900/50 px-6 pt-2">
-          <button
-            onClick={() => setActiveTab('export')}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'export'
-                ? 'border-amber-400 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Download className="w-4 h-4" />
-            <span>ส่งออก (Export JSON)</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('import')}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'import'
-                ? 'border-amber-400 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Upload className="w-4 h-4" />
-            <span>นำเข้า (Import)</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('lua')}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'lua'
-                ? 'border-amber-400 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Code2 className="w-4 h-4" />
-            <span>FiveM Lua Table</span>
-          </button>
+        {/* NameThatUI Pattern: Segmented Control */}
+        <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800">
+          <div className="p-1 bg-slate-950 border border-slate-800 rounded-xl flex gap-1">
+            <button
+              onClick={() => setActiveTab('export')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'export'
+                  ? 'bg-slate-800 text-amber-400 shadow-sm border border-amber-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>ส่งออก JSON</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('import')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'import'
+                  ? 'bg-slate-800 text-amber-400 shadow-sm border border-amber-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>นำเข้า (Import)</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('lua')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'lua'
+                  ? 'bg-slate-800 text-amber-400 shadow-sm border border-amber-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              <span>FiveM Lua</span>
+            </button>
+          </div>
         </div>
 
         {/* Content */}

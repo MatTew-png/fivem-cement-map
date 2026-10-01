@@ -8,8 +8,11 @@ import { CooldownTracker } from './components/CooldownTracker';
 import { ExportImportModal } from './components/ExportImportModal';
 import { GtaCrosshair } from './components/GtaCrosshair';
 import { DistanceTool, type RouteSegment } from './components/DistanceTool';
+import { MapQuickFilters } from './components/MapQuickFilters';
+import { Volume2, VolumeX } from 'lucide-react';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from './types/map';
 import { DEFAULT_SPOTS, MAP_LAYERS, isCementSpot } from './data/defaultSpots';
+import { getSpotQuickCategory, type QuickCategory } from './utils/clustering';
 import {
   loadSpotsFromStorage,
   saveSpotsToStorage,
@@ -20,6 +23,7 @@ import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
 import { GangAuthModal } from './components/GangAuthModal';
 import { GangPresenceModal } from './components/GangPresenceModal';
+import { GangBentoModal } from './components/GangBentoModal';
 import { GangToast } from './components/GangToast';
 import { GangWatermark } from './components/GangWatermark';
 import { setupAntiTamper } from './utils/antiTamper';
@@ -68,16 +72,76 @@ export function App() {
 
   const [isGhostMode, setIsGhostMode] = useState(false);
 
+  // State: Sound Mute / Streamer Mode
+  const [isSoundMuted, setIsSoundMuted] = useState<boolean>(() => soundEffects.isMutedState());
+
+  const handleToggleSound = useCallback(() => {
+    const next = soundEffects.toggleMuted();
+    setIsSoundMuted(next);
+    if (!next) {
+      soundEffects.playPinPlaced();
+    }
+  }, []);
+
   // State: Filter Cement Spots Visibility (Default to false so cement spots don't overlap landmarks)
   const [showCementSpots, setShowCementSpots] = useState<boolean>(() => {
     const saved = localStorage.getItem('fivem_map_show_cement');
     return saved !== null ? saved === 'true' : false;
   });
 
+  // State: Category Filter Pills on Map
+  const [categoriesState, setCategoriesState] = useState<Record<QuickCategory, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('fivem_map_categories_state_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const cementSaved = localStorage.getItem('fivem_map_show_cement');
+    return {
+      cement: cementSaved !== null ? cementSaved === 'true' : false,
+      lands: true,
+      fuel: true,
+      services: true,
+    };
+  });
+
+  // State: Smart Clustering Engine (Default ON)
+  const [isClusteringEnabled, setIsClusteringEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('fivem_map_clustering_enabled');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return true;
+  });
+
+  const handleToggleCategory = useCallback((cat: QuickCategory) => {
+    setCategoriesState((prev) => {
+      const next = { ...prev, [cat]: !prev[cat] };
+      localStorage.setItem('fivem_map_categories_state_v1', JSON.stringify(next));
+      if (cat === 'cement') {
+        setShowCementSpots(next.cement);
+        localStorage.setItem('fivem_map_show_cement', String(next.cement));
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleClustering = useCallback(() => {
+    setIsClusteringEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('fivem_map_clustering_enabled', String(next));
+      return next;
+    });
+  }, []);
+
   const handleToggleCementSpots = useCallback(() => {
     setShowCementSpots((prev) => {
       const next = !prev;
       localStorage.setItem('fivem_map_show_cement', String(next));
+      setCategoriesState((cPrev) => {
+        const cNext = { ...cPrev, cement: next };
+        localStorage.setItem('fivem_map_categories_state_v1', JSON.stringify(cNext));
+        return cNext;
+      });
       return next;
     });
   }, []);
@@ -89,6 +153,7 @@ export function App() {
   // State: Gang Authentication & Presence
   const [gangSession, setGangSession] = useState<GangSession | null>(() => getGangSession());
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
+  const [isBentoModalOpen, setIsBentoModalOpen] = useState(false);
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [notifications, setNotifications] = useState<GangNotification[]>([]);
@@ -227,22 +292,62 @@ export function App() {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [editingSpot, setEditingSpot] = useState<Partial<CementSpot> | null>(null);
   const [isExportImportOpen, setIsExportImportOpen] = useState(false);
-  const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(() => {
-    const loaded = loadSpotsFromStorage() || DEFAULT_SPOTS;
-    return loaded.length > 0 ? loaded[0] : null;
+  const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fivem_map_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
   });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Spots visible on map: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือคือแลนด์มาร์ค
+  const handleToggleCollapseSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fivem_map_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Toggle selection: clicking the same spot again deselects it and clears highlight
+  const handleSelectSpot = useCallback((spot: CementSpot | null) => {
+    setSelectedSpot((prev) => {
+      if (prev && spot && prev.id === spot.id) {
+        return null;
+      }
+      return spot;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedSpot(null);
+  }, []);
+
+  // Category counts for quick filter pills
+  const categoryCounts = useMemo(() => {
+    const counts: Record<QuickCategory, number> = {
+      cement: 0,
+      lands: 0,
+      fuel: 0,
+      services: 0,
+    };
+    spots.forEach((spot) => {
+      const cat = getSpotQuickCategory(spot);
+      counts[cat]++;
+    });
+    return counts;
+  }, [spots]);
+
+  // Spots visible on map (filters respect category toggles + keeps selected spot always visible)
   const visibleSpotsOnMap = useMemo(() => {
     return spots.filter((spot) => {
-      const isCement = isCementSpot(spot);
-      if (isCement && !showCementSpots && selectedSpot?.id !== spot.id) {
-        return false;
-      }
-      return true; // All landmarks are always visible!
+      if (selectedSpot?.id === spot.id) return true;
+      const cat = getSpotQuickCategory(spot);
+      return categoriesState[cat];
     });
-  }, [spots, showCementSpots, selectedSpot?.id]);
+  }, [spots, categoriesState, selectedSpot?.id]);
 
   // Auto-save spots
   useEffect(() => {
@@ -500,7 +605,7 @@ export function App() {
       <Sidebar
         spots={spots}
         activeCooldowns={activeCooldowns}
-        onSelectSpot={setSelectedSpot}
+        onSelectSpot={handleSelectSpot}
         onAddNewSpot={handleAddNewSpot}
         onEditSpot={handleEditSpot}
         onDeleteSpot={handleDeleteSpot}
@@ -510,13 +615,16 @@ export function App() {
         onClearAllSpots={handleClearAllSpots}
         selectedSpotId={selectedSpot?.id}
         isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        onToggleCollapse={handleToggleCollapseSidebar}
         showCementSpots={showCementSpots}
         onToggleCementSpots={handleToggleCementSpots}
         onlineCount={onlineMembers.length}
         onOpenPresence={() => setIsPresenceModalOpen(true)}
+        onOpenBento={() => setIsBentoModalOpen(true)}
         memberName={gangSession?.memberName}
         isMaster={gangSession?.isMaster}
+        isSoundMuted={isSoundMuted}
+        onToggleSound={handleToggleSound}
       />
 
       {/* Main Map Area */}
@@ -525,6 +633,16 @@ export function App() {
           sidebarCollapsed ? 'ml-0' : 'ml-0 md:ml-80 lg:ml-96'
         }`}
       >
+        {/* Floating Quick Category & Cluster Filter Pills */}
+        <MapQuickFilters
+          categoriesState={categoriesState}
+          onToggleCategory={handleToggleCategory}
+          isClusteringEnabled={isClusteringEnabled}
+          onToggleClustering={handleToggleClustering}
+          counts={categoryCounts}
+          sidebarCollapsed={sidebarCollapsed}
+        />
+
         {/* Leaflet Map Engine */}
         <MapView
           spots={visibleSpotsOnMap}
@@ -550,28 +668,58 @@ export function App() {
           onAddDistancePoint={handleAddDistancePoint}
           onStartMeasureFromSpot={handleStartMeasureFromSpot}
           isMaster={gangSession?.isMaster}
+          isClusteringEnabled={isClusteringEnabled}
+          onFocusSpot={handleFocusSpot}
+          onClearSelection={handleClearSelection}
         />
 
         {/* GTA V In-Game Reticle / Crosshair */}
         <GtaCrosshair visible={showCrosshair} />
 
-        {/* Top Right: Layer Switcher */}
-        <LayerSwitcher
-          activeLayer={activeLayer}
-          onLayerChange={setActiveLayer}
-        />
+        {/* Top Right: Unified HUD Controls (Distance Tool + Sound Toggle + Layer Switcher) */}
+        <div className="absolute top-4 right-4 z-[1000] flex items-start gap-2.5 pointer-events-none select-none">
+          {/* Distance Measurement & Farming Route Planner Tool */}
+          <DistanceTool
+            isActive={isDistanceMode}
+            onToggle={handleToggleDistance}
+            points={distancePoints}
+            totalDistance={totalDistance}
+            segments={segments}
+            onClear={handleClearDistance}
+            onUndo={handleUndoDistancePoint}
+            onLoop={handleLoopDistance}
+          />
 
-        {/* Distance Measurement & Farming Route Planner Tool */}
-        <DistanceTool
-          isActive={isDistanceMode}
-          onToggle={handleToggleDistance}
-          points={distancePoints}
-          totalDistance={totalDistance}
-          segments={segments}
-          onClear={handleClearDistance}
-          onUndo={handleUndoDistancePoint}
-          onLoop={handleLoopDistance}
-        />
+          {/* Sound Mute/Unmute Toggle (Streamer Mode) */}
+          <button
+            type="button"
+            onClick={handleToggleSound}
+            className={`pointer-events-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xl border cursor-pointer backdrop-blur-md ${
+              isSoundMuted
+                ? 'bg-red-950/90 text-red-300 border-red-500/80 shadow-red-500/20 hover:bg-red-900/90'
+                : 'bg-slate-900/90 text-slate-200 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600'
+            }`}
+            title={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์ (ขณะนี้ปิดเสียงโหมดสตรีม)' : 'ปิดเสียงเอฟเฟกต์ (เหมาะสำหรับเปิดสตรีม)'}
+          >
+            {isSoundMuted ? (
+              <>
+                <VolumeX className="w-4 h-4 text-red-400" />
+                <span className="hidden sm:inline">ปิดเสียง (สตรีม)</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+                <span className="hidden sm:inline">เสียงเปิด</span>
+              </>
+            )}
+          </button>
+
+          {/* Layer Switcher */}
+          <LayerSwitcher
+            activeLayer={activeLayer}
+            onLayerChange={setActiveLayer}
+          />
+        </div>
 
         {/* Active Cooldowns Floating Card */}
         <CooldownTracker
@@ -599,6 +747,8 @@ export function App() {
           showCementSpots={showCementSpots}
           onToggleCementSpots={handleToggleCementSpots}
           cementCount={cementCount}
+          isSoundMuted={isSoundMuted}
+          onToggleSound={handleToggleSound}
         />
       </main>
 
@@ -646,6 +796,21 @@ export function App() {
         onLogout={() => {
           setGangSession(null);
           setIsPresenceModalOpen(false);
+        }}
+      />
+
+      {/* NameThatUI Pattern: Tactical Intel Bento Grid Dashboard */}
+      <GangBentoModal
+        isOpen={isBentoModalOpen}
+        onClose={() => setIsBentoModalOpen(false)}
+        spots={spots}
+        activeCooldowns={activeCooldowns}
+        onlineMembers={onlineMembers}
+        activityLogs={activityLogs}
+        currentSession={gangSession}
+        onOpenPresence={() => {
+          setIsBentoModalOpen(false);
+          setIsPresenceModalOpen(true);
         }}
       />
     </div>

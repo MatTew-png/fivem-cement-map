@@ -14,16 +14,49 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     const raw = localStorage.getItem(SPOTS_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map((item: CementSpot) => {
-        // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
-        const isCement = (item.name || '').trim() === 'ปูน';
-        if (!isCement && item.category === 'cement_mine') {
-          return { ...item, category: 'landmark' };
+    const ORIGINAL_LAN_SPOTS: Record<string, { name: string; icon: string; color: string }> = {
+      'spot-1789097466769': { name: 'แลนน้ำตาล', icon: '/blips/radar_player_king_brown.png', color: '#b45309' },
+      'spot-1789097316804': { name: 'แลนส้ม', icon: '/blips/radar_player_king_orange.png', color: '#f59e0b' },
+      'spot-1789097276171': { name: 'แลนม่วง', icon: '/blips/radar_player_king_purple.png', color: '#a855f7' },
+      'spot-1789096983908': { name: 'แลนเหลือง', icon: '/blips/radar_player_king_yellow.png', color: '#eab308' },
+      'spot-1789096945374': { name: 'แลนขาว', icon: '/blips/radar_player_king_white.png', color: '#ffffff' },
+      'spot-1789096643659': { name: 'แลนแดง', icon: '/blips/radar_player_king_red.png', color: '#ef4444' },
+      'spot-1789096538636': { name: 'แลนชมพู', icon: '/blips/radar_player_king_pink.png', color: '#ec4899' },
+      'spot-1789096402896': { name: 'แลนเขียว', icon: '/blips/radar_player_king_green.png', color: '#22c55e' },
+      'spot-1789096384446': { name: 'แลนมิ้น', icon: '/blips/radar_player_king_mint.png', color: '#2dd4bf' },
+      'spot-1789096326164': { name: 'แลนน้ำเงิน', icon: '/blips/radar_player_king_blue.png', color: '#3b82f6' },
+      'spot-1789096309666': { name: 'แลนฟ้า', icon: '/blips/radar_player_king_cyan.png', color: '#06b6d4' },
+    };
+
+    let modified = false;
+    const processed = parsed.map((item: CementSpot) => {
+      const current = { ...item };
+      // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
+      const isCement = (current.name || '').trim() === 'ปูน';
+      if (!isCement && current.category === 'cement_mine') {
+        current.category = 'landmark';
+        modified = true;
+      }
+      // คืนค่าจุดแลนทั้ง 11 จุดให้กลับเป็นชื่อและไอคอนเดิม
+      if (ORIGINAL_LAN_SPOTS[current.id]) {
+        const orig = ORIGINAL_LAN_SPOTS[current.id];
+        if (current.name !== orig.name || current.icon !== orig.icon || current.color !== orig.color) {
+          current.name = orig.name;
+          current.icon = orig.icon;
+          current.color = orig.color;
+          current.category = 'landmark';
+          current.notes = '';
+          delete current.tags;
+          modified = true;
         }
-        return item;
-      });
+      }
+      return current;
+    });
+
+    if (modified) {
+      localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(processed));
     }
+    return processed;
   } catch (err) {
     console.error('Failed to load spots from storage:', err);
   }

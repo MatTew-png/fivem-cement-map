@@ -1,36 +1,24 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { MouseEvent } from 'react';
 import {
   Search,
   Plus,
   MapPin,
-  Clock,
-  Copy,
-  Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Download,
-  Crosshair,
-  Edit2,
   Trash2,
-  Package,
-  Flame,
-  X,
   Lock,
+  LayoutGrid,
+  Flame,
+  LayoutList,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
-import type { CementSpot, SpotCategory, ActiveCooldown } from '../types/map';
-import { CATEGORIES, isCementSpot } from '../data/defaultSpots';
-import { formatFiveMCommand } from '../utils/storage';
-import { renderSpotIcon } from './PinModal';
-
-// กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
-const getEffectiveCategoryId = (spot: CementSpot): string => {
-  if (isCementSpot(spot)) return 'cement_mine';
-  if (spot.category && spot.category !== 'cement_mine' && CATEGORIES[spot.category]) {
-    return spot.category;
-  }
-  return 'landmark';
-};
+import type { CementSpot, ActiveCooldown } from '../types/map';
+import { isCementSpot } from '../data/defaultSpots';
+import { MagicSpotCard } from './MagicSpotCard';
 
 interface SidebarProps {
   spots: CementSpot[];
@@ -50,9 +38,14 @@ interface SidebarProps {
   onToggleCementSpots?: () => void;
   onlineCount?: number;
   onOpenPresence?: () => void;
+  onOpenBento?: () => void;
   memberName?: string;
   isMaster?: boolean;
+  isSoundMuted?: boolean;
+  onToggleSound?: () => void;
 }
+
+type FilterTab = 'all' | 'dealers' | 'cement' | 'fuel' | 'urgent' | 'landmarks';
 
 export const Sidebar = ({
   spots,
@@ -72,14 +65,33 @@ export const Sidebar = ({
   onToggleCementSpots,
   onlineCount,
   onOpenPresence,
+  onOpenBento,
   memberName,
   isMaster = false,
+  isSoundMuted = false,
+  onToggleSound,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<SpotCategory | 'all' | 'urgent'>('all');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<FilterTab>('all');
+  const [viewMode, setViewMode] = useState<'comfortable' | 'compact'>('comfortable');
   const [openCooldownSpotId, setOpenCooldownSpotId] = useState<string | null>(null);
   const [customMinutesInput, setCustomMinutesInput] = useState<string>('10');
+
+  // Accordion open/collapse state
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    cooldowns: true,
+    dealers: true,
+    fuel: true,
+    cement: false, // Collapsed by default (87 spots) so screen isn't overwhelmed
+    landmarks: false,
+  });
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
 
   // Real-time timer tick for countdown displays
   const [now, setNow] = useState(Date.now());
@@ -91,6 +103,26 @@ export const Sidebar = ({
     return () => clearInterval(interval);
   }, [activeCooldowns.length]);
 
+  // Keyboard shortcut: Press '/' to focus search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        const input = document.getElementById('sidebar-search-input');
+        input?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Spot classifier helpers
+  const isDealer = (s: CementSpot): boolean =>
+    s.name === 'จุดขายยา' || Boolean(s.tags?.includes('dealer')) || Boolean(s.tags?.includes('จุดขายยา'));
+  const isCement = (s: CementSpot): boolean => isCementSpot(s);
+  const isFuel = (s: CementSpot): boolean =>
+    Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
+
   // Count spots with urgent cooldown (<= 3 mins)
   const urgentCount = useMemo(() => {
     return spots.filter((spot) => {
@@ -101,29 +133,61 @@ export const Sidebar = ({
     }).length;
   }, [spots, activeCooldowns, now]);
 
-  // Filter spots
+  // Overall counts for dock tabs
+  const counts = useMemo(() => {
+    let dealersCount = 0;
+    let cementCount = 0;
+    let fuelCount = 0;
+    let landmarksCount = 0;
+
+    spots.forEach((s) => {
+      if (isDealer(s)) dealersCount++;
+      else if (isCement(s)) cementCount++;
+      else if (isFuel(s)) fuelCount++;
+      else landmarksCount++;
+    });
+
+    return {
+      total: spots.length,
+      dealers: dealersCount,
+      cement: cementCount,
+      fuel: fuelCount,
+      landmarks: landmarksCount,
+    };
+  }, [spots]);
+
+  // Filter spots based on tab and search
   const filteredSpots = useMemo(() => {
     return spots.filter((spot) => {
-      let matchCat = true;
-      if (selectedCategory === 'urgent') {
+      // 1. Tab filter
+      let matchTab = true;
+      if (selectedFilter === 'dealers') {
+        matchTab = isDealer(spot);
+      } else if (selectedFilter === 'cement') {
+        matchTab = isCement(spot);
+      } else if (selectedFilter === 'fuel') {
+        matchTab = isFuel(spot);
+      } else if (selectedFilter === 'urgent') {
         const cd = activeCooldowns.find((c) => c.spotId === spot.id);
         const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
-        matchCat = rem > 0 && rem <= 180;
-      } else if (selectedCategory !== 'all') {
-        matchCat = getEffectiveCategoryId(spot) === selectedCategory;
+        matchTab = rem > 0 && rem <= 180;
+      } else if (selectedFilter === 'landmarks') {
+        matchTab = !isDealer(spot) && !isCement(spot) && !isFuel(spot);
       }
 
+      // 2. Search query filter
       const query = searchQuery.toLowerCase().trim();
-      if (!query) return matchCat;
+      if (!query) return matchTab;
 
       const matchName = spot.name.toLowerCase().includes(query);
       const matchPostal = spot.postal?.toLowerCase().includes(query);
       const matchNotes = spot.notes?.toLowerCase().includes(query);
       const matchYield = spot.yieldDescription?.toLowerCase().includes(query);
+      const matchTags = spot.tags?.some((t) => t.toLowerCase().includes(query));
 
-      return matchCat && (matchName || matchPostal || matchNotes || matchYield);
+      return matchTab && (matchName || matchPostal || matchNotes || matchYield || matchTags);
     }).sort((a, b) => {
-      if (selectedCategory === 'urgent') {
+      if (selectedFilter === 'urgent') {
         const cdA = activeCooldowns.find((c) => c.spotId === a.id);
         const cdB = activeCooldowns.find((c) => c.spotId === b.id);
         const expA = cdA ? cdA.expiresAt : Infinity;
@@ -132,223 +196,352 @@ export const Sidebar = ({
       }
       return 0;
     });
-  }, [spots, selectedCategory, searchQuery, activeCooldowns, now]);
+  }, [spots, selectedFilter, searchQuery, activeCooldowns, now]);
 
-  const handleCopyCommand = (e: MouseEvent, spot: CementSpot) => {
-    e.stopPropagation();
-    const cmd = formatFiveMCommand(spot);
-    navigator.clipboard.writeText(cmd);
-    setCopiedId(spot.id);
-    setTimeout(() => setCopiedId(null), 1800);
-  };
+  // Group filtered spots into Smart Categories for the Accordion view
+  const groupedSpots = useMemo(() => {
+    const dealers: CementSpot[] = [];
+    const cement: CementSpot[] = [];
+    const fuel: CementSpot[] = [];
+    const landmarks: CementSpot[] = [];
+    const cooldownList: CementSpot[] = [];
 
-  const getActiveCooldown = (spotId: string) => {
-    return activeCooldowns.find((c) => c.spotId === spotId);
+    filteredSpots.forEach((spot) => {
+      // Active cooldowns
+      const cd = activeCooldowns.find((c) => c.spotId === spot.id);
+      if (cd && cd.expiresAt > now) {
+        cooldownList.push(spot);
+      }
+
+      if (isDealer(spot)) {
+        dealers.push(spot);
+      } else if (isCement(spot)) {
+        cement.push(spot);
+      } else if (isFuel(spot)) {
+        fuel.push(spot);
+      } else {
+        landmarks.push(spot);
+      }
+    });
+
+    return {
+      dealers,
+      cement,
+      fuel,
+      landmarks,
+      cooldownList,
+    };
+  }, [filteredSpots, activeCooldowns, now]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  // Render Card Helper
+  const renderCard = (spot: CementSpot) => {
+    const activeCooldown = activeCooldowns.find((c) => c.spotId === spot.id);
+    return (
+      <MagicSpotCard
+        key={spot.id}
+        spot={spot}
+        isSelected={selectedSpotId === spot.id}
+        activeCooldown={activeCooldown}
+        now={now}
+        viewMode={viewMode}
+        openCooldownSpotId={openCooldownSpotId}
+        customMinutesInput={customMinutesInput}
+        onSelectSpot={onSelectSpot}
+        onEditSpot={onEditSpot}
+        onDeleteSpot={onDeleteSpot}
+        onStartCooldown={(s, m) => {
+          onStartCooldown(s, m);
+          setOpenCooldownSpotId(null);
+        }}
+        onCancelCooldown={(id) => {
+          onCancelCooldown(id);
+          setOpenCooldownSpotId(null);
+        }}
+        onToggleCooldownPicker={(id) => {
+          setOpenCooldownSpotId((prev) => (prev === id ? null : id));
+        }}
+        onChangeCustomMinutes={setCustomMinutesInput}
+        onSearchTag={(tag) => setSearchQuery(tag)}
+      />
+    );
   };
 
   return (
     <>
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-[1050] bg-slate-900/95 backdrop-blur-xl border-r border-slate-800 shadow-2xl flex flex-col transition-all duration-300 ${
+        className={`fixed top-0 left-0 bottom-0 z-[1050] bg-slate-900/95 backdrop-blur-2xl border-r border-slate-800 shadow-2xl flex flex-col transition-all duration-300 ${
           isCollapsed ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden' : 'w-80 sm:w-96'
         }`}
       >
-        {/* Header */}
-        <div className="p-4 border-b border-slate-800 bg-slate-950/70 flex flex-col gap-3">
+        {/* ======================================================== */}
+        {/* 1. COMPACT TACTICAL HEADER                               */}
+        {/* ======================================================== */}
+        <div className="p-3.5 border-b border-slate-800/90 bg-slate-950/80 flex flex-col gap-2.5">
+          {/* Brand & Presence Status */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-amber-500/20">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-lg shadow-md shadow-amber-500/20">
                 🧱
               </div>
               <div>
-                <h1 className="text-sm font-black text-white tracking-wider flex items-center gap-1.5">
+                <h1 className="text-xs font-black text-white tracking-wider flex items-center gap-1.5">
                   <span>รันทุกเวิบ COOLDOWN</span>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">
+                  <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 py-0.2 rounded border border-amber-500/30">
                     จุดปูน
                   </span>
                 </h1>
-                <p className="text-[11px] text-slate-400">แผนที่มาร์คจุดปูน & พิกัด FiveM</p>
                 {onOpenPresence && (
                   <button
                     type="button"
                     onClick={onOpenPresence}
-                    className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-400 text-[10px] font-bold transition-all cursor-pointer shadow-sm w-fit group"
-                    title="คลิกเพื่อดูสมาชิกที่กำลังออนไลน์และตารางรหัสแก๊ง"
+                    className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold hover:underline cursor-pointer group mt-0.5"
+                    title="คลิกเพื่อดูสมาชิกแก๊งออนไลน์"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
                     <span>ออนไลน์ {onlineCount ?? 1} คน</span>
-                    {memberName && (
-                      <span className="text-slate-400 font-normal ml-0.5 group-hover:text-slate-200">
-                        ({memberName})
-                      </span>
-                    )}
+                    {memberName && <span className="text-slate-500 font-normal">({memberName})</span>}
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Collapse button on mobile/desktop */}
-            <button
-              onClick={onToggleCollapse}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors md:hidden"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
+            {/* Header Right Actions: Sound Mute Toggle & Collapse Menu Button */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onToggleSound && (
+                <button
+                  type="button"
+                  onClick={onToggleSound}
+                  className={`p-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    isSoundMuted
+                      ? 'bg-red-500/20 text-red-300 border-red-500/60 shadow-sm shadow-red-500/20 hover:bg-red-500/30'
+                      : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์ (ขณะนี้ปิดเสียงโหมดสตรีม)' : 'ปิดเสียงเอฟเฟกต์ (โหมดสตรีม)'}
+                >
+                  {isSoundMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-slate-300" />}
+                </button>
+              )}
+
+              {/* Collapse toggle button (Accessible on all devices - desktop & mobile) */}
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-amber-300 border border-slate-700/80 hover:border-amber-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95"
+                title="ย่อแถบเมนู (ซ่อนแถบเมนูเพื่อดูแผนที่เต็มจอ)"
+              >
+                <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform text-amber-400" />
+                <span className="text-[11px]">ย่อเมนู</span>
+              </button>
+            </div>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Action Row: Magic Shimmer Button + Export + Bento */}
+          <div className="grid grid-cols-12 gap-1.5 items-center">
+            {/* Shimmer Button: Add New Pin */}
             <button
+              type="button"
               onClick={onAddNewSpot}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+              className="col-span-5 relative group overflow-hidden rounded-xl p-[1.2px] font-bold text-xs shadow-md shadow-amber-500/10 active:scale-95 transition-all cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>ปักหมุดใหม่</span>
+              <span className="absolute inset-[-1000%] animate-[spin_3.5s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#f59e0b_0%,#fef08a_50%,#f59e0b_100%)] opacity-85 group-hover:opacity-100 transition-opacity" />
+              <span className="relative flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-[10.8px] bg-slate-950/90 group-hover:bg-slate-900 text-amber-300 font-bold text-xs transition-colors backdrop-blur-md">
+                <Plus className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-90 transition-transform duration-300" />
+                <span>ปักหมุด</span>
+              </span>
             </button>
 
+            {/* Export / Import Button */}
             <button
+              type="button"
               onClick={onOpenExportImport}
-              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl font-medium text-xs border transition-all cursor-pointer ${
+              className={`col-span-4 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
                 isMaster
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                  : 'bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800'
+                  ? 'bg-slate-850 hover:bg-slate-800 text-slate-200 border-slate-700/80 shadow-sm'
+                  : 'bg-slate-900/60 hover:bg-slate-850 text-slate-400 border-slate-800'
               }`}
               title={isMaster ? 'ส่งออก / นำเข้าพิกัด' : 'การส่งออกพิกัดถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊ง'}
             >
               {isMaster ? <Download className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-amber-500/70" />}
-              <span>{isMaster ? 'ส่งออก / นำเข้า' : 'นำเข้าหมุด'}</span>
+              <span>{isMaster ? 'ส่งออก' : 'นำเข้า'}</span>
             </button>
-          </div>
 
-          {/* Search bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาชื่อจุด, รหัสไปรษณีย์ เช่น 8042..."
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700/80 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-500"
-            />
-            {searchQuery && (
+            {/* Bento Trigger Button */}
+            {onOpenBento && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                type="button"
+                onClick={onOpenBento}
+                className="col-span-3 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700/80 text-amber-400 font-bold text-xs transition-all shadow-sm cursor-pointer group"
+                title="เปิด Tactical Intel Bento Grid"
               >
-                ✕
+                <LayoutGrid className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+                <span>Bento</span>
               </button>
             )}
           </div>
-        </div>
 
-        {/* Category Filters */}
-        <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/40 flex flex-col gap-1.5 text-xs">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {/* Search Bar + View Mode Switcher */}
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                id="sidebar-search-input"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ค้นหาชื่อจุด, พิกัด, รหัสไปรษณีย์..."
+                className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-850 border border-slate-750 text-white placeholder-slate-500 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition-all"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs p-0.5"
+                >
+                  ✕
+                </button>
+              ) : (
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-500 border border-slate-700 rounded px-1 pointer-events-none">
+                  /
+                </span>
+              )}
+            </div>
+
+            {/* View Mode Switcher: Comfortable vs Compact */}
             <button
-              onClick={() => setSelectedCategory('all')}
-              className={`px-2.5 py-1 rounded-lg shrink-0 transition-all font-medium ${
-                selectedCategory === 'all'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+              type="button"
+              onClick={() => setViewMode((prev) => (prev === 'comfortable' ? 'compact' : 'comfortable'))}
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
+                viewMode === 'compact'
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
+                  : 'bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-750'
+              }`}
+              title={viewMode === 'comfortable' ? 'สลับเป็นโหมดกระชับ (กะทัดรัด)' : 'สลับเป็นโหมดการ์ดละเอียด'}
+            >
+              {viewMode === 'comfortable' ? (
+                <LayoutList className="w-4 h-4" />
+              ) : (
+                <SlidersHorizontal className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          {/* ======================================================== */}
+          {/* 2. MAGIC SEGMENTED FILTER DOCK                           */}
+          {/* ======================================================== */}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-0.5">
+            {/* All */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('all')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold transition-all cursor-pointer ${
+                selectedFilter === 'all'
+                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                  : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-750'
               }`}
             >
-              ทั้งหมด ({spots.length})
+              ✨ ทั้งหมด ({counts.total})
             </button>
 
+            {/* Dealers / Drug Selling (Show only if any exist) */}
+            {counts.dealers > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedFilter('dealers')}
+                className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  selectedFilter === 'dealers'
+                    ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                    : 'bg-red-950/40 text-red-300 border border-red-500/30 hover:bg-red-900/40'
+                }`}
+              >
+                <span>🌿</span>
+                <span>ขายยา ({counts.dealers})</span>
+              </button>
+            )}
+
+            {/* Cement Mines */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('cement')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'cement'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-850 text-amber-300 border border-amber-500/30 hover:bg-slate-800'
+              }`}
+            >
+              <span>🧱</span>
+              <span>ปูน ({counts.cement})</span>
+              {onToggleCementSpots && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleCementSpots();
+                  }}
+                  title={showCementSpots ? 'กำลังแสดงบนแมพ (คลิกเพื่อซ่อน)' : 'ซ่อนอยู่บนแมพ (คลิกเพื่อแสดง)'}
+                  className={`ml-0.5 px-1 py-0.1 rounded text-[8px] font-mono ${
+                    showCementSpots ? 'bg-amber-400/30 text-amber-100' : 'bg-slate-750 text-slate-400'
+                  }`}
+                >
+                  {showCementSpots ? '✓' : '✕'}
+                </span>
+              )}
+            </button>
+
+            {/* Fuel */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('fuel')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'fuel'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-900/40'
+              }`}
+            >
+              <span>⛽</span>
+              <span>น้ำมัน ({counts.fuel})</span>
+            </button>
+
+            {/* Urgent / Cooldowns */}
             {urgentCount > 0 && (
               <button
-                onClick={() => setSelectedCategory('urgent')}
-                className={`px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 transition-all animate-bounce ${
-                  selectedCategory === 'urgent'
-                    ? 'bg-red-600 text-white font-bold shadow-lg shadow-red-600/40'
-                    : 'bg-red-950/60 text-red-300 border border-red-500/50 hover:bg-red-900/60'
+                type="button"
+                onClick={() => setSelectedFilter('urgent')}
+                className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer animate-bounce ${
+                  selectedFilter === 'urgent'
+                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/40'
+                    : 'bg-red-950/60 text-red-300 border border-red-500/60 hover:bg-red-900/60'
                 }`}
               >
                 <Flame className="w-3.5 h-3.5 text-yellow-300" />
                 <span>ใกล้เกิด ({urgentCount})</span>
               </button>
             )}
-            {Object.values(CATEGORIES)
-              .filter((cat) => spots.some((s) => getEffectiveCategoryId(s) === cat.id))
-              .map((cat) => {
-                const count = spots.filter((s) => getEffectiveCategoryId(s) === cat.id).length;
-                const isSelected = selectedCategory === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => {
-                      setSelectedCategory(cat.id);
-                      if (cat.id === 'cement_mine' && !showCementSpots && onToggleCementSpots) {
-                        onToggleCementSpots();
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 transition-all ${
-                      isSelected
-                        ? `${cat.bgColor} ${cat.borderColor} border text-white font-bold`
-                        : 'bg-slate-800/80 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>{renderSpotIcon(cat.icon, 'w-3.5 h-3.5')}</span>
-                    <span className="truncate max-w-[120px]">{cat.name}</span>
-                    <span className="text-[10px] opacity-70">({count})</span>
-                  </button>
-                );
-              })}
-          </div>
 
-          {spots.length > 0 && (
-            <select
-              value={selectedCategory}
-              onChange={(e) => {
-                const val = e.target.value as SpotCategory | 'all' | 'urgent';
-                setSelectedCategory(val);
-                if (val === 'cement_mine' && !showCementSpots && onToggleCementSpots) {
-                  onToggleCementSpots();
-                }
-              }}
-              className="w-full px-2 py-1 rounded-lg bg-slate-850 border border-slate-700/80 text-[11px] text-slate-300 focus:outline-none focus:border-amber-500"
+            {/* Landmarks & Services */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('landmarks')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'landmarks'
+                  ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                  : 'bg-slate-850 text-slate-300 border border-slate-750 hover:bg-slate-800'
+              }`}
             >
-              <option value="all">🔍 กรองดูทุกประเภท ({spots.length} หมุด)</option>
-              {Object.values(CATEGORIES)
-                .filter((cat) => spots.some((s) => getEffectiveCategoryId(s) === cat.id))
-                .map((cat) => {
-                  const count = spots.filter((s) => getEffectiveCategoryId(s) === cat.id).length;
-                  const optIcon = cat.icon.startsWith('/') || cat.icon.endsWith('.png') ? '📍' : cat.icon;
-                  return (
-                    <option key={cat.id} value={cat.id}>
-                      {optIcon} {cat.name} {count > 0 ? `(${count})` : ''}
-                    </option>
-                  );
-                })}
-            </select>
-          )}
-
-          {/* Quick Toggle: Show/Hide Cement Spots on Map */}
-          {onToggleCementSpots && (
-            <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-850/80 rounded-xl border border-slate-700/60 text-xs">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <span className="text-sm">🧱</span>
-                <span className="text-[11px] font-medium">จุดปูนบนแผนที่:</span>
-              </div>
-              <button
-                type="button"
-                onClick={onToggleCementSpots}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1 ${
-                  showCementSpots
-                    ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                <span>{showCementSpots ? '✓ กำลังแสดง' : '✕ ซ่อนอยู่'}</span>
-                <span className="opacity-70 text-[9px]">({spots.filter(isCementSpot).length})</span>
-              </button>
-            </div>
-          )}
+              <span>👑</span>
+              <span>บริการ ({counts.landmarks})</span>
+            </button>
+          </div>
         </div>
 
-        {/* Spots List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+        {/* ======================================================== */}
+        {/* 3. SCROLLABLE SPOT LIST & ACCORDION GROUPS               */}
+        {/* ======================================================== */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {filteredSpots.length === 0 ? (
             spots.length === 0 ? (
               <div className="text-center py-16 px-4 text-slate-500 text-xs flex flex-col items-center">
@@ -357,9 +550,10 @@ export const Sidebar = ({
                 </div>
                 <h4 className="text-sm font-bold text-slate-200 mb-1">ยังไม่มีหมุดบนแผนที่</h4>
                 <p className="text-slate-400 mb-4 max-w-[220px] leading-relaxed text-[11px]">
-                  ดับเบิ้ลคลิก (Double-click) ที่ใดก็ได้บนแผนที่ หรือกดปุ่มด้านล่างเพื่อเริ่มปักหมุด
+                  ดับเบิ้ลคลิกบนแผนที่ หรือกดปุ่มด้านบนเพื่อเริ่มปักหมุด
                 </p>
                 <button
+                  type="button"
                   onClick={onAddNewSpot}
                   className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5"
                 >
@@ -373,288 +567,230 @@ export const Sidebar = ({
                 <p>ไม่พบจุดที่ตรงกับเงื่อนไขการค้นหา</p>
               </div>
             )
-          ) : (
-            filteredSpots.map((spot) => {
-              const catId = getEffectiveCategoryId(spot);
-              const cat = CATEGORIES[catId] || CATEGORIES.landmark || CATEGORIES.cement_mine;
-              const isSelected = selectedSpotId === spot.id;
-              const activeCooldown = getActiveCooldown(spot.id);
-              const spotIcon = spot.icon || cat.icon;
-              const spotColor = spot.color || cat.color;
-
-              // Cooldown calculations
-              const remainingSec = activeCooldown ? Math.max(0, Math.floor((activeCooldown.expiresAt - now) / 1000)) : 0;
-              const isCooldown = !!activeCooldown && remainingSec > 0;
-              const isUrgent = isCooldown && remainingSec <= 180; // <= 3 mins
-              const isReady = !!activeCooldown && remainingSec === 0;
-
-              const cdMinutes = Math.floor(remainingSec / 60);
-              const cdSeconds = remainingSec % 60;
-              const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
-
-              const isCooldownPanelOpen = openCooldownSpotId === spot.id;
-
-              return (
-                <div
-                  key={spot.id}
-                  onClick={() => onSelectSpot(spot)}
-                  className={`p-3 rounded-2xl border transition-all cursor-pointer group relative text-xs ${
-                    isUrgent
-                      ? 'bg-red-950/40 border-red-500 shadow-xl shadow-red-500/20 animate-pulse'
-                      : isSelected
-                      ? 'bg-slate-800/95 border-amber-500/80 shadow-lg shadow-amber-500/10'
-                      : 'bg-slate-850/60 border-slate-800 hover:bg-slate-800/80 hover:border-slate-700'
-                  }`}
-                >
-                  {/* Urgent / Active Countdown Banner */}
-                  {isUrgent ? (
-                    <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold text-[11px] mb-2 shadow-md">
-                      <span className="flex items-center gap-1">
-                        <Flame className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
-                        <span>ใกล้เกิดแล้ว! ต่ำกว่า 3 นาที</span>
-                      </span>
-                      <span className="font-mono font-black text-xs">{cdTimeStr}</span>
-                    </div>
-                  ) : isCooldown ? (
-                    <div className="flex items-center justify-between px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[10px] mb-2">
-                      <span>⏳ กำลังคูลดาวน์</span>
-                      <span className="font-bold">{cdTimeStr}</span>
-                    </div>
-                  ) : isReady ? (
-                    <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] mb-2 shadow-md animate-pulse">
-                      <span className="flex items-center gap-1">
-                        <span>✅</span>
-                        <span>ถึงเวลาเกิดแล้ว! จกได้เลย</span>
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCancelCooldown(spot.id);
-                        }}
-                        className="text-[10px] text-emerald-100 hover:text-white underline"
-                      >
-                        ปิด
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {/* Category & Postal badges */}
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border"
-                      style={{
-                        backgroundColor: `${spotColor}22`,
-                        borderColor: `${spotColor}55`,
-                        color: spotColor,
-                      }}
-                    >
-                      <span className="text-xs flex items-center justify-center">{renderSpotIcon(spotIcon, 'w-3.5 h-3.5')}</span>
-                      <span>{cat.name}</span>
-                    </span>
-
-                    {spot.postal && (
-                      <span className="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30">
-                        📮 {spot.postal}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Spot Name */}
-                  <h3 className="font-bold text-slate-100 text-sm mb-1 group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                    <span className="text-base flex items-center justify-center">{renderSpotIcon(spotIcon, 'w-4 h-4')}</span>
-                    <span>{spot.name}</span>
-                  </h3>
-
-                  {/* Yield & required items preview */}
-                  {spot.yieldDescription && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300 mb-1">
-                      <Package className="w-3 h-3 text-emerald-400 shrink-0" />
-                      <span className="truncate">{spot.yieldDescription}</span>
-                    </div>
-                  )}
-
-                  {/* Coordinates & Actions */}
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/70 font-mono text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Crosshair className="w-3 h-3 text-slate-500" />
-                      <span>{spot.x.toFixed(0)}, {spot.y.toFixed(0)}</span>
-                    </span>
-
-                    <div className="flex items-center gap-1">
-                      {/* Copy /tp */}
-                      <button
-                        onClick={(e) => handleCopyCommand(e, spot)}
-                        title="คัดลอกคำสั่ง /tp x y z"
-                        className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 text-[10px] flex items-center gap-1 transition-colors border border-slate-700"
-                      >
-                        {copiedId === spot.id ? (
-                          <>
-                            <Check className="w-2.5 h-2.5 text-emerald-400" />
-                            <span>Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-2.5 h-2.5" />
-                            <span>/tp</span>
-                          </>
-                        )}
-                      </button>
-
-                      {/* Cooldown button / toggle quick picker */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenCooldownSpotId((prev) => (prev === spot.id ? null : spot.id));
-                        }}
-                        title={activeCooldown ? 'ปรับเวลาหรือยกเลิกคูลดาวน์' : 'เลือกเวลาคูลดาวน์'}
-                        className={`px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 transition-all border ${
-                          isUrgent
-                            ? 'bg-red-600 text-white border-yellow-300 font-black animate-bounce shadow-md shadow-red-600/50'
-                            : activeCooldown
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                        }`}
-                      >
-                        {isUrgent ? (
-                          <Flame className="w-3 h-3 text-yellow-300" />
-                        ) : (
-                          <Clock className="w-2.5 h-2.5 text-amber-400" />
-                        )}
-                        <span>{isUrgent ? cdTimeStr : isCooldown ? cdTimeStr : `${spot.cooldownMinutes || 10}น.`}</span>
-                      </button>
-
-                      {/* Edit Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEditSpot(spot);
-                        }}
-                        title="แก้ไขข้อมูล"
-                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-
-                      {/* Delete Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`คุณต้องการลบ "${spot.name}" หรือไม่?`)) {
-                            onDeleteSpot(spot.id);
-                          }
-                        }}
-                        title="ลบหมุด"
-                        className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-700 transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Inline Quick Cooldown Picker Panel */}
-                  {isCooldownPanelOpen && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-2.5 p-2.5 rounded-xl bg-slate-900/95 border border-slate-700/90 text-xs space-y-2 shadow-xl animate-in fade-in duration-150"
-                    >
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-amber-400" />
-                          <span>เลือกเวลานับถอยหลัง:</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setOpenCooldownSpotId(null)}
-                          className="text-slate-400 hover:text-white p-0.5 rounded"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+          ) : selectedFilter === 'all' ? (
+            /* ==================================================== */
+            /* ACCORDION MODE (Categorized Collapsible Sections)     */
+            /* ==================================================== */
+            <div className="space-y-2.5">
+              {/* 1. Active Cooldowns (if any) */}
+              {groupedSpots.cooldownList.length > 0 && (
+                <div className="rounded-2xl border border-amber-500/40 bg-slate-950/50 overflow-hidden shadow-lg shadow-amber-500/5 transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('cooldowns')}
+                    className="w-full flex items-center justify-between p-2.5 bg-amber-500/10 hover:bg-amber-500/15 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        ⏰
                       </div>
-
-                      {/* Presets Grid */}
-                      <div className="grid grid-cols-4 gap-1">
-                        {[3, 5, 8, 10, 15, 20, 30, 60].map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => {
-                              onStartCooldown(spot, m);
-                              setOpenCooldownSpotId(null);
-                            }}
-                            className={`py-1 rounded font-mono font-bold text-[10px] transition-all border ${
-                              m <= 3
-                                ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500 hover:text-white'
-                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-amber-400 hover:text-slate-950'
-                            }`}
-                          >
-                            {m <= 3 ? '🔥 ' : ''}{m}น.
-                          </button>
-                        ))}
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-amber-300">กำลังคูลดาวน์</span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            {groupedSpots.cooldownList.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">จุดที่กำลังนับถอยหลังเกิดใหม่</p>
                       </div>
-
-                      {/* Custom Minutes Input */}
-                      <div className="flex items-center gap-1 pt-0.5">
-                        <input
-                          type="number"
-                          min="1"
-                          max="180"
-                          value={customMinutesInput}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => setCustomMinutesInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const mins = Math.max(1, parseInt(customMinutesInput, 10) || 10);
-                              onStartCooldown(spot, mins);
-                              setOpenCooldownSpotId(null);
-                            }
-                          }}
-                          placeholder="นาที"
-                          className="w-16 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-center font-mono text-xs text-white focus:outline-none focus:border-amber-400"
-                        />
-                        <span className="text-[10px] text-slate-400">นาที</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const mins = Math.max(1, parseInt(customMinutesInput, 10) || 10);
-                            onStartCooldown(spot, mins);
-                            setOpenCooldownSpotId(null);
-                          }}
-                          className="ml-auto px-2.5 py-0.5 rounded bg-amber-500 text-slate-950 font-bold text-[10px] hover:bg-amber-400 transition-colors"
-                        >
-                          เริ่มนับ
-                        </button>
-                        {activeCooldown && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onCancelCooldown(spot.id);
-                              setOpenCooldownSpotId(null);
-                            }}
-                            className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] hover:bg-red-500/30"
-                          >
-                            ยกเลิก
-                          </button>
-                        )}
-                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-amber-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.cooldowns ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.cooldowns) && (
+                    <div className="p-2 space-y-2 border-t border-amber-500/20 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.cooldownList.map(renderCard)}
                     </div>
                   )}
                 </div>
-              );
-            })
+              )}
+
+              {/* 2. Drug Selling Spots (Dealers) */}
+              {groupedSpots.dealers.length > 0 && (
+                <div className="rounded-2xl border border-red-900/50 bg-slate-950/50 overflow-hidden shadow-md transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('dealers')}
+                    className="w-full flex items-center justify-between p-2.5 bg-red-950/20 hover:bg-red-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        🌿
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-red-200 group-hover:text-red-100">
+                            จุดขายยา (Dealer)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-red-500/20 text-red-300 border border-red-500/40">
+                            {groupedSpots.dealers.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">พิกัดส่งของเถื่อนทั่วเมือง Los Santos</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-red-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.dealers ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.dealers) && (
+                    <div className="p-2 space-y-2 border-t border-red-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.dealers.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. Fuel Stations */}
+              {groupedSpots.fuel.length > 0 && (
+                <div className="rounded-2xl border border-cyan-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('fuel')}
+                    className="w-full flex items-center justify-between p-2.5 bg-cyan-950/20 hover:bg-cyan-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        ⛽
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-cyan-200 group-hover:text-cyan-100">
+                            สถานีน้ำมัน
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                            {groupedSpots.fuel.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">จุดเติมน้ำมันและแกลลอน</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-cyan-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.fuel ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.fuel) && (
+                    <div className="p-2 space-y-2 border-t border-cyan-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.fuel.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 4. Cement Gathering Mines */}
+              {groupedSpots.cement.length > 0 && (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('cement')}
+                    className="w-full flex items-center justify-between p-2.5 bg-slate-900/60 hover:bg-slate-850 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        🧱
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-amber-200 group-hover:text-amber-100">
+                            จุดฟาร์มปูน
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            {groupedSpots.cement.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {expandedGroups.cement || isSearching
+                            ? 'เหมืองจกปูนรอบแมพ'
+                            : 'คลิกเพื่อเปิดดู 87 จุดฟาร์ม'}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-amber-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.cement ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.cement) && (
+                    <div className="p-2 space-y-2 border-t border-slate-800 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.cement.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 5. Landmarks & Other Services */}
+              {groupedSpots.landmarks.length > 0 && (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('landmarks')}
+                    className="w-full flex items-center justify-between p-2.5 bg-slate-900/60 hover:bg-slate-850 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        👑
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-slate-200 group-hover:text-white">
+                            สถานที่สำคัญ & บริการ
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-slate-800 text-slate-300 border border-slate-700">
+                            {groupedSpots.landmarks.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {expandedGroups.landmarks || isSearching
+                            ? 'ตำรวจ โรงพยาบาล ร้านค้า อู่รถ'
+                            : 'คลิกเพื่อเปิดดู 25 จุดบริการ'}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.landmarks ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.landmarks) && (
+                    <div className="p-2 space-y-2 border-t border-slate-800 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.landmarks.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ==================================================== */
+            /* SINGLE CATEGORY FILTERED LIST                        */
+            /* ==================================================== */
+            <div className="space-y-2">
+              {filteredSpots.map(renderCard)}
+            </div>
           )}
         </div>
 
-        {/* Footer info */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/80 text-[10px] text-slate-400 flex items-center justify-between">
+        {/* ======================================================== */}
+        {/* 4. COMPACT FOOTER                                        */}
+        {/* ======================================================== */}
+        <div className="p-2.5 border-t border-slate-800/90 bg-slate-950/90 text-[10px] text-slate-400 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span>แสดง {filteredSpots.length} จากทั้งหมด {spots.length} จุด</span>
+            <span>
+              แสดง {filteredSpots.length} จาก {spots.length} จุด
+            </span>
             {spots.length > 0 && (
               <button
+                type="button"
                 onClick={onClearAllSpots}
-                className="text-red-400/80 hover:text-red-300 transition-colors flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/40"
+                className="text-red-400/80 hover:text-red-300 transition-colors flex items-center gap-0.5 ml-1 px-1.5 py-0.2 rounded bg-red-950/40 border border-red-800/40 cursor-pointer"
                 title="ลบหมุดทั้งหมดบนแผนที่"
               >
                 <Trash2 className="w-2.5 h-2.5" />
@@ -662,22 +798,33 @@ export const Sidebar = ({
               </button>
             )}
           </div>
-          <span className="text-amber-400/80">GTA V / FiveM Thailand</span>
+          <span className="text-amber-400/80 font-mono">FiveM RunThukVerb</span>
         </div>
+
+        {/* Edge Handle Tab on right border to quickly collapse */}
+        {!isCollapsed && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-[1060] w-3.5 h-16 rounded-r-xl bg-slate-900/95 border border-l-0 border-slate-700/90 text-slate-400 hover:text-amber-300 hover:w-5 items-center justify-center shadow-xl transition-all cursor-pointer group"
+            title="คลิกเพื่อย่อแถบเมนูซ่อนไปทางซ้าย"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          </button>
+        )}
       </aside>
 
-      {/* Floating Toggle button when sidebar is collapsed */}
+      {/* Floating Reopen Button when sidebar is collapsed */}
       {isCollapsed && (
         <button
+          type="button"
           onClick={onToggleCollapse}
-          className="fixed top-4 left-4 z-[1050] p-2.5 rounded-2xl bg-slate-900/90 backdrop-blur-md border border-slate-700/80 text-amber-400 hover:text-white hover:bg-slate-800 shadow-2xl transition-all"
-          title="เปิดแถบจัดการหมุด"
+          className="fixed top-4 left-4 z-[1050] px-3.5 py-2.5 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/90 text-amber-400 hover:text-white hover:bg-slate-800 shadow-2xl transition-all cursor-pointer flex items-center gap-2 group hover:scale-105 active:scale-95"
+          title="เปิดแถบจัดการหมุดและเมนู (ขยายเมนู)"
         >
-          <div className="flex items-center gap-2">
-            <span className="text-base">🧱</span>
-            <span className="text-xs font-bold text-white pr-1">เปิดเมนู</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
+          <span className="text-base">🧱</span>
+          <span className="text-xs font-bold text-white pr-0.5">เปิดเมนู</span>
+          <ChevronRight className="w-4 h-4 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
         </button>
       )}
     </>

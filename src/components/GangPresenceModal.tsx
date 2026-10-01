@@ -65,7 +65,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl shadow-black/80 flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
               <Users className="w-5 h-5 text-slate-950" />
             </div>
@@ -74,8 +74,12 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                 <h3 className="text-base font-black text-white uppercase tracking-wider">
                   ศูนย์รวมสมาชิกแก๊ง
                 </h3>
-                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                {/* NameThatUI Pattern: Status Dot (Presence Indicator) */}
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
                   <span>ออนไลน์ {onlineMembers.length} คน</span>
                 </span>
               </div>
@@ -86,51 +90,76 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2.5">
+            {/* NameThatUI Pattern: Avatar Group */}
+            <div className="hidden sm:flex items-center -space-x-2 overflow-hidden py-1">
+              {onlineMembers.slice(0, 4).map((m, idx) => (
+                <div
+                  key={m.clientId || idx}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-full ring-2 ring-slate-900 bg-slate-800 text-[10px] font-bold text-slate-200 shadow-sm"
+                  title={`${m.memberName} (${m.device || 'Online'})`}
+                >
+                  {m.isMaster ? '👑' : m.memberName.slice(0, 1).toUpperCase()}
+                </div>
+              ))}
+              {onlineMembers.length > 4 && (
+                <div className="inline-flex items-center justify-center w-7 h-7 rounded-full ring-2 ring-slate-900 bg-emerald-950 text-emerald-400 text-[10px] font-bold border border-emerald-500/40">
+                  +{onlineMembers.length - 4}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center p-2 bg-slate-950/60 border-b border-slate-800 gap-1.5 px-4 text-xs font-semibold">
-          <button
-            onClick={() => setActiveTab('online')}
-            className={`flex-1 py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'online'
-                ? 'bg-slate-800 text-emerald-400 shadow font-bold border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>คนออนไลน์ ({onlineMembers.length})</span>
-          </button>
+        {/* NameThatUI Pattern: Segmented Control (Mac / iOS Dark Glass Style) */}
+        <div className="px-4 py-2.5 bg-slate-950/60 border-b border-slate-800/80">
+          <div className="p-1 bg-slate-950/90 border border-slate-800/80 rounded-2xl flex gap-1">
+            <button
+              onClick={() => setActiveTab('online')}
+              className={`flex-1 py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold ${
+                activeTab === 'online'
+                  ? 'bg-gradient-to-r from-emerald-600/30 to-teal-600/20 text-emerald-300 shadow-sm border border-emerald-500/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>คนออนไลน์</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                {onlineMembers.length}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`flex-1 py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'logs'
-                ? 'bg-slate-800 text-amber-400 shadow font-bold border border-amber-500/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>ประวัติใช้งาน (Log)</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex-1 py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold ${
+                activeTab === 'logs'
+                  ? 'bg-gradient-to-r from-amber-600/30 to-orange-600/20 text-amber-300 shadow-sm border border-amber-500/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Timeline ประวัติ</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('boss')}
-            className={`flex-1 py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'boss'
-                ? 'bg-slate-800 text-amber-400 shadow font-bold border border-amber-500/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Crown className="w-3.5 h-3.5" />
-            <span>รหัสแก๊ง 7 วัน</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('boss')}
+              className={`flex-1 py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold ${
+                activeTab === 'boss'
+                  ? 'bg-gradient-to-r from-amber-600/30 to-yellow-600/20 text-amber-300 shadow-sm border border-amber-500/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5" />
+              <span>รหัสแก๊ง 7 วัน</span>
+            </button>
+          </div>
         </div>
 
         {/* Tab Content */}
@@ -209,40 +238,76 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: ACTIVITY LOGS */}
+          {/* TAB 2: ACTIVITY LOGS (NameThatUI Pattern: Timeline) */}
           {activeTab === 'logs' && (
-            <div className="space-y-2">
-              <div className="text-[11px] text-slate-400 flex items-center justify-between mb-2">
-                <span>บันทึกประวัติการเข้าใช้งานและจับเวลาปูน:</span>
-                <span className="text-slate-500 text-[10px]">บันทึกล่าสุด 50 รายการ</span>
+            <div className="space-y-3">
+              <div className="text-[11px] text-slate-400 flex items-center justify-between mb-1 px-1">
+                <span>ไทม์ไลน์กิจกรรมเรียลไทม์:</span>
+                <span className="text-slate-500 text-[10px] font-mono">50 รายการล่าสุด</span>
               </div>
 
               {activityLogs.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-xs">
-                  ยังไม่มีประวัติการใช้งาน
+                <div className="text-center py-10 text-slate-500 text-xs">
+                  ยังไม่มีประวัติกิจกรรมในขณะนี้
                 </div>
               ) : (
-                activityLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-2.5 px-3 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-sm">
-                        {log.action === 'login' ? '🔑' : log.action === 'cooldown_start' ? '⏳' : '📋'}
-                      </span>
-                      <div>
-                        <div className="font-semibold text-slate-200 flex items-center gap-1.5">
-                          <span>{log.memberName}</span>
-                          <span className="text-slate-400 font-normal">{log.details}</span>
+                <div className="relative pl-6 pr-1 py-1 space-y-3.5">
+                  {/* Vertical connecting rail line */}
+                  <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-gradient-to-b from-amber-500/50 via-slate-700/60 to-transparent"></div>
+
+                  {activityLogs.map((log) => {
+                    const getNodeConfig = () => {
+                      switch (log.action) {
+                        case 'login':
+                          return { icon: '🟢', bg: 'bg-emerald-950 border-emerald-500', tag: 'LOGIN', tagColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' };
+                        case 'cooldown_start':
+                          return { icon: '🔥', bg: 'bg-amber-950 border-amber-500', tag: 'COOLDOWN', tagColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30' };
+                        case 'spot_add':
+                          return { icon: '📍', bg: 'bg-sky-950 border-sky-500', tag: 'NEW PIN', tagColor: 'text-sky-400 bg-sky-500/10 border-sky-500/30' };
+                        case 'spot_update':
+                          return { icon: '✏️', bg: 'bg-indigo-950 border-indigo-500', tag: 'UPDATE', tagColor: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30' };
+                        case 'spot_delete':
+                          return { icon: '🗑️', bg: 'bg-red-950 border-red-500', tag: 'DELETE', tagColor: 'text-red-400 bg-red-500/10 border-red-500/30' };
+                        case 'spot_move':
+                          return { icon: '🧭', bg: 'bg-purple-950 border-purple-500', tag: 'MOVE', tagColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30' };
+                        default:
+                          return { icon: '📋', bg: 'bg-slate-900 border-slate-700', tag: 'ACTION', tagColor: 'text-slate-300 bg-slate-800 border-slate-700' };
+                      }
+                    };
+                    const config = getNodeConfig();
+
+                    return (
+                      <div key={log.id} className="relative flex items-start gap-3 group">
+                        {/* Timeline Node */}
+                        <div
+                          className={`absolute -left-[27px] w-6 h-6 rounded-full border-2 ${config.bg} flex items-center justify-center text-[10px] shadow-md z-10 transition-transform group-hover:scale-115`}
+                        >
+                          {config.icon}
+                        </div>
+
+                        {/* Timeline Card */}
+                        <div className="flex-1 p-2.5 px-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 group-hover:border-slate-700/80 transition-all shadow-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-white text-xs">{log.memberName}</span>
+                              <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-semibold border ${config.tagColor}`}>
+                                {config.tag}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                              {formatTimeStr(log.timestamp)}
+                            </span>
+                          </div>
+                          {log.details && (
+                            <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                              {log.details}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <span className="text-[11px] font-mono text-slate-500 shrink-0">
-                      {formatTimeStr(log.timestamp)}
-                    </span>
-                  </div>
-                ))
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}

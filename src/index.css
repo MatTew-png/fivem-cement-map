@@ -287,11 +287,17 @@
 /* 60-120 FPS GPU Hardware Acceleration for Leaflet Markers & Layers */
 .custom-pin-marker,
 .custom-compact-marker,
+.magic-cluster-marker,
 .leaflet-marker-icon,
 .leaflet-pane > svg {
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   perspective: 1000px;
+}
+
+.magic-cluster-marker {
+  background: transparent !important;
+  border: none !important;
 }
 
 

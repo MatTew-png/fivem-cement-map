@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown } from 'lucide-react';
+import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag } from 'lucide-react';
 import type { CementSpot } from '../types/map';
 import { DEFAULT_SPOTS } from '../data/defaultSpots';
 import { parseFiveMCoords } from '../utils/crs';
@@ -275,8 +275,39 @@ export const PinModal = ({
   const [yieldDescription, setYieldDescription] = useState('');
   const [requiredItemsStr, setRequiredItemsStr] = useState('');
   const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
   const [coordsPasteInput, setCoordsPasteInput] = useState('');
   const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
+
+  const handleAddTag = (t: string) => {
+    let clean = t.trim();
+    if (!clean) return;
+    if (!clean.startsWith('#')) clean = `#${clean}`;
+    if (!tags.includes(clean)) {
+      setTags([...tags, clean]);
+    }
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (t: string) => {
+    setTags(tags.filter((item) => item !== t));
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      handleAddTag(tagInput);
+    }
+  };
+
+  const handleTogglePresetTag = (preset: string) => {
+    if (tags.includes(preset)) {
+      handleRemoveTag(preset);
+    } else {
+      handleAddTag(preset);
+    }
+  };
 
   const handleCoordsPaste = (raw: string) => {
     setCoordsPasteInput(raw);
@@ -310,6 +341,7 @@ export const PinModal = ({
   useEffect(() => {
     setCoordsPasteInput('');
     setCoordsPasteStatus(null);
+    setTagInput('');
     if (initialSpot) {
       setName(initialSpot.name || '');
       const isCement = initialSpot.name?.trim() === 'ปูน';
@@ -323,6 +355,7 @@ export const PinModal = ({
       setYieldDescription(initialSpot.yieldDescription || '');
       setRequiredItemsStr(initialSpot.requiredItems ? initialSpot.requiredItems.join(', ') : '');
       setNotes(initialSpot.notes || '');
+      setTags(initialSpot.tags || []);
     } else {
       setName('');
       setIcon('/blips/radar_player_king_white.png');
@@ -335,6 +368,7 @@ export const PinModal = ({
       setYieldDescription('');
       setRequiredItemsStr('');
       setNotes('');
+      setTags([]);
     }
   }, [initialSpot, isOpen]);
 
@@ -379,6 +413,7 @@ export const PinModal = ({
       yieldDescription: yieldDescription.trim(),
       requiredItems: items,
       notes: notes.trim(),
+      tags: tags.length > 0 ? tags : undefined,
       createdAt: initialSpot?.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
@@ -708,19 +743,60 @@ export const PinModal = ({
           <div className="pt-2 border-t border-slate-800 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>เวลาคูลดาวน์ (นาที)</span>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>เวลาคูลดาวน์: <strong className="text-amber-300 font-mono">{cooldownMinutes} นาที</strong></span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">ปรับเวลาด่วน</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="180"
-                  value={cooldownMinutes}
-                  onChange={(e) => setCooldownMinutes(parseInt(e.target.value) || 0)}
-                  placeholder="0 หากไม่มีคูลดาวน์"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
-                />
+                <div className="flex items-center gap-1.5">
+                  {/* NameThatUI Pattern: Stepper */}
+                  <button
+                    type="button"
+                    onClick={() => setCooldownMinutes(Math.max(0, cooldownMinutes - 5))}
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-[11px] font-bold border border-slate-700"
+                    title="ลด 5 นาที"
+                  >
+                    -5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCooldownMinutes(Math.max(0, cooldownMinutes - 1))}
+                    className="px-1.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-[11px] font-bold border border-slate-700"
+                    title="ลด 1 นาที"
+                  >
+                    -1
+                  </button>
+
+                  {/* NameThatUI Pattern: Slider */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="60"
+                    step="1"
+                    value={cooldownMinutes}
+                    onChange={(e) => setCooldownMinutes(parseInt(e.target.value) || 0)}
+                    className="flex-1 accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setCooldownMinutes(cooldownMinutes + 1)}
+                    className="px-1.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-[11px] font-bold border border-slate-700"
+                    title="เพิ่ม 1 นาที"
+                  >
+                    +1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCooldownMinutes(cooldownMinutes + 5)}
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-[11px] font-bold border border-slate-700"
+                    title="เพิ่ม 5 นาที"
+                  >
+                    +5
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -733,7 +809,7 @@ export const PinModal = ({
                   value={yieldDescription}
                   onChange={(e) => setYieldDescription(e.target.value)}
                   placeholder="เช่น ปูนซีเมนต์ 8-15 ถุง, ไม้ 10 ท่อน"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -748,7 +824,7 @@ export const PinModal = ({
                 value={requiredItemsStr}
                 onChange={(e) => setRequiredItemsStr(e.target.value)}
                 placeholder="เช่น พลั่วตักทราย, ถุงกระสอบ"
-                className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition-all"
               />
             </div>
 
@@ -762,8 +838,68 @@ export const PinModal = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="เช่น จุดเกิดอยู่ข้างตึก, ระวังตำรวจตั้งด่าน..."
-                className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 resize-none"
+                className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none resize-none transition-all"
               />
+            </div>
+
+            {/* NameThatUI Pattern: Token Field (Tags / ฉลากกำกับหมุด) */}
+            <div className="pt-2 border-t border-slate-800/80 space-y-2">
+              <label className="block text-[11px] font-medium text-slate-300 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-bold text-amber-400">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>แท็กกำกับจุด (Token Field)</span>
+                </span>
+                <span className="text-[10px] text-slate-500">พิมพ์แล้วกด Enter หรือคลิกแท็กด่วน</span>
+              </label>
+
+              {/* Token Field Chips Container */}
+              <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950/70 border border-slate-800 rounded-xl min-h-[38px] focus-within:ring-2 focus-within:ring-amber-500/40 focus-within:border-amber-400 transition-all">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold"
+                  >
+                    <span>{t}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag(t)}
+                      className="hover:text-red-400 text-amber-400/70 ml-0.5 text-xs font-bold cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={handleTagKeyDown}
+                  placeholder={tags.length === 0 ? "เช่น #โซนแดง, #ขายยา..." : "เพิ่มแท็ก..."}
+                  className="flex-1 min-w-[100px] bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Preset Tokens */}
+              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                <span className="text-slate-500 text-[10px] mr-1">แท็กด่วน:</span>
+                {['#จุดเสี่ยง', '#โซนแดง', '#ขายยา', '#ฟาร์มง่าย', '#ลับ', '#ตำรวจดัก', '#มีกล่อง', '#บอส'].map((preset) => {
+                  const isAdded = tags.includes(preset);
+                  return (
+                    <button
+                      type="button"
+                      key={preset}
+                      onClick={() => handleTogglePresetTag(preset)}
+                      className={`px-2 py-0.5 rounded-md transition-all font-mono text-[10px] border cursor-pointer ${
+                        isAdded
+                          ? 'bg-amber-400 text-slate-950 font-bold border-amber-400 shadow-sm'
+                          : 'bg-slate-800/60 hover:bg-slate-750 text-slate-400 hover:text-white border-slate-700/60'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

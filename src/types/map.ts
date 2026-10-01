@@ -25,6 +25,7 @@ export interface CementSpot {
   notes?: string;
   color?: string;
   icon?: string;               // เช่น "🧱", "👑", "⭐", "🚗"
+  tags?: string[];             // เช่น ["#โซนแดง", "#ขายยา", "#ฟาร์มง่าย"]
   createdAt: number;
   updatedAt: number;
 }

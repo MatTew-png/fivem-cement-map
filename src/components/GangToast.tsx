@@ -22,14 +22,23 @@ const ToastItem: React.FC<{
   onDismiss: (id: string) => void;
 }> = ({ notif, onDismiss }) => {
   const [isLeaving, setIsLeaving] = useState(false);
+  const [progressWidth, setProgressWidth] = useState('100%');
 
   useEffect(() => {
+    // NameThatUI Pattern: Progress indicator for auto-dismissing Toast
+    const animTimer = setTimeout(() => {
+      setProgressWidth('0%');
+    }, 50);
+
     const timer = setTimeout(() => {
       setIsLeaving(true);
       setTimeout(() => onDismiss(notif.id), 300);
     }, 4500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(animTimer);
+      clearTimeout(timer);
+    };
   }, [notif.id, onDismiss]);
 
   const handleManualClose = () => {
@@ -54,12 +63,21 @@ const ToastItem: React.FC<{
 
   return (
     <div
-      className={`pointer-events-auto flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border ${getBorderColor()} shadow-xl transition-all duration-300 ${
+      role="status"
+      aria-live="polite"
+      className={`relative overflow-hidden pointer-events-auto flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border ${getBorderColor()} shadow-xl transition-all duration-300 ${
         isLeaving
           ? 'opacity-0 translate-y--2 scale-95'
           : 'animate-in fade-in slide-in-from-top-3 duration-300'
       }`}
     >
+      {/* NameThatUI Pattern: Progress Bar Countdown */}
+      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-800/80 overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 transition-all duration-[4450ms] ease-linear"
+          style={{ width: progressWidth }}
+        />
+      </div>
       <div className="flex items-center gap-3 overflow-hidden">
         <div className="w-9 h-9 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-lg shrink-0 select-none shadow-inner">
           {notif.icon || '🔔'}

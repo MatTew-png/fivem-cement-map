@@ -89,7 +89,7 @@ export const DistanceTool = ({
     points[0].y === points[points.length - 1].y;
 
   return (
-    <div className="absolute top-16 right-4 sm:top-4 sm:right-72 z-[1000] flex flex-col items-end gap-2 select-none pointer-events-auto">
+    <div className="relative flex flex-col items-end pointer-events-auto select-none">
       {/* Toggle Button */}
       <button
         type="button"
@@ -101,7 +101,12 @@ export const DistanceTool = ({
         }`}
       >
         <Ruler className="w-4 h-4" />
-        <span>{isActive ? 'โหมดวัดระยะทาง (เปิด)' : 'วัดระยะทาง / รูทฟาร์ม'}</span>
+        <span className="hidden sm:inline">
+          {isActive ? 'โหมดวัดระยะทาง (เปิด)' : 'วัดระยะทาง / รูทฟาร์ม'}
+        </span>
+        <span className="sm:hidden">
+          {isActive ? 'วัดระยะ (เปิด)' : 'วัดระยะ'}
+        </span>
         {points.length > 0 && (
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-950 text-amber-300 border border-amber-400/40">
             {points.length} จุด
@@ -111,7 +116,7 @@ export const DistanceTool = ({
 
       {/* Floating Measuring & Routing Panel */}
       {isActive && (
-        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl text-xs text-slate-200 w-72 sm:w-80 animate-in fade-in slide-in-from-top-2">
+        <div className="fixed inset-x-4 top-16 sm:inset-auto sm:absolute sm:top-full sm:right-0 sm:mt-2 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl text-xs text-slate-200 w-auto sm:w-80 max-h-[calc(100vh-6rem)] overflow-y-auto z-[1010] animate-in fade-in slide-in-from-top-2">
           {/* Header */}
           <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800">
             <div className="flex items-center gap-1.5 font-bold text-amber-400">
