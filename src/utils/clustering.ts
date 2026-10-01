@@ -7,8 +7,8 @@ export type QuickCategory = 'cement' | 'lands' | 'fuel' | 'services';
 
 export function getSpotQuickCategory(spot: CementSpot): QuickCategory {
   if (isCementSpot(spot)) return 'cement';
-  if (spot.name.startsWith('แลน') || (spot.icon && spot.icon.includes('player_king'))) return 'lands';
-  if (spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'))) return 'fuel';
+  if (spot.category === 'landmark' || spot.name.startsWith('แลน') || (spot.icon && spot.icon.includes('player_king'))) return 'lands';
+  if (spot.category === 'fuel' || spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'))) return 'fuel';
   return 'services';
 }
 

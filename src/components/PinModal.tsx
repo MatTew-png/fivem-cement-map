@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
 import { X, Clock, Package, AlertCircle, Wrench, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag } from 'lucide-react';
 import type { CementSpot } from '../types/map';
-import { DEFAULT_SPOTS } from '../data/defaultSpots';
+import { DEFAULT_SPOTS, isCementSpot } from '../data/defaultSpots';
 import { parseFiveMCoords } from '../utils/crs';
 
 interface PinModalProps {
@@ -251,6 +251,58 @@ const PRESET_COLORS = [
   { hex: '#334155', name: 'เทาเข้ม (Slate)' },
 ];
 
+export interface SpotTypeOption {
+  id: string;
+  label: string;
+  icon: string;
+  defaultColor: string;
+  defaultIcon: string;
+  hint: string;
+}
+
+export const SPOT_TYPES: SpotTypeOption[] = [
+  {
+    id: 'cement_mine',
+    label: 'จุดปูน (Cement)',
+    icon: '🧱',
+    defaultColor: '#f59e0b',
+    defaultIcon: '🧱',
+    hint: 'จุดฟาร์ม/ขุดปูน (นับในระบบปูน)',
+  },
+  {
+    id: 'landmark',
+    label: 'แลนด์มาร์ค (Landmark)',
+    icon: '👑',
+    defaultColor: '#38bdf8',
+    defaultIcon: '/blips/radar_player_king_white.png',
+    hint: 'แลนด์มาร์ค/จุดนัดพบ',
+  },
+  {
+    id: 'dealer',
+    label: 'จุดขายยา (Dealer)',
+    icon: '🌿',
+    defaultColor: '#22c55e',
+    defaultIcon: '/blips/radar_pickup_weed_green.png',
+    hint: 'จุดส่งยา/ขายยา',
+  },
+  {
+    id: 'fuel',
+    label: 'ปั๊มน้ำมัน (Fuel)',
+    icon: '⛽',
+    defaultColor: '#06b6d4',
+    defaultIcon: '/blips/radar_jerry_can.png',
+    hint: 'จุดเติมน้ำมัน',
+  },
+  {
+    id: 'services',
+    label: 'บริการ/ทั่วไป (Services)',
+    icon: '🏥',
+    defaultColor: '#10b981',
+    defaultIcon: '/blips/radar_hospital.png',
+    hint: 'โรงพยาบาล/สถานที่บริการ',
+  },
+];
+
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 
 export const PinModal = ({
@@ -262,6 +314,7 @@ export const PinModal = ({
   isMaster = false,
 }: PinModalProps) => {
   const isOfficial = Boolean(initialSpot?.id && officialSpotIds.has(initialSpot.id));
+  const [category, setCategory] = useState<string>('cement_mine');
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🧱');
   const [color, setColor] = useState('#f59e0b');
@@ -344,9 +397,31 @@ export const PinModal = ({
     setTagInput('');
     if (initialSpot) {
       setName(initialSpot.name || '');
-      const isCement = initialSpot.name?.trim() === 'ปูน';
-      setIcon(initialSpot.icon || (isCement ? '🧱' : '/blips/radar_player_king_white.png'));
-      setColor(initialSpot.color || (isCement ? '#f59e0b' : '#38bdf8'));
+      const isCement = isCementSpot(initialSpot as CementSpot);
+      const isDrug =
+        initialSpot.category === 'dealer' ||
+        initialSpot.name?.includes('ขายยา') ||
+        initialSpot.tags?.includes('dealer') ||
+        initialSpot.tags?.includes('จุดขายยา');
+      const isFuelSpot =
+        initialSpot.category === 'fuel' ||
+        initialSpot.name?.includes('น้ำมัน') ||
+        initialSpot.icon?.includes('jerry_can');
+      const isServicesSpot =
+        initialSpot.category === 'services' ||
+        initialSpot.category === 'hospital' ||
+        initialSpot.category === 'police';
+
+      let determinedCat = initialSpot.category || 'landmark';
+      if (!initialSpot.category || initialSpot.category === 'landmark') {
+        if (isCement) determinedCat = 'cement_mine';
+        else if (isDrug) determinedCat = 'dealer';
+        else if (isFuelSpot) determinedCat = 'fuel';
+        else if (isServicesSpot) determinedCat = 'services';
+      }
+      setCategory(determinedCat);
+      setIcon(initialSpot.icon || (determinedCat === 'cement_mine' ? '🧱' : '/blips/radar_player_king_white.png'));
+      setColor(initialSpot.color || (determinedCat === 'cement_mine' ? '#f59e0b' : '#38bdf8'));
       setX(initialSpot.x !== undefined ? initialSpot.x : 0);
       setY(initialSpot.y !== undefined ? initialSpot.y : 0);
       setZ(initialSpot.z !== undefined ? initialSpot.z : 30.0);
@@ -358,8 +433,9 @@ export const PinModal = ({
       setTags(initialSpot.tags || []);
     } else {
       setName('');
-      setIcon('/blips/radar_player_king_white.png');
-      setColor('#38bdf8');
+      setCategory('cement_mine');
+      setIcon('🧱');
+      setColor('#f59e0b');
       setX(0);
       setY(0);
       setZ(30.0);
@@ -371,6 +447,18 @@ export const PinModal = ({
       setTags([]);
     }
   }, [initialSpot, isOpen]);
+
+  const handleSelectCategory = (newCat: string) => {
+    setCategory(newCat);
+    const chosenType = SPOT_TYPES.find((t) => t.id === newCat);
+    if (chosenType) {
+      const isCurrentIconDefault = SPOT_TYPES.some((t) => t.defaultIcon === icon);
+      if (isCurrentIconDefault || !icon) {
+        setIcon(chosenType.defaultIcon);
+        setColor(chosenType.defaultColor);
+      }
+    }
+  };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -390,20 +478,12 @@ export const PinModal = ({
     const safeCd = Math.max(0, parseInt(String(cooldownMinutes), 10) || 0);
 
     const trimmedName = name.trim();
-    // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือคือแลนด์มาร์ค
-    const isCement = trimmedName === 'ปูน';
-    let assignedCategory = initialSpot?.category || (isCement ? 'cement_mine' : 'landmark');
-    if (isCement) {
-      assignedCategory = 'cement_mine';
-    } else if (assignedCategory === 'cement_mine') {
-      assignedCategory = 'landmark';
-    }
 
     const updated: CementSpot = {
       id: initialSpot?.id || `spot-${Date.now()}`,
       name: trimmedName,
-      category: assignedCategory,
-      icon: icon.trim() || (isCement ? '🧱' : '/blips/radar_player_king_white.png'),
+      category,
+      icon: icon.trim() || (category === 'cement_mine' ? '🧱' : '/blips/radar_player_king_white.png'),
       color,
       x: safeX,
       y: safeY,
@@ -488,20 +568,76 @@ export const PinModal = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-sm">
-          {/* 1. ชื่อจุด / สถานที่ */}
+          {/* 1. หมวดหมู่ / ประเภทมาร์ค (Marker Category) */}
+          <div className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-amber-400" />
+                <span>1. ประเภทมาร์ค (หมวดหมู่) *</span>
+              </label>
+              <span className="text-[11px] font-semibold text-amber-400">
+                {SPOT_TYPES.find((t) => t.id === category)?.label || 'กำหนดเอง'}
+              </span>
+            </div>
+
+            {/* Quick Type Selection Pills */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {SPOT_TYPES.map((type) => {
+                const isSelected = category === type.id;
+                return (
+                  <button
+                    type="button"
+                    key={type.id}
+                    onClick={() => handleSelectCategory(type.id)}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500/20 border-amber-400 text-white shadow-md shadow-amber-500/10 scale-[1.02]'
+                        : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-lg leading-none shrink-0">{type.icon}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold truncate leading-tight">{type.label}</div>
+                      <div className="text-[10px] text-slate-400 truncate leading-tight">{type.hint}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. ชื่อจุด / ชื่อเรียกในแก๊ง */}
           <div>
-            <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1.5">
-              1. ชื่อจุด *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
+                2. ชื่อจุด / ชื่อเรียกในแก๊ง *
+              </label>
+              {category === 'cement_mine' && (
+                <span className="text-[11px] text-amber-300 font-semibold bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-500/30">
+                  🧱 ระบบนับเป็นจุดปูน
+                </span>
+              )}
+            </div>
             <input
               type="text"
               required
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="เช่น ปูน, จุดขายยา, แลนด์มาร์ค..."
+              placeholder={
+                category === 'cement_mine'
+                  ? 'เช่น ปูนริมหาด, ปูน 1, ปูนสะพาน, ปูนท่าเรือ...'
+                  : category === 'dealer'
+                  ? 'เช่น จุดขายยา, แลนน้ำตาล, ขายยาสะพาน...'
+                  : 'เช่น แลนด์มาร์ค, ปั๊มน้ำมัน...'
+              }
               className="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm font-medium"
             />
+            <p className="mt-1 text-[11px] text-slate-400">
+              {category === 'cement_mine'
+                ? '💡 สามารถเปลี่ยนชื่อปูนให้เพื่อนรู้ตำแหน่งได้อิสระ (เช่น "ปูน 1", "ปูนสะพาน") โดยระบบจะยังนับเป็นจุดปูนเสมอ'
+                : '💡 ตั้งชื่อสถานที่ให้เพื่อนในแก๊งเข้าใจง่ายและเรียกพิกัดได้ถูกต้อง'}
+            </p>
           </div>
 
           {/* 2. เลือกไอคอน (Icon Picker) */}
@@ -509,7 +645,7 @@ export const PinModal = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>2. เลือกไอคอนหมุด</span>
+                <span>3. เลือกไอคอนหมุด</span>
               </label>
               <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-500/30">
                 <span className="text-base flex items-center justify-center">{renderSpotIcon(icon, 'w-5 h-5')}</span>
@@ -587,11 +723,11 @@ export const PinModal = ({
             </div>
           </div>
 
-          {/* 3. เลือกสีหมุด (Marker Color) + Live Preview */}
+          {/* 4. เลือกสีหมุด (Marker Color) + Live Preview */}
           <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                3. เลือกสีหมุด (Marker Color)
+                4. เลือกสีหมุด (Marker Color)
               </label>
               <span className="text-[11px] font-mono text-slate-400">{color}</span>
             </div>
@@ -650,11 +786,11 @@ export const PinModal = ({
             </div>
           </div>
 
-          {/* 4. พิกัด X, Y, Z และ Postal */}
+          {/* 5. พิกัด X, Y, Z และ Postal */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
-                4. ตำแหน่งพิกัดในเกม FiveM
+                5. ตำแหน่งพิกัดในเกม FiveM
               </label>
               {coordsPasteStatus && (
                 <span className="text-[11px] text-emerald-400 font-bold animate-pulse flex items-center gap-1">
@@ -739,7 +875,7 @@ export const PinModal = ({
             </div>
           </div>
 
-          {/* 5. ข้อมูลเสริม (คูลดาวน์, ผลผลิต, หมายเหตุ) */}
+          {/* 6. ข้อมูลเสริม (คูลดาวน์, ผลผลิต, หมายเหตุ) */}
           <div className="pt-2 border-t border-slate-800 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>

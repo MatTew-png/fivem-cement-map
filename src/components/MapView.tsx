@@ -8,7 +8,7 @@ import {
   MAP_BOUNDS,
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
-import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from '../types/map';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, SpotCategoryInfo } from '../types/map';
 import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
 import { soundEffects } from '../utils/sound';
 import { resolveAssetUrl } from './PinModal';
@@ -17,11 +17,17 @@ import { computeClusters, createClusterDivIcon, type ClusterItem } from '../util
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
 
-// กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
-function getSpotCategoryInfo(spot: CementSpot) {
+// แยกชัดเจนระหว่างชื่อจุด และประเภทหมวดหมู่
+function getSpotCategoryInfo(spot: CementSpot): SpotCategoryInfo {
   if (isCementSpot(spot)) return CATEGORIES.cement_mine;
-  if (spot.category && spot.category !== 'cement_mine' && CATEGORIES[spot.category]) {
+  if (spot.category && CATEGORIES[spot.category]) {
     return CATEGORIES[spot.category];
+  }
+  if (spot.category === 'dealer' || spot.name.includes('ขายยา') || spot.tags?.includes('dealer') || spot.tags?.includes('จุดขายยา')) {
+    return CATEGORIES.dealer;
+  }
+  if (spot.category === 'fuel' || spot.name.includes('น้ำมัน') || spot.icon?.includes('jerry_can')) {
+    return CATEGORIES.fuel;
   }
   return CATEGORIES.landmark || CATEGORIES.cement_mine;
 }
@@ -115,7 +121,7 @@ function getMarkerIcon(
             font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
             line-height: 1;
           "
-          title="${spot.name} (${spot.x}, ${spot.y})"
+          title="[${cat.name}] ${spot.name} (${spot.x}, ${spot.y})"
         >
           ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
         </div>
@@ -316,12 +322,15 @@ function createPopupNode(
     // IMAGE 1: Cooldown Numpad Picker (Exact match of Image 1)
     // ==============================================================
     popupNode.innerHTML = `
-      <div class="flex items-center justify-between mb-1.5">
-        <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
-          <span>⏱️</span>
-          <span>จับเวลาคูลดาวน์</span>
-        </span>
-        <span class="text-[10px] text-slate-400">กดเลขเวลาเอง (นาที)</span>
+      <div class="flex items-center justify-between gap-1.5 pb-2 border-b border-slate-800/80 mb-2">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+            ${renderSpotIconHtml(spotIcon, 'w-3 h-3')}
+            <span>${cat.name}</span>
+          </span>
+          <span class="font-bold text-xs text-white truncate max-w-[140px]" title="${spot.name}">${spot.name}</span>
+        </div>
+        <span class="text-[10px] text-slate-400 shrink-0">⏱️ ตั้งเวลา</span>
       </div>
 
       <!-- Numpad Display Screen -->

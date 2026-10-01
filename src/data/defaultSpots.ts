@@ -4,8 +4,12 @@ import type { CementSpot, SpotCategoryInfo, MapLayerConfig } from '../types/map'
  * ตรวจสอบว่าเป็นจุดปูนหรือไม่
  * กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
  */
-export function isCementSpot(spot?: { name?: string } | null): boolean {
-  return (spot?.name || '').trim() === 'ปูน';
+export function isCementSpot(spot?: { name?: string; category?: string; icon?: string } | null): boolean {
+  if (!spot) return false;
+  if (spot.category === 'cement_mine' || spot.category?.startsWith('cement')) return true;
+  if (spot.icon === '🧱') return true;
+  const n = (spot.name || '').trim();
+  return n === 'ปูน' || n.startsWith('ปูน') || n.includes('จุดปูน');
 }
 
 export const CATEGORIES: Record<string, SpotCategoryInfo> = {
@@ -19,6 +23,36 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
     bgColor: 'bg-amber-500/20',
     borderColor: 'border-amber-500',
     group: 'งานปูน',
+  },
+  dealer: {
+    id: 'dealer',
+    name: 'จุดขายยา',
+    nameEn: 'Drug Dealer',
+    icon: '/blips/radar_pickup_weed_green.png',
+    color: '#22c55e',
+    bgColor: 'bg-emerald-500/20',
+    borderColor: 'border-emerald-500',
+    group: 'ขายยา',
+  },
+  fuel: {
+    id: 'fuel',
+    name: 'ปั๊มน้ำมัน',
+    nameEn: 'Fuel Station',
+    icon: '/blips/radar_jerry_can.png',
+    color: '#06b6d4',
+    bgColor: 'bg-cyan-500/20',
+    borderColor: 'border-cyan-500',
+    group: 'บริการ',
+  },
+  services: {
+    id: 'services',
+    name: 'บริการ/ทั่วไป',
+    nameEn: 'Services',
+    icon: '🏥',
+    color: '#10b981',
+    bgColor: 'bg-emerald-500/20',
+    borderColor: 'border-emerald-500',
+    group: 'บริการ',
   },
 
   // === แลนด์มาร์คทั่วไป (General Landmarks) ===

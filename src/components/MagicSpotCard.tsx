@@ -63,9 +63,9 @@ export const MagicSpotCard = ({
   const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
   const isCooldownPanelOpen = openCooldownSpotId === spot.id;
-  const isDrugSpot = spot.name === 'จุดขายยา' || spot.tags?.includes('dealer') || spot.tags?.includes('จุดขายยา');
+  const isDrugSpot = spot.category === 'dealer' || spot.name === 'จุดขายยา' || spot.name.includes('ขายยา') || spot.tags?.includes('dealer') || spot.tags?.includes('จุดขายยา');
   const isCement = isCementSpot(spot);
-  const isFuel = spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'));
+  const isFuel = spot.category === 'fuel' || spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'));
 
   // Spotlight Mouse tracking
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {

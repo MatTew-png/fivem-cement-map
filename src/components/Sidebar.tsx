@@ -118,9 +118,15 @@ export const Sidebar = ({
 
   // Spot classifier helpers
   const isDealer = (s: CementSpot): boolean =>
-    s.name === 'จุดขายยา' || Boolean(s.tags?.includes('dealer')) || Boolean(s.tags?.includes('จุดขายยา'));
+    s.category === 'dealer' ||
+    s.name === 'จุดขายยา' ||
+    s.name.includes('ขายยา') ||
+    Boolean(s.icon?.includes('pickup_weed')) ||
+    Boolean(s.tags?.includes('dealer')) ||
+    Boolean(s.tags?.includes('จุดขายยา'));
   const isCement = (s: CementSpot): boolean => isCementSpot(s);
   const isFuel = (s: CementSpot): boolean =>
+    s.category === 'fuel' ||
     Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
 
   // Count spots with urgent cooldown (<= 3 mins)
