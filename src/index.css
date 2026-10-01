@@ -295,9 +295,17 @@
   perspective: 1000px;
 }
 
-.magic-cluster-marker {
+.magic-cluster-marker,
+.custom-leaflet-div-icon {
   background: transparent !important;
   border: none !important;
+  overflow: visible !important;
+}
+
+.marker-cd-badge {
+  pointer-events: none !important;
+  user-select: none !important;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.75));
 }
 
 

@@ -100,6 +100,10 @@ function getMarkerIcon(
       <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 20px; height: 20px;">
         ${isUrgent ? `
           <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+        ` : isReady ? `
+          <div class="marker-ready-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+        ` : isCooldown ? `
+          <div class="marker-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px; border: 2px solid ${spotColor};"></div>
         ` : ''}
         <div 
           class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125 pointer-events-auto select-none"
@@ -115,9 +119,20 @@ function getMarkerIcon(
         >
           ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
         </div>
+        <!-- Floating Countdown Badge above compact dot (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 px-1 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[9px] shadow border border-yellow-200">
-            🔥 <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-bounce">
+            <span>🔥</span>
+            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+          </div>
+        ` : isReady ? `
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/70 border border-emerald-300 animate-pulse">
+            <span>✅ เกิดแล้ว!</span>
+          </div>
+        ` : isCooldown ? `
+          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+            <span>⏱️</span>
+            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
           </div>
         ` : ''}
       </div>
@@ -1289,11 +1304,13 @@ export const MapView = ({
   useEffect(() => {
     if (activeCooldowns.length === 0) return;
 
-    // Track urgent spots so we only update icon when crossing <= 180s threshold
+    // Track urgent & ready spots so we only update icon when crossing boundaries
     const urgentSpots = new Set<string>();
+    const readySpots = new Set<string>();
     activeCooldowns.forEach((cd) => {
       const rem = Math.max(0, Math.floor((cd.expiresAt - Date.now()) / 1000));
       if (rem > 0 && rem <= 180) urgentSpots.add(cd.spotId);
+      if (rem === 0) readySpots.add(cd.spotId);
     });
 
     const interval = setInterval(() => {
@@ -1313,11 +1330,15 @@ export const MapView = ({
           badgeText.textContent = cdTimeStr;
         }
 
-        // Only recreate icon when crossing urgent boundary (normal -> urgent)
+        // Only recreate icon when crossing urgent or ready boundaries
         const wasUrgent = urgentSpots.has(cd.spotId);
-        if (isUrgent !== wasUrgent) {
+        const wasReady = readySpots.has(cd.spotId);
+        if (isUrgent !== wasUrgent || isReady !== wasReady) {
           if (isUrgent) urgentSpots.add(cd.spotId);
           else urgentSpots.delete(cd.spotId);
+
+          if (isReady) readySpots.add(cd.spotId);
+          else readySpots.delete(cd.spotId);
 
           const marker = markersMapRef.current.get(cd.spotId);
           const spot = spots.find((s) => s.id === cd.spotId);

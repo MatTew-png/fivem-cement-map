@@ -59,13 +59,13 @@ export function computeClusters(
 
   // Spots that should never be clustered into a group:
   // 1. Currently selected spot (must always be prominent)
-  // 2. Urgent cooldown spots (<= 3 mins, must be visibly blinking for players)
+  // 2. Active cooldown or ready spots (must always be prominent with floating timer badge)
   const isExcludedFromCluster = (spot: CementSpot) => {
     if (selectedSpotId && spot.id === selectedSpotId) return true;
     const cd = activeCooldowns.find((c) => c.spotId === spot.id);
     if (cd) {
       const rem = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
-      if (rem > 0 && rem <= 180) return true;
+      if (rem >= 0) return true;
     }
     return false;
   };
