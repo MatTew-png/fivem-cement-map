@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
-import { logActivity, getActivityLogs, GANG_SECRET_SEED } from './gangAuth';
+import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED } from './gangAuth';
 
 export interface OnlineMember {
   clientId: string;
@@ -102,6 +102,8 @@ class GangPresenceManager {
   private pruneTimer: number | null = null;
   private reconnectTimer: number | null = null;
   private membersMap: Map<string, OnlineMember> = new Map();
+  // จดจำเซสชั่นของสมาชิกตามชื่อ เพื่อไม่ให้แจ้งเตือนหรือบันทึก Login ซ้ำเวลาเน็ตหลุด/สลับแท็บ
+  private memberSessions: Map<string, { firstJoined: number; lastSeen: number; lastNotifiedJoin: number }> = new Map();
   private listeners: Set<PresenceListener> = new Set();
   private cdListeners: Set<CooldownSyncListener> = new Set();
   private spotListeners: Set<SpotSyncListener> = new Set();
@@ -130,14 +132,17 @@ class GangPresenceManager {
       this.sendHeartbeat();
     }, 15000);
 
-    // ตรวจสอบและตัดรายชื่อคนที่ขาดการเชื่อมต่อเกิน 45 วินาที (Prune inactive)
+    // ตรวจสอบและตัดรายชื่อคนที่ขาดการเชื่อมต่อเกิน 90 วินาที (Prune inactive)
     if (this.pruneTimer) clearInterval(this.pruneTimer);
     this.pruneTimer = window.setInterval(() => {
       this.pruneInactiveMembers();
     }, 5000);
 
-    // ส่งสัญญาณก่อนปิดหน้าต่าง
-    window.addEventListener('beforeunload', this.handleBeforeUnload);
+    // ตรวจจับเมื่อผู้ใช้สลับกลับมาที่แท็บ ให้ส่ง Heartbeat และขอซิงค์หมุดทันที
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', this.handleVisibilityChange);
+      window.addEventListener('beforeunload', this.handleBeforeUnload);
+    }
 
     // ส่ง Ping แรกทันที
     this.sendHeartbeat();
@@ -148,6 +153,11 @@ class GangPresenceManager {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.pruneTimer) clearInterval(this.pruneTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('visibilitychange', this.handleVisibilityChange);
+      window.removeEventListener('beforeunload', this.handleBeforeUnload);
+    }
 
     this.sendLeave();
 
@@ -161,6 +171,7 @@ class GangPresenceManager {
     }
 
     this.membersMap.clear();
+    this.memberSessions.clear();
     this.notifyListeners();
   }
 
@@ -287,12 +298,25 @@ class GangPresenceManager {
 
   public getOnlineMembers(): OnlineMember[] {
     const now = Date.now();
+    // รองรับแท็บเบื้องหลัง (Background Tab Throttling) โดยขยายเป็น 90 วินาที
     const list = Array.from(this.membersMap.values()).filter(
-      (m) => now - m.lastSeen < 45000
+      (m) => now - m.lastSeen < 90000
     );
 
+    // รวมสมาชิกที่ชื่อเดียวกัน (ป้องกันกรณีเปิดหลายแท็บ หรือมี clientId ค้างชั่วคราว)
+    const uniqueMap = new Map<string, OnlineMember>();
+    for (const member of list) {
+      const key = (member.memberName || '').toLowerCase().trim();
+      const existing = uniqueMap.get(key);
+      if (!existing || member.lastSeen > existing.lastSeen) {
+        uniqueMap.set(key, member);
+      }
+    }
+
+    const uniqueList = Array.from(uniqueMap.values());
+
     // เรียง: หัวหน้าขึ้นก่อน แล้วตามด้วยเวลาที่ออนไลน์
-    return list.sort((a, b) => {
+    return uniqueList.sort((a, b) => {
       if (a.isMaster && !b.isMaster) return -1;
       if (!a.isMaster && b.isMaster) return 1;
       return a.joinedAt - b.joinedAt;
@@ -305,15 +329,24 @@ class GangPresenceManager {
 
   private addSelfMember() {
     if (!this.session) return;
+    const now = Date.now();
     const selfMember: OnlineMember = {
       clientId: this.clientId,
       memberName: this.session.memberName,
       isMaster: this.session.isMaster,
-      joinedAt: Date.now(),
-      lastSeen: Date.now(),
+      joinedAt: now,
+      lastSeen: now,
       device: navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop',
     };
     this.membersMap.set(this.clientId, selfMember);
+
+    const normName = this.session.memberName.toLowerCase().trim();
+    this.memberSessions.set(normName, {
+      firstJoined: now,
+      lastSeen: now,
+      lastNotifiedJoin: now,
+    });
+
     this.notifyListeners();
   }
 
@@ -447,11 +480,18 @@ class GangPresenceManager {
     this.sendLeave();
   };
 
+  private handleVisibilityChange = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible' && this.session) {
+      this.sendHeartbeat();
+      this.requestSync();
+    }
+  };
+
   private handleMessage(data: any) {
     if (!data || !data.type) return;
 
-    // ละทิ้งเฉพาะ presence_ping เก่าเกิน 45 วินาที เพื่อไม่ให้รายชื่อค้าง
-    if (data.type === 'presence_ping' && data.timestamp && Date.now() - data.timestamp > 45000) {
+    // ละทิ้งเฉพาะ presence_ping เก่าเกิน 90 วินาที เพื่อไม่ให้รายชื่อค้าง
+    if (data.type === 'presence_ping' && data.timestamp && Date.now() - data.timestamp > 90000) {
       return;
     }
 
@@ -459,19 +499,45 @@ class GangPresenceManager {
     if (data.type === 'presence_ping') {
       if (data.clientId === this.clientId) return; // ตัวเอง
 
-      const existing = this.membersMap.get(data.clientId);
-      const isNewMember = !existing;
+      const normName = (data.memberName || '').toLowerCase().trim();
+      if (!normName) return;
+
+      const now = Date.now();
+      const existingSession = this.memberSessions.get(normName);
+
+      // ถือเป็น "สมาชิกใหม่เข้าสู่ระบบ" ก็ต่อเมื่อ:
+      // - ไม่เคยมีประวัติชื่อนี้ในเซสชั่นนี้มาก่อน
+      // - หรือ ขาดการติดต่อเกิน 15 นาที (900,000 ms)
+      // (หากเน็ตหลุด/ต่อใหม่, สลับแท็บ, หรือรีเฟรช จะไม่นับเป็น Login ใหม่เด็ดขาด เพื่อป้องกันแจ้งเตือนและประวัติรก)
+      const isGenuineNewJoin = !existingSession || (now - existingSession.lastSeen > 15 * 60 * 1000);
+
+      if (isGenuineNewJoin) {
+        this.memberSessions.set(normName, {
+          firstJoined: data.joinedAt || now,
+          lastSeen: now,
+          lastNotifiedJoin: now,
+        });
+      } else {
+        existingSession.lastSeen = now;
+      }
+
+      // หากมี clientId เก่าของคนเดิมค้างอยู่ใน Map (เช่น รีเฟรชหน้าเว็บ หรือเปิดหลายแท็บ) ให้ลบออก
+      this.membersMap.forEach((m, cId) => {
+        if (cId !== data.clientId && (m.memberName || '').toLowerCase().trim() === normName) {
+          this.membersMap.delete(cId);
+        }
+      });
 
       this.membersMap.set(data.clientId, {
         clientId: data.clientId,
         memberName: data.memberName,
         isMaster: !!data.isMaster,
-        joinedAt: data.joinedAt || Date.now(),
-        lastSeen: Date.now(),
+        joinedAt: isGenuineNewJoin ? (data.joinedAt || now) : (existingSession?.firstJoined || data.joinedAt || now),
+        lastSeen: now,
         device: data.device || 'Desktop',
       });
 
-      if (isNewMember) {
+      if (isGenuineNewJoin) {
         logActivity(data.memberName, 'login', 'ออนไลน์เปิดใช้งานแผนที่');
         this.triggerNotification({
           type: 'member_join',
@@ -569,7 +635,8 @@ class GangPresenceManager {
     let changed = false;
 
     this.membersMap.forEach((member, id) => {
-      if (id !== this.clientId && now - member.lastSeen > 45000) {
+      // ขยายเวลา prune เป็น 90 วินาที เพื่อไม่ให้แท็บเบื้องหลังหลุดบ่อย
+      if (id !== this.clientId && now - member.lastSeen > 90000) {
         this.membersMap.delete(id);
         changed = true;
       }
@@ -578,6 +645,12 @@ class GangPresenceManager {
     if (changed) {
       this.notifyListeners();
     }
+  }
+
+  // ล้างประวัติกิจกรรมทั้งหมด และแจ้งเตือน UI ให้รีเฟรชทันที
+  public clearLogs() {
+    clearActivityLogs();
+    this.notifyListeners();
   }
 
   private notifyListeners() {

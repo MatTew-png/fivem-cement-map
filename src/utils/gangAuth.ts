@@ -191,18 +191,47 @@ export function logoutGang(): void {
   }
 }
 
-// บันทึก Activity Log ลง LocalStorage
+// บันทึก Activity Log ลง LocalStorage พร้อมระบบป้องกันการสแปมบันทึกซ้ำซ้อน
 export function logActivity(memberName: string, action: ActivityLog['action'], details?: string): void {
   try {
     const raw = localStorage.getItem(ACTIVITY_LOGS_KEY);
     const logs: ActivityLog[] = raw ? JSON.parse(raw) : [];
 
+    const now = Date.now();
+    const cleanName = memberName.trim();
+    const normName = cleanName.toLowerCase();
+
+    // 1. ป้องกันสแปม Login ซ้ำๆ: ถ้าสมาชิกคนเดิมเคยมีบันทึก 'login' ภายใน 15 นาทีที่ผ่านมา ให้ข้าม
+    if (action === 'login') {
+      const recentLogin = logs.find(
+        (l) =>
+          l.action === 'login' &&
+          (l.memberName || '').toLowerCase().trim() === normName &&
+          now - l.timestamp < 15 * 60 * 1000
+      );
+      if (recentLogin) {
+        return; // ไม่บันทึกซ้ำ
+      }
+    } else {
+      // 2. ป้องกันแอ็กชันอื่นๆ ซ้ำติดๆ กัน (ภายใน 20 วินาที)
+      const recentSameAction = logs.find(
+        (l) =>
+          l.action === action &&
+          (l.memberName || '').toLowerCase().trim() === normName &&
+          l.details === details &&
+          now - l.timestamp < 20 * 1000
+      );
+      if (recentSameAction) {
+        return;
+      }
+    }
+
     const newLog: ActivityLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      memberName,
+      id: `log_${now}_${Math.random().toString(36).slice(2, 6)}`,
+      memberName: cleanName,
       action,
       details,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     // เก็บประวัติย้อนหลังสูงสุด 50 รายการ
@@ -213,11 +242,48 @@ export function logActivity(memberName: string, action: ActivityLog['action'], d
   }
 }
 
-// ดึง Activity Logs
+// ล้างประวัติ Activity Logs ทั้งหมด
+export function clearActivityLogs(): void {
+  try {
+    localStorage.removeItem(ACTIVITY_LOGS_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
+// ดึง Activity Logs พร้อมทำความสะอาดบันทึกซ้ำซ้อนในอดีต (Auto-Sanitize)
 export function getActivityLogs(): ActivityLog[] {
   try {
     const raw = localStorage.getItem(ACTIVITY_LOGS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const logs: ActivityLog[] = JSON.parse(raw);
+    if (!Array.isArray(logs)) return [];
+
+    // ล้างบันทึก 'login' ที่ซ้ำซ้อนของสมาชิกคนเดิมที่อยู่ใกล้กันเกิน 15 นาทีออก
+    let cleaned = false;
+    const sanitized: ActivityLog[] = [];
+    const lastLoginByMember: Record<string, number> = {};
+
+    for (const log of logs) {
+      if (log.action === 'login') {
+        const normName = (log.memberName || '').toLowerCase().trim();
+        const prevTime = lastLoginByMember[normName];
+        if (prevTime !== undefined && Math.abs(prevTime - log.timestamp) < 15 * 60 * 1000) {
+          cleaned = true;
+          continue; // ข้าม log ที่ซ้ำกัน
+        }
+        lastLoginByMember[normName] = log.timestamp;
+      }
+      sanitized.push(log);
+    }
+
+    if (cleaned && sanitized.length !== logs.length) {
+      try {
+        localStorage.setItem(ACTIVITY_LOGS_KEY, JSON.stringify(sanitized.slice(0, 50)));
+      } catch {}
+    }
+
+    return sanitized.slice(0, 50);
   } catch {
     return [];
   }

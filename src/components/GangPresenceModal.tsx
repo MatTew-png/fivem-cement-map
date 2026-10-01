@@ -10,8 +10,9 @@ import {
   Calendar,
   Smartphone,
   Monitor,
+  Trash2,
 } from 'lucide-react';
-import type { OnlineMember } from '../utils/presence';
+import { gangPresence, type OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession } from '../utils/gangAuth';
 import { getUpcomingPINs, formatPINsForDiscord, logoutGang } from '../utils/gangAuth';
 
@@ -243,7 +244,19 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             <div className="space-y-3">
               <div className="text-[11px] text-slate-400 flex items-center justify-between mb-1 px-1">
                 <span>ไทม์ไลน์กิจกรรมเรียลไทม์:</span>
-                <span className="text-slate-500 text-[10px] font-mono">50 รายการล่าสุด</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 text-[10px] font-mono">{activityLogs.length} รายการ</span>
+                  {activityLogs.length > 0 && (
+                    <button
+                      onClick={() => gangPresence.clearLogs()}
+                      className="px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-red-950/60 text-slate-400 hover:text-red-400 text-[10px] border border-slate-700/60 hover:border-red-500/40 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="ล้างประวัติกิจกรรมทั้งหมด"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      <span>ล้างประวัติ</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {activityLogs.length === 0 ? (
