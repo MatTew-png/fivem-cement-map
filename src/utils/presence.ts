@@ -37,9 +37,11 @@ export type NotificationListener = (notification: GangNotification) => void;
 export type PresenceListener = (members: OnlineMember[], logs: ActivityLog[]) => void;
 export type CooldownSyncListener = (data: { spotId: string; spotName: string; durationMinutes: number; action: 'start' | 'cancel'; memberName: string }) => void;
 export type SpotManifestListener = (customSpots: CementSpot[], senderName: string) => void;
+export type SyncRequestListener = () => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v1';
+const MQTT_SPOTS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/spots_manifest_retained_v2';
 const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
 
 // E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่าย
@@ -105,6 +107,8 @@ class GangPresenceManager {
   private spotListeners: Set<SpotSyncListener> = new Set();
   private notifListeners: Set<NotificationListener> = new Set();
   private manifestListeners: Set<SpotManifestListener> = new Set();
+  private syncRequestListeners: Set<SyncRequestListener> = new Set();
+  private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
   private isConnected: boolean = false;
 
   constructor() {
@@ -186,7 +190,24 @@ class GangPresenceManager {
     return () => this.manifestListeners.delete(callback);
   }
 
-  // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกใหม่ได้รับข้อมูลครบถ้วน
+  public subscribeSyncRequest(callback: SyncRequestListener): () => void {
+    this.syncRequestListeners.add(callback);
+    return () => this.syncRequestListeners.delete(callback);
+  }
+
+  // ส่งสัญญาณขอซิงค์ข้อมูลหมุดจากเพื่อนที่ออนไลน์อยู่
+  public requestSync() {
+    if (!this.session) return;
+    const payload = {
+      type: 'sync_request',
+      clientId: this.clientId,
+      memberName: this.session.memberName,
+      timestamp: Date.now(),
+    };
+    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+  }
+
+  // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกใหม่และคนที่เข้าทีหลังได้รับข้อมูลครบถ้วนตลอดไป
   public broadcastSpotManifest(customSpots: CementSpot[]) {
     if (!this.session || customSpots.length === 0) return;
     const payload = {
@@ -196,7 +217,10 @@ class GangPresenceManager {
       customSpots,
       timestamp: Date.now(),
     };
-    this.publish(payload);
+    // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
+    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
+    this.publish(payload, MQTT_SPOTS_RETAINED_TOPIC, { qos: 1, retain: true });
   }
 
   public triggerNotification(notif: Omit<GangNotification, 'id' | 'timestamp'>) {
@@ -300,25 +324,31 @@ class GangPresenceManager {
       this.client = mqtt.connect(MQTT_BROKER_URL, {
         clientId: this.clientId,
         keepalive: 30,
-        reconnectPeriod: 4000,
+        reconnectPeriod: 3000,
         clean: true,
       });
 
       this.client.on('connect', () => {
         this.isConnected = true;
-        this.client?.subscribe(MQTT_TOPIC, { qos: 1 }, (err) => {
+        this.client?.subscribe([MQTT_TOPIC, MQTT_SPOTS_RETAINED_TOPIC], { qos: 1 }, (err) => {
           if (!err) {
             this.sendHeartbeat();
+            this.flushOutgoingQueue();
+            this.requestSync();
           }
         });
       });
 
-      this.client.on('message', (_topic, payload) => {
+      this.client.on('message', (topic, payload) => {
         try {
           const raw = payload.toString();
           const data = decryptPayload(raw);
           if (data) {
-            this.handleMessage(data);
+            if (topic === MQTT_SPOTS_RETAINED_TOPIC) {
+              this.handleRetainedSpotsMessage(data);
+            } else {
+              this.handleMessage(data);
+            }
           }
         } catch {
           // Ignore parse errors
@@ -337,9 +367,21 @@ class GangPresenceManager {
     }
   }
 
-  private publish(data: object) {
+  private flushOutgoingQueue() {
+    if (!this.client || !this.client.connected) return;
+    while (this.outgoingQueue.length > 0) {
+      const item = this.outgoingQueue.shift();
+      if (item) {
+        try {
+          this.client.publish(item.topic, item.payload, item.options || { qos: 1 });
+        } catch {}
+      }
+    }
+  }
+
+  private publish(data: object, targetTopic: string = MQTT_TOPIC, options: mqtt.IClientPublishOptions = { qos: 1 }) {
     // ส่งในแท็บเครื่องเดียวกันผ่าน BroadcastChannel
-    if (this.bc) {
+    if (this.bc && targetTopic === MQTT_TOPIC) {
       try {
         this.bc.postMessage(data);
       } catch {
@@ -347,15 +389,23 @@ class GangPresenceManager {
       }
     }
 
+    const encryptedStr = encryptPayload(data);
+
     // เข้ารหัส E2EE ก่อนส่งข้ามเครื่องผ่าน HiveMQ MQTT Broker
     if (this.client && this.client.connected) {
       try {
-        const encryptedStr = encryptPayload(data);
-        this.client.publish(MQTT_TOPIC, encryptedStr, { qos: 1 });
+        this.client.publish(targetTopic, encryptedStr, options);
       } catch {
         // Ignore network errors
       }
+    } else {
+      this.outgoingQueue.push({ topic: targetTopic, payload: encryptedStr, options });
     }
+  }
+
+  private handleRetainedSpotsMessage(data: any) {
+    if (!data || !Array.isArray(data.customSpots)) return;
+    this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'คลาวด์แก๊ง'));
   }
 
   private sendHeartbeat() {
@@ -400,8 +450,8 @@ class GangPresenceManager {
   private handleMessage(data: any) {
     if (!data || !data.type) return;
 
-    // ละทิ้งข้อความที่เก่าเกิน 45 วินาที เพื่อไม่ให้เบราว์เซอร์กระตุกตอนเปิดหน้าใหม่
-    if (data.timestamp && Date.now() - data.timestamp > 45000) {
+    // ละทิ้งเฉพาะ presence_ping เก่าเกิน 45 วินาที เพื่อไม่ให้รายชื่อค้าง
+    if (data.type === 'presence_ping' && data.timestamp && Date.now() - data.timestamp > 45000) {
       return;
     }
 
@@ -431,6 +481,8 @@ class GangPresenceManager {
         });
         // ส่ง Heartbeat ตอบกลับ เพื่อให้สมาชิกใหม่เห็นเราทันทีในรายชื่อ
         this.sendHeartbeat();
+        // ส่งสำเนาหมุดที่มี ให้สมาชิกใหม่ทันที!
+        this.syncRequestListeners.forEach((cb) => cb());
       }
 
       this.notifyListeners();
@@ -504,6 +556,11 @@ class GangPresenceManager {
       if (Array.isArray(data.customSpots) && data.customSpots.length > 0) {
         this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'สมาชิกแก๊ง'));
       }
+    }
+    // 6. Sync Request (สมาชิกที่เพิ่งต่อเน็ต ร้องขอข้อมูลหมุดสดๆ จากคนในแก๊ง)
+    else if (data.type === 'sync_request') {
+      if (data.clientId === this.clientId) return; // ตัวเอง
+      this.syncRequestListeners.forEach((cb) => cb());
     }
   }
 

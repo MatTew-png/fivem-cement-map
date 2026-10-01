@@ -41,6 +41,13 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
       if (!existing) {
         existingMap.set(defSpot.id, defSpot);
         modified = true;
+      } else {
+        // ซิงค์หมวดหมู่และไอคอนทางการให้ตรงกับส่วนกลางล่าสุดเสมอ
+        if (existing.category !== defSpot.category || existing.icon !== defSpot.icon) {
+          existing.category = defSpot.category;
+          existing.icon = defSpot.icon;
+          modified = true;
+        }
       }
     });
 

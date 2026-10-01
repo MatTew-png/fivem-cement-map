@@ -88,10 +88,10 @@ export function App() {
     }
   }, []);
 
-  // State: Filter Cement Spots Visibility (Default to false so cement spots don't overlap landmarks)
+  // State: Filter Cement Spots Visibility (Default to true so everyone sees all spots immediately)
   const [showCementSpots, setShowCementSpots] = useState<boolean>(() => {
     const saved = localStorage.getItem('fivem_map_show_cement');
-    return saved !== null ? saved === 'true' : false;
+    return saved !== null ? saved === 'true' : true;
   });
 
   // State: Category Filter Pills on Map
@@ -102,7 +102,7 @@ export function App() {
     } catch {}
     const cementSaved = localStorage.getItem('fivem_map_show_cement');
     return {
-      cement: cementSaved !== null ? cementSaved === 'true' : false,
+      cement: cementSaved !== null ? cementSaved === 'true' : true,
       lands: true,
       fuel: true,
       services: true,
@@ -250,7 +250,16 @@ export function App() {
       });
     });
 
-    // Broadcast our custom spots to any online peer on join
+    // ตอบสนองเมื่อมีเพื่อนในแก๊งร้องขอซิงค์ข้อมูล หรือมีคนเพิ่งต่อเน็ตเข้ามาใหม่
+    const unsubSyncReq = gangPresence.subscribeSyncRequest(() => {
+      const defIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+      const custom = (loadSpotsFromStorage() || []).filter((s) => !defIds.has(s.id));
+      if (custom.length > 0) {
+        gangPresence.broadcastSpotManifest(custom);
+      }
+    });
+
+    // Broadcast our custom spots to any online peer on join & to retained cloud topic
     const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
     const currentCustom = (loadSpotsFromStorage() || []).filter((s) => !defaultIds.has(s.id));
     if (currentCustom.length > 0) {
@@ -263,6 +272,7 @@ export function App() {
       unsubNotification();
       unsubSpotSync();
       unsubManifest();
+      unsubSyncReq();
       gangPresence.stop();
     };
   }, [gangSession]);
@@ -411,40 +421,61 @@ export function App() {
 
   const handleSaveSpot = useCallback((spot: CementSpot) => {
     let isNew = false;
+    let nextSpots: CementSpot[] = [];
     setSpots((prev) => {
       const exists = prev.some((s) => s.id === spot.id);
       isNew = !exists;
       if (exists) {
-        return prev.map((s) => (s.id === spot.id ? spot : s));
+        nextSpots = prev.map((s) => (s.id === spot.id ? spot : s));
       } else {
-        return [spot, ...prev];
+        nextSpots = [spot, ...prev];
       }
+      return nextSpots;
     });
     setSelectedSpot(spot);
     soundEffects.playPinPlaced();
     gangPresence.broadcastSpotChange(isNew ? 'add' : 'update', spot);
+
+    // ส่งชุดหมุดที่อัปเดตแล้วขึ้น HiveMQ Retained Topic ทันที เพื่อให้คนที่เปิดทีหลังได้หมุดนี้ด้วยแน่นอน!
+    const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+    const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
+    gangPresence.broadcastSpotManifest(customSpots);
   }, []);
 
   const handleDeleteSpot = useCallback((id: string) => {
-    setSpots((prev) => prev.filter((s) => s.id !== id));
+    let nextSpots: CementSpot[] = [];
+    setSpots((prev) => {
+      nextSpots = prev.filter((s) => s.id !== id);
+      return nextSpots;
+    });
     setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== id));
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
     gangPresence.broadcastSpotChange('delete', undefined, id);
+
+    // อัปเดตชุดหมุดบน HiveMQ Retained Topic ทันที
+    const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+    const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
+    gangPresence.broadcastSpotManifest(customSpots);
   }, []);
 
   const handleSpotMoved = useCallback((spotId: string, newCoords: { x: number; y: number }) => {
     let movedSpot: CementSpot | undefined;
-    setSpots((prev) =>
-      prev.map((s) => {
+    let nextSpots: CementSpot[] = [];
+    setSpots((prev) => {
+      nextSpots = prev.map((s) => {
         if (s.id === spotId) {
           movedSpot = { ...s, x: newCoords.x, y: newCoords.y, updatedAt: Date.now() };
           return movedSpot;
         }
         return s;
-      })
-    );
+      });
+      return nextSpots;
+    });
     if (movedSpot) {
       gangPresence.broadcastSpotChange('move', movedSpot);
+      const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+      const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
+      gangPresence.broadcastSpotManifest(customSpots);
     }
   }, []);
 
