@@ -1,7 +1,8 @@
 import type { CementSpot, ActiveCooldown } from '../types/map';
+import { DEFAULT_SPOTS } from '../data/defaultSpots';
 
-const SPOTS_STORAGE_KEY = 'fivem_cement_spots_v5';
-const COOLDOWNS_STORAGE_KEY = 'fivem_cement_cooldowns_v5';
+const SPOTS_STORAGE_KEY = 'fivem_cement_spots_v6';
+const COOLDOWNS_STORAGE_KEY = 'fivem_cement_cooldowns_v6';
 
 export function loadSpotsFromStorage(): CementSpot[] | null {
   try {
@@ -11,9 +12,38 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     localStorage.removeItem('fivem_cement_spots_v3');
     localStorage.removeItem('fivem_cement_spots_v4');
 
-    const raw = localStorage.getItem(SPOTS_STORAGE_KEY);
-    if (!raw) return null;
+    const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+    let raw = localStorage.getItem(SPOTS_STORAGE_KEY);
+
+    // If upgrading to v6: automatically merge latest DEFAULT_SPOTS with any custom spots created by user!
+    if (!raw) {
+      const v5Raw = localStorage.getItem('fivem_cement_spots_v5');
+      if (v5Raw) {
+        try {
+          const v5Parsed = JSON.parse(v5Raw) as CementSpot[];
+          const customSpots = v5Parsed.filter((s) => !officialSpotIds.has(s.id));
+          const merged = [...DEFAULT_SPOTS, ...customSpots];
+          localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(merged));
+          localStorage.removeItem('fivem_cement_spots_v5');
+          return merged;
+        } catch {}
+      }
+      return null;
+    }
+
     const parsed = JSON.parse(raw);
+    const existingMap = new Map<string, CementSpot>(parsed.map((s: CementSpot) => [s.id, s]));
+
+    // Ensure all official DEFAULT_SPOTS are present and up to date
+    let modified = false;
+    DEFAULT_SPOTS.forEach((defSpot) => {
+      const existing = existingMap.get(defSpot.id);
+      if (!existing) {
+        existingMap.set(defSpot.id, defSpot);
+        modified = true;
+      }
+    });
+
     const ORIGINAL_LAN_SPOTS: Record<string, { name: string; icon: string; color: string }> = {
       'spot-1789097466769': { name: 'แลนน้ำตาล', icon: '/blips/radar_player_king_brown.png', color: '#b45309' },
       'spot-1789097316804': { name: 'แลนส้ม', icon: '/blips/radar_player_king_orange.png', color: '#f59e0b' },
@@ -28,16 +58,9 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
       'spot-1789096309666': { name: 'แลนฟ้า', icon: '/blips/radar_player_king_cyan.png', color: '#06b6d4' },
     };
 
-    let modified = false;
-    const processed = parsed.map((item: CementSpot) => {
+    const processed = Array.from(existingMap.values()).map((item: CementSpot) => {
       const current = { ...item };
-      // กฎ: จุดปูน คือ จุดที่ชื่อ "ปูน" เท่านั้น ที่เหลือถือเป็นแลนด์มาร์ค
-      const isCement = (current.name || '').trim() === 'ปูน';
-      if (!isCement && current.category === 'cement_mine') {
-        current.category = 'landmark';
-        modified = true;
-      }
-      // คืนค่าจุดแลนทั้ง 11 จุดให้กลับเป็นชื่อและไอคอนเดิม
+      // คืนค่าจุดแลนทั้ง 11 จุดให้กลับเป็นชื่อและไอคอนเดิมอย่างแน่นอน
       if (ORIGINAL_LAN_SPOTS[current.id]) {
         const orig = ORIGINAL_LAN_SPOTS[current.id];
         if (current.name !== orig.name || current.icon !== orig.icon || current.color !== orig.color) {
@@ -139,6 +162,8 @@ export function clearAllSpotsFromStorage(): void {
     localStorage.removeItem('fivem_cement_spots_v2');
     localStorage.removeItem('fivem_cement_spots_v3');
     localStorage.removeItem('fivem_cement_spots_v4');
+    localStorage.removeItem('fivem_cement_spots_v5');
+    localStorage.removeItem('fivem_cement_cooldowns_v5');
   } catch (err) {
     console.error('Failed to clear spots from storage:', err);
   }
@@ -146,7 +171,15 @@ export function clearAllSpotsFromStorage(): void {
 
 export function loadCooldownsFromStorage(): ActiveCooldown[] {
   try {
-    const raw = localStorage.getItem(COOLDOWNS_STORAGE_KEY);
+    let raw = localStorage.getItem(COOLDOWNS_STORAGE_KEY);
+    if (!raw) {
+      const v5Raw = localStorage.getItem('fivem_cement_cooldowns_v5');
+      if (v5Raw) {
+        localStorage.setItem(COOLDOWNS_STORAGE_KEY, v5Raw);
+        localStorage.removeItem('fivem_cement_cooldowns_v5');
+        raw = v5Raw;
+      }
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -190,7 +223,7 @@ export function parseImportedSpots(jsonString: string): CementSpot[] {
     return {
       id: item.id || `spot-${Date.now()}-${index}`,
       name: item.name || `จุดปูน #${index + 1}`,
-      category: item.name?.trim() === 'ปูน' ? 'cement_mine' : (item.category && item.category !== 'cement_mine' ? item.category : 'landmark'),
+      category: item.category || (item.name?.trim() === 'ปูน' ? 'cement_mine' : 'landmark'),
       x: item.x,
       y: item.y,
       z: item.z ?? 30.0,
