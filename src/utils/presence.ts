@@ -601,17 +601,23 @@ class GangPresenceManager {
       this.cdListeners.forEach((cb) => cb(data));
 
       if (data.action === 'start') {
+        const spotTitle = data.spotName || 'จุดปูน';
+        logActivity(data.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotTitle} (${data.durationMinutes} นาที)`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'cooldown_start',
           title: `${data.memberName} เริ่มจับเวลา`,
-          subtitle: `${data.spotName} (${data.durationMinutes} นาที)`,
+          subtitle: `${spotTitle} (${data.durationMinutes} นาที)`,
           icon: '⏳',
         });
       } else if (data.action === 'cancel') {
+        const spotTitle = data.spotName || 'จุดปูน';
+        logActivity(data.memberName, 'cooldown_cancel', `ยกเลิกจับเวลาจุด ${spotTitle}`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'cooldown_cancel',
           title: `${data.memberName} ยกเลิกจับเวลา`,
-          subtitle: `${data.spotName || ''}`,
+          subtitle: `${spotTitle}`,
           icon: '⏹️',
         });
       }
@@ -623,6 +629,8 @@ class GangPresenceManager {
 
       const spotName = data.spot?.name || data.spotId || 'จุดมาร์คเกอร์';
       if (data.action === 'add') {
+        logActivity(data.memberName, 'spot_add', `ปักหมุดใหม่: ${spotName}`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'spot_add',
           title: `${data.memberName} ปักหมุดใหม่`,
@@ -630,6 +638,8 @@ class GangPresenceManager {
           icon: '🧱',
         });
       } else if (data.action === 'update') {
+        logActivity(data.memberName, 'spot_update', `แก้ไขหมุด: ${spotName}`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'spot_update',
           title: `${data.memberName} แก้ไขหมุด`,
@@ -637,6 +647,8 @@ class GangPresenceManager {
           icon: '✏️',
         });
       } else if (data.action === 'move') {
+        logActivity(data.memberName, 'spot_move', `ย้ายพิกัด: ${spotName}`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'spot_move',
           title: `${data.memberName} ย้ายพิกัด`,
@@ -644,6 +656,8 @@ class GangPresenceManager {
           icon: '📍',
         });
       } else if (data.action === 'delete') {
+        logActivity(data.memberName, 'spot_delete', `ลบหมุด: ${spotName}`);
+        this.notifyListeners();
         this.triggerNotification({
           type: 'spot_delete',
           title: `${data.memberName} ลบหมุด`,

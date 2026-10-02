@@ -32,6 +32,7 @@ export interface CementSpot {
 
 export interface ActiveCooldown {
   spotId: string;
+  spotName?: string;
   startedAt: number;
   expiresAt: number;
   durationSeconds: number;

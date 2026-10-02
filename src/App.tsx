@@ -187,7 +187,7 @@ export function App() {
         const expiresAt = now + durationSeconds * 1000;
         setActiveCooldowns((prev) => {
           const filtered = prev.filter((c) => c.spotId !== syncData.spotId);
-          return [...filtered, { spotId: syncData.spotId, startedAt: now, expiresAt, durationSeconds }];
+          return [...filtered, { spotId: syncData.spotId, spotName: syncData.spotName, startedAt: now, expiresAt, durationSeconds }];
         });
         soundEffects.playCooldownStarted();
       } else if (syncData.action === 'cancel') {
@@ -255,11 +255,12 @@ export function App() {
     });
 
     // Auto-link & Sync all running cooldowns across all members (คนเข้าหลังได้รับทันที)
-    const unsubCdManifest = gangPresence.subscribeCooldownManifest((incomingCds, _senderName) => {
+    const unsubCdManifest = gangPresence.subscribeCooldownManifest((incomingCds, senderName) => {
       setActiveCooldowns((prev) => {
         const now = Date.now();
         const prevMap = new Map(prev.filter((c) => c.expiresAt > now - 60000).map((c) => [c.spotId, c]));
         let hasChange = false;
+        let newCount = 0;
 
         incomingCds.forEach((ic) => {
           if (!ic || ic.expiresAt <= now - 60000) return;
@@ -267,6 +268,7 @@ export function App() {
           if (!existing) {
             prevMap.set(ic.spotId, ic);
             hasChange = true;
+            newCount++;
           } else if (Math.abs(existing.expiresAt - ic.expiresAt) > 3000) {
             if (ic.startedAt > existing.startedAt) {
               prevMap.set(ic.spotId, ic);
@@ -274,6 +276,15 @@ export function App() {
             }
           }
         });
+
+        if (hasChange && newCount > 0) {
+          gangPresence.triggerNotification({
+            type: 'cooldown_start',
+            title: 'ซิงค์คูลดาวน์จากเพื่อนในแก๊ง',
+            subtitle: `พบ ${newCount} จุดกำลังนับถอยหลังอยู่ในแก๊ง (จาก ${senderName})`,
+            icon: '⏳',
+          });
+        }
 
         if (hasChange) {
           return Array.from(prevMap.values());
@@ -573,7 +584,7 @@ export function App() {
 
     setActiveCooldowns((prev) => {
       const filtered = prev.filter((c) => c.spotId !== spot.id);
-      const updated = [...filtered, { spotId: spot.id, startedAt: now, expiresAt, durationSeconds }];
+      const updated = [...filtered, { spotId: spot.id, spotName: spot.name, startedAt: now, expiresAt, durationSeconds }];
       gangPresence.broadcastCooldownManifest(updated);
       return updated;
     });

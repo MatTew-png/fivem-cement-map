@@ -275,6 +275,8 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                           return { icon: '🟢', bg: 'bg-emerald-950 border-emerald-500', tag: 'LOGIN', tagColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' };
                         case 'cooldown_start':
                           return { icon: '🔥', bg: 'bg-amber-950 border-amber-500', tag: 'COOLDOWN', tagColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30' };
+                        case 'cooldown_cancel':
+                          return { icon: '⏹️', bg: 'bg-rose-950 border-rose-500', tag: 'CANCELLED', tagColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30' };
                         case 'spot_add':
                           return { icon: '📍', bg: 'bg-sky-950 border-sky-500', tag: 'NEW PIN', tagColor: 'text-sky-400 bg-sky-500/10 border-sky-500/30' };
                         case 'spot_update':

@@ -33,7 +33,7 @@ const ToastItem: React.FC<{
     const timer = setTimeout(() => {
       setIsLeaving(true);
       setTimeout(() => onDismiss(notif.id), 300);
-    }, 4500);
+    }, 7000);
 
     return () => {
       clearTimeout(animTimer);
@@ -74,7 +74,7 @@ const ToastItem: React.FC<{
       {/* NameThatUI Pattern: Progress Bar Countdown */}
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-800/80 overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 transition-all duration-[4450ms] ease-linear"
+          className="h-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 transition-all duration-[6950ms] ease-linear"
           style={{ width: progressWidth }}
         />
       </div>

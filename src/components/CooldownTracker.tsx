@@ -93,7 +93,7 @@ export const CooldownTracker = memo(({
         <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
           {sortedCooldowns.map((cd) => {
             const spot = spots.find((s) => s.id === cd.spotId);
-            if (!spot) return null;
+            const displayName = spot?.name || cd.spotName || 'จุดปูน';
 
             const remainingSeconds = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
             const totalSeconds = cd.durationSeconds;
@@ -118,12 +118,12 @@ export const CooldownTracker = memo(({
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span
-                    onClick={() => onFocusSpot(spot)}
-                    className="font-medium truncate hover:text-amber-400 cursor-pointer flex-1 mr-2 flex items-center gap-1"
-                    title={spot.name}
+                    onClick={() => spot && onFocusSpot(spot)}
+                    className={`font-medium truncate ${spot ? 'hover:text-amber-400 cursor-pointer' : ''} flex-1 mr-2 flex items-center gap-1`}
+                    title={displayName}
                   >
                     {isUrgent && <span>🔥</span>}
-                    <span>{spot.name}</span>
+                    <span>{displayName}</span>
                   </span>
                   <button
                     onClick={() => onCancelCooldown(cd.spotId)}
@@ -140,12 +140,14 @@ export const CooldownTracker = memo(({
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       ปูนเกิดแล้ว! จกได้เลย
                     </span>
-                    <button
-                      onClick={() => onFocusSpot(spot)}
-                      className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] hover:bg-emerald-400 transition-colors"
-                    >
-                      ดูจุดนี้
-                    </button>
+                    {spot && (
+                      <button
+                        onClick={() => onFocusSpot(spot)}
+                        className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] hover:bg-emerald-400 transition-colors"
+                      >
+                        ดูจุดนี้
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div>
