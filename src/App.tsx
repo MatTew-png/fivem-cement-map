@@ -218,7 +218,11 @@ export function App() {
         );
       } else if (event.action === 'delete') {
         setSpots((prev) => prev.filter((s) => s.id !== event.spotId));
-        setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== event.spotId));
+        setActiveCooldowns((prev) => {
+          const updated = prev.filter((c) => c.spotId !== event.spotId);
+          gangPresence.broadcastCooldownManifest(updated);
+          return updated;
+        });
         setSelectedSpot((prev) => (prev?.id === event.spotId ? null : prev));
       }
     });
@@ -250,12 +254,47 @@ export function App() {
       });
     });
 
+    // Auto-link & Sync all running cooldowns across all members (คนเข้าหลังได้รับทันที)
+    const unsubCdManifest = gangPresence.subscribeCooldownManifest((incomingCds, _senderName) => {
+      setActiveCooldowns((prev) => {
+        const now = Date.now();
+        const prevMap = new Map(prev.filter((c) => c.expiresAt > now - 60000).map((c) => [c.spotId, c]));
+        let hasChange = false;
+
+        incomingCds.forEach((ic) => {
+          if (!ic || ic.expiresAt <= now - 60000) return;
+          const existing = prevMap.get(ic.spotId);
+          if (!existing) {
+            prevMap.set(ic.spotId, ic);
+            hasChange = true;
+          } else if (Math.abs(existing.expiresAt - ic.expiresAt) > 3000) {
+            if (ic.startedAt > existing.startedAt) {
+              prevMap.set(ic.spotId, ic);
+              hasChange = true;
+            }
+          }
+        });
+
+        if (hasChange) {
+          return Array.from(prevMap.values());
+        }
+        return prev;
+      });
+    });
+
     // ตอบสนองเมื่อมีเพื่อนในแก๊งร้องขอซิงค์ข้อมูล หรือมีคนเพิ่งต่อเน็ตเข้ามาใหม่
     const unsubSyncReq = gangPresence.subscribeSyncRequest(() => {
       const defIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
       const custom = (loadSpotsFromStorage() || []).filter((s) => !defIds.has(s.id));
       if (custom.length > 0) {
         gangPresence.broadcastSpotManifest(custom);
+      }
+      // ส่งคูลดาวน์ที่กำลังนับถอยหลัง ให้คนที่เปิดเว็บตามมาทีหลังได้รับทันที
+      const currentCds = loadCooldownsFromStorage() || [];
+      const now = Date.now();
+      const validCds = currentCds.filter((c) => c && c.expiresAt > now - 60000);
+      if (validCds.length > 0) {
+        gangPresence.broadcastCooldownManifest(validCds);
       }
     });
 
@@ -272,6 +311,7 @@ export function App() {
       unsubNotification();
       unsubSpotSync();
       unsubManifest();
+      unsubCdManifest();
       unsubSyncReq();
       gangPresence.stop();
     };
@@ -533,7 +573,9 @@ export function App() {
 
     setActiveCooldowns((prev) => {
       const filtered = prev.filter((c) => c.spotId !== spot.id);
-      return [...filtered, { spotId: spot.id, startedAt: now, expiresAt, durationSeconds }];
+      const updated = [...filtered, { spotId: spot.id, startedAt: now, expiresAt, durationSeconds }];
+      gangPresence.broadcastCooldownManifest(updated);
+      return updated;
     });
 
     gangPresence.broadcastCooldown(spot.id, spot.name, mins, 'start');
@@ -541,7 +583,11 @@ export function App() {
   }, []);
 
   const handleCancelCooldown = useCallback((spotId: string) => {
-    setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== spotId));
+    setActiveCooldowns((prev) => {
+      const updated = prev.filter((c) => c.spotId !== spotId);
+      gangPresence.broadcastCooldownManifest(updated);
+      return updated;
+    });
     gangPresence.broadcastCooldown(spotId, '', 0, 'cancel');
   }, []);
 

@@ -1,5 +1,5 @@
 import mqtt, { type MqttClient } from 'mqtt';
-import type { CementSpot } from '../types/map';
+import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
 import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED } from './gangAuth';
 
@@ -37,11 +37,13 @@ export type NotificationListener = (notification: GangNotification) => void;
 export type PresenceListener = (members: OnlineMember[], logs: ActivityLog[]) => void;
 export type CooldownSyncListener = (data: { spotId: string; spotName: string; durationMinutes: number; action: 'start' | 'cancel'; memberName: string }) => void;
 export type SpotManifestListener = (customSpots: CementSpot[], senderName: string) => void;
+export type CooldownManifestListener = (activeCooldowns: ActiveCooldown[], senderName: string) => void;
 export type SyncRequestListener = () => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v1';
 const MQTT_SPOTS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/spots_manifest_retained_v2';
+const MQTT_COOLDOWNS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/cooldowns_manifest_retained_v2';
 const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
 
 // E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่าย
@@ -109,6 +111,7 @@ class GangPresenceManager {
   private spotListeners: Set<SpotSyncListener> = new Set();
   private notifListeners: Set<NotificationListener> = new Set();
   private manifestListeners: Set<SpotManifestListener> = new Set();
+  private cdManifestListeners: Set<CooldownManifestListener> = new Set();
   private syncRequestListeners: Set<SyncRequestListener> = new Set();
   private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
   private isConnected: boolean = false;
@@ -201,6 +204,11 @@ class GangPresenceManager {
     return () => this.manifestListeners.delete(callback);
   }
 
+  public subscribeCooldownManifest(callback: CooldownManifestListener): () => void {
+    this.cdManifestListeners.add(callback);
+    return () => this.cdManifestListeners.delete(callback);
+  }
+
   public subscribeSyncRequest(callback: SyncRequestListener): () => void {
     this.syncRequestListeners.add(callback);
     return () => this.syncRequestListeners.delete(callback);
@@ -232,6 +240,25 @@ class GangPresenceManager {
     this.publish(payload, MQTT_TOPIC, { qos: 1 });
     // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
     this.publish(payload, MQTT_SPOTS_RETAINED_TOPIC, { qos: 1, retain: true });
+  }
+
+  // ส่งสำเนาคูลดาวน์ทั้งหมดที่กำลังนับถอยหลัง เพื่อให้สมาชิกที่เปิดเว็บทีหลังได้รับทันที
+  public broadcastCooldownManifest(activeCooldowns: ActiveCooldown[]) {
+    if (!this.session) return;
+    const now = Date.now();
+    // เก็บเฉพาะคูลดาวน์ที่ยังไม่หมดอายุ (หรือเพิ่งหมดอายุไม่เกิน 60 วินาที)
+    const valid = activeCooldowns.filter((c) => c && c.expiresAt > now - 60000);
+    const payload = {
+      type: 'cooldown_manifest',
+      clientId: this.clientId,
+      memberName: this.session.memberName,
+      cooldowns: valid,
+      timestamp: now,
+    };
+    // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
+    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
+    this.publish(payload, MQTT_COOLDOWNS_RETAINED_TOPIC, { qos: 1, retain: true });
   }
 
   public triggerNotification(notif: Omit<GangNotification, 'id' | 'timestamp'>) {
@@ -363,7 +390,7 @@ class GangPresenceManager {
 
       this.client.on('connect', () => {
         this.isConnected = true;
-        this.client?.subscribe([MQTT_TOPIC, MQTT_SPOTS_RETAINED_TOPIC], { qos: 1 }, (err) => {
+        this.client?.subscribe([MQTT_TOPIC, MQTT_SPOTS_RETAINED_TOPIC, MQTT_COOLDOWNS_RETAINED_TOPIC], { qos: 1 }, (err) => {
           if (!err) {
             this.sendHeartbeat();
             this.flushOutgoingQueue();
@@ -379,6 +406,8 @@ class GangPresenceManager {
           if (data) {
             if (topic === MQTT_SPOTS_RETAINED_TOPIC) {
               this.handleRetainedSpotsMessage(data);
+            } else if (topic === MQTT_COOLDOWNS_RETAINED_TOPIC) {
+              this.handleRetainedCooldownsMessage(data);
             } else {
               this.handleMessage(data);
             }
@@ -439,6 +468,13 @@ class GangPresenceManager {
   private handleRetainedSpotsMessage(data: any) {
     if (!data || !Array.isArray(data.customSpots)) return;
     this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'คลาวด์แก๊ง'));
+  }
+
+  private handleRetainedCooldownsMessage(data: any) {
+    if (!data || !Array.isArray(data.cooldowns)) return;
+    const now = Date.now();
+    const valid = data.cooldowns.filter((c: ActiveCooldown) => c && c.expiresAt > now - 60000);
+    this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'คลาวด์แก๊ง'));
   }
 
   private sendHeartbeat() {
@@ -627,6 +663,15 @@ class GangPresenceManager {
     else if (data.type === 'sync_request') {
       if (data.clientId === this.clientId) return; // ตัวเอง
       this.syncRequestListeners.forEach((cb) => cb());
+    }
+    // 7. Cooldown Manifest Sync (เมื่อสมาชิกเข้ามาใหม่ ได้รับชุดคูลดาวน์ที่เพื่อนๆ กำลังนับอยู่)
+    else if (data.type === 'cooldown_manifest') {
+      if (data.clientId === this.clientId) return; // ตัวเอง
+      if (Array.isArray(data.cooldowns)) {
+        const now = Date.now();
+        const valid = data.cooldowns.filter((c: ActiveCooldown) => c && c.expiresAt > now - 60000);
+        this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกแก๊ง'));
+      }
     }
   }
 
