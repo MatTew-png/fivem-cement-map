@@ -175,6 +175,18 @@ export function App() {
     return cleanup;
   }, []);
 
+  // Effect: Periodic Session Validation (เตะผู้ใช้ออกจากระบบทันทีหากเซสชั่นโมฆะหรือถูกรีเซ็ต)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const active = getGangSession();
+      if (!active && gangSession) {
+        setGangSession(null);
+        gangPresence.stop();
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [gangSession]);
+
   // Effect: Connect to gang presence & cooldown & spot synchronization
   useEffect(() => {
     if (!gangSession) return;

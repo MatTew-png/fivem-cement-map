@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
-import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED } from './gangAuth';
+import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED, logoutGang } from './gangAuth';
 
 export interface OnlineMember {
   clientId: string;
@@ -687,6 +687,15 @@ class GangPresenceManager {
         this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกแก๊ง'));
       }
     }
+    // 8. Force Logout (คำสั่งเตะสมาชิกทั้งหมดออกจากระบบ)
+    else if (data.type === 'force_logout') {
+      logoutGang();
+      this.session = null;
+      this.stop();
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    }
   }
 
   private pruneInactiveMembers() {
@@ -710,6 +719,17 @@ class GangPresenceManager {
   public clearLogs() {
     clearActivityLogs();
     this.notifyListeners();
+  }
+
+  // ส่งสัญญาณบังคับให้อุปกรณ์ทุกเครื่องเตะผู้ใช้ออกจากระบบทันที
+  public broadcastForceLogout(reason: string = 'หัวหน้าแก๊งรีเซ็ตรหัสผ่านใหม่') {
+    const payload = {
+      type: 'force_logout',
+      reason,
+      timestamp: Date.now(),
+      clientId: this.clientId,
+    };
+    this.publish(payload, MQTT_TOPIC, { qos: 1 });
   }
 
   private notifyListeners() {

@@ -17,11 +17,26 @@ export interface ActivityLog {
 
 export const GANG_SECRET_SEED = 'RUNTHUKVERB_GANG_SECRET_KEY_2026';
 const MASTER_PIN_KEY = 'runthukverb_master_pin';
-const SESSION_STORAGE_KEY = 'runthukverb_gang_session';
+const SESSION_STORAGE_KEY = 'runthukverb_gang_session_v2';
 const ACTIVITY_LOGS_KEY = 'runthukverb_activity_logs';
 
-// Default Master PIN สำหรับหัวหน้าแก๊ง (ระงับรหัสเดิม 999999 เพื่อรอหัวหน้ากำหนดรหัสใหม่)
-export const DEFAULT_MASTER_PIN = '';
+// เวลาอ้างอิงสำหรับการรีเซ็ตรหัสผ่านและเตะสมาชิกออกจากระบบทั้งหมด
+export const FORCE_RESET_TIMESTAMP = 1791614490000;
+
+// ล้างเซสชั่นเก่าและรหัสผ่านเดิม 999999 ทันทีที่เข้าสู่ระบบใหม่
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    localStorage.removeItem('runthukverb_gang_session');
+    if (localStorage.getItem(MASTER_PIN_KEY) === '999999') {
+      localStorage.removeItem(MASTER_PIN_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// Default Master PIN สำหรับหัวหน้าแก๊ง (รหัสใหม่ที่หัวหน้ากำหนด)
+export const DEFAULT_MASTER_PIN = '222547';
 
 // ฟังก์ชันแปลง Date เป็นสตริง YYYY-MM-DD ในเขตเวลาท้องถิ่น (Local Time)
 export function getLocalDateString(date: Date = new Date()): string {
@@ -50,7 +65,11 @@ export function getDailyPIN(date: Date = new Date()): string {
 
 // คืนค่า Master PIN ของหัวหน้าแก๊ง
 export function getMasterPIN(): string {
-  return localStorage.getItem(MASTER_PIN_KEY) || DEFAULT_MASTER_PIN;
+  const custom = localStorage.getItem(MASTER_PIN_KEY);
+  if (custom && custom !== '999999' && custom.length >= 6) {
+    return custom;
+  }
+  return DEFAULT_MASTER_PIN;
 }
 
 // บันทึก Master PIN ใหม่ (สำหรับหัวหน้า)
@@ -169,8 +188,16 @@ export function getGangSession(): GangSession | null {
     const todayStr = getLocalDateString();
     if (session.authDate !== todayStr) {
       // หมดอายุแล้ว
+      logoutGang();
       return null;
     }
+
+    // หากเซสชั่นถูกสร้างก่อนการรีเซ็ตรหัสผ่านความปลอดภัย ให้เตะออกจากระบบทันที
+    if (!session.authenticatedAt || session.authenticatedAt < FORCE_RESET_TIMESTAMP) {
+      logoutGang();
+      return null;
+    }
+
     return session;
   } catch {
     return null;
@@ -186,6 +213,7 @@ export function isSessionValidToday(): boolean {
 export function logoutGang(): void {
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem('runthukverb_gang_session');
   } catch {
     // Ignore
   }
