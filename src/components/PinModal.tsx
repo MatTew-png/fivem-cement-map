@@ -159,6 +159,10 @@ const ICON_CATEGORIES = [
       // 446 Benny's Motorworks
       { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - น้ำเงิน (Blue)" },
       { emoji: '/blips/radar_bennys.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - ขาว (White)" },
+
+      // 544 Pickup Repair
+      { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - แดง (Red)' },
+      { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - ขาว (White)' },
     ],
   },
   {
