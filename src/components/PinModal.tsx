@@ -111,6 +111,7 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ปกติ' },
 
       // 318 Garbage
+      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า (Cyan)' },
       { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา' },
       { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
       { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
