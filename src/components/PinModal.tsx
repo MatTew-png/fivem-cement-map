@@ -104,6 +104,7 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
 
       // 478 Contraband
+      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เทา' },
       { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ขาว' },
       { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เหลือง' },
       { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ชมพู' },
@@ -277,6 +278,7 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา (ขาว) / จุดขายยา Dealer' },
       { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา (ม่วง Purple Haze)' },
       { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา (เหลือง)' },
+      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เทา' },
       { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ' },
       { emoji: '🌿', name: 'ใบกัญชา / สมุนไพร' },
       { emoji: '💊', name: 'เม็ดยา / สารเคมี' },
