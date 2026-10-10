@@ -65,7 +65,7 @@ export function getDailyPIN(date: Date = new Date()): string {
 
 // คืนค่า Master PIN ของหัวหน้าแก๊ง
 export function getMasterPIN(): string {
-  const custom = localStorage.getItem(MASTER_PIN_KEY);
+  const custom = typeof localStorage !== 'undefined' ? localStorage.getItem(MASTER_PIN_KEY) : null;
   if (custom && custom !== '999999' && custom.length >= 6) {
     return custom;
   }
@@ -75,7 +75,9 @@ export function getMasterPIN(): string {
 // บันทึก Master PIN ใหม่ (สำหรับหัวหน้า)
 export function setMasterPIN(newPin: string): boolean {
   if (!newPin || newPin.length < 6) return false;
-  localStorage.setItem(MASTER_PIN_KEY, newPin);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(MASTER_PIN_KEY, newPin);
+  }
   return true;
 }
 
