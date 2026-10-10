@@ -137,15 +137,19 @@ export const Sidebar = memo(({
   const isHeadReset = (s: CementSpot): boolean =>
     s.category === 'head_reset' ||
     s.name.includes('รีหัว') ||
+    Boolean(s.icon && s.icon.includes('radar_bar') && !s.icon.includes('biker_bar')) ||
     Boolean(s.tags?.includes('head_reset')) ||
     Boolean(s.tags?.includes('รีหัว'));
   const isFarm = (s: CementSpot): boolean =>
-    s.category === 'farm' ||
-    s.name.includes('ฟาร์ม') ||
-    s.name.includes('ฟาม') ||
-    s.icon === '🌾' ||
-    Boolean(s.tags?.includes('farm')) ||
-    Boolean(s.tags?.includes('ฟาร์ม'));
+    !isHeadReset(s) && (
+      s.category === 'farm' ||
+      s.name.includes('ฟาร์ม') ||
+      s.name.includes('ฟาม') ||
+      Boolean(s.icon && s.icon.includes('contraband')) ||
+      s.icon === '🌾' ||
+      Boolean(s.tags?.includes('farm')) ||
+      Boolean(s.tags?.includes('ฟาร์ม'))
+    );
   const isFuel = (s: CementSpot): boolean =>
     s.category === 'fuel' ||
     Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
@@ -560,31 +564,31 @@ export const Sidebar = memo(({
               <span>แข่งรถ ({counts.race})</span>
             </button>
 
-            {/* Head Reset */}
+            {/* Head Reset (93 radar_bar) */}
             <button
               type="button"
               onClick={() => setSelectedFilter('head_reset')}
               className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
                 selectedFilter === 'head_reset'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
+                  ? 'bg-pink-600 text-white shadow-md shadow-pink-600/30'
+                  : 'bg-pink-950/40 text-pink-300 border border-pink-500/30 hover:bg-pink-900/40'
               }`}
             >
-              <span>🏥</span>
+              <img src="/blips/radar_bar_pink.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
               <span>รีหัว ({counts.head_reset})</span>
             </button>
 
-            {/* Farm */}
+            {/* Farm (478 radar_contraband) */}
             <button
               type="button"
               onClick={() => setSelectedFilter('farm')}
               className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
                 selectedFilter === 'farm'
-                  ? 'bg-yellow-500 text-slate-950 shadow-md shadow-yellow-500/20'
-                  : 'bg-yellow-950/40 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-900/40'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-amber-950/40 text-amber-300 border border-amber-500/30 hover:bg-amber-900/40'
               }`}
             >
-              <span>🌾</span>
+              <img src="/blips/radar_contraband.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
               <span>ฟาร์ม ({counts.farm})</span>
             </button>
 
@@ -780,76 +784,76 @@ export const Sidebar = memo(({
                 </div>
               )}
 
-              {/* 4. Head Reset / Clinic */}
+              {/* 4. Head Reset / Bar */}
               {groupedSpots.headReset.length > 0 && (
-                <div className="rounded-2xl border border-emerald-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                <div className="rounded-2xl border border-pink-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
                   <button
                     type="button"
                     onClick={() => toggleGroup('head_reset')}
-                    className="w-full flex items-center justify-between p-2.5 bg-emerald-950/20 hover:bg-emerald-950/30 text-left transition-colors cursor-pointer select-none group"
+                    className="w-full flex items-center justify-between p-2.5 bg-pink-950/20 hover:bg-pink-950/30 text-left transition-colors cursor-pointer select-none group"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
-                        🏥
+                      <div className="w-7 h-7 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        <img src="/blips/radar_bar_pink.png" alt="" className="w-4 h-4 object-contain" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-emerald-200 group-hover:text-emerald-100">
+                          <span className="font-bold text-xs text-pink-200 group-hover:text-pink-100">
                             รีหัว (Head Reset)
                           </span>
-                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-pink-500/20 text-pink-300 border border-pink-500/40">
                             {groupedSpots.headReset.length}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-400">จุดรีหัวและสถานที่พยาบาล</p>
+                        <p className="text-[10px] text-slate-400">จุดรีหัวและบาร์เหล้า (Blip 93)</p>
                       </div>
                     </div>
                     <ChevronDown
-                      className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${
+                      className={`w-4 h-4 text-pink-400 transition-transform duration-200 ${
                         isSearching || expandedGroups.head_reset ? 'rotate-180' : ''
                       }`}
                     />
                   </button>
                   {(isSearching || expandedGroups.head_reset) && (
-                    <div className="p-2 space-y-2 border-t border-emerald-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                    <div className="p-2 space-y-2 border-t border-pink-900/30 bg-slate-900/30 animate-in fade-in duration-150">
                       {groupedSpots.headReset.map(renderCard)}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* 5. Farm Spots */}
+              {/* 5. Farm Spots (Contraband) */}
               {groupedSpots.farm.length > 0 && (
-                <div className="rounded-2xl border border-yellow-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                <div className="rounded-2xl border border-amber-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
                   <button
                     type="button"
                     onClick={() => toggleGroup('farm')}
-                    className="w-full flex items-center justify-between p-2.5 bg-yellow-950/20 hover:bg-yellow-950/30 text-left transition-colors cursor-pointer select-none group"
+                    className="w-full flex items-center justify-between p-2.5 bg-amber-950/20 hover:bg-amber-950/30 text-left transition-colors cursor-pointer select-none group"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-yellow-500/20 border border-yellow-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
-                        🌾
+                      <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        <img src="/blips/radar_contraband.png" alt="" className="w-4 h-4 object-contain" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-yellow-200 group-hover:text-yellow-100">
+                          <span className="font-bold text-xs text-amber-200 group-hover:text-amber-100">
                             ฟาร์ม (Farm)
                           </span>
-                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40">
                             {groupedSpots.farm.length}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-400">จุดฟาร์มและเก็บเกี่ยววัตถุดิบ</p>
+                        <p className="text-[10px] text-slate-400">จุดฟาร์มและของเถื่อน (Blip 478)</p>
                       </div>
                     </div>
                     <ChevronDown
-                      className={`w-4 h-4 text-yellow-400 transition-transform duration-200 ${
+                      className={`w-4 h-4 text-amber-400 transition-transform duration-200 ${
                         isSearching || expandedGroups.farm ? 'rotate-180' : ''
                       }`}
                     />
                   </button>
                   {(isSearching || expandedGroups.farm) && (
-                    <div className="p-2 space-y-2 border-t border-yellow-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                    <div className="p-2 space-y-2 border-t border-amber-900/30 bg-slate-900/30 animate-in fade-in duration-150">
                       {groupedSpots.farm.map(renderCard)}
                     </div>
                   )}
