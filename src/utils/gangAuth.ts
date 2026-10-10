@@ -140,11 +140,6 @@ export function verifyPIN(
     return { success: false, isMaster: false, error: 'กรุณากรอกชื่อเล่น' };
   }
 
-  // แบนชื่อ 111111 ไม่ให้ล็อกอินเข้าสู่ระบบเด็ดขาด
-  if (cleanName === '111111') {
-    return { success: false, isMaster: false, error: 'ชื่อนี้ถูกระงับการใช้งานในระบบโดยหัวหน้าแก๊ง' };
-  }
-
   const todayPIN = getDailyPIN();
   const masterPIN = getMasterPIN();
 

@@ -526,11 +526,6 @@ class GangPresenceManager {
   private handleMessage(data: any) {
     if (!data || !data.type) return;
 
-    // บล็อกข้อความและการออนไลน์จากชื่อที่ถูกแบน
-    if ((data.memberName || '').trim() === '111111') {
-      return;
-    }
-
     // ละทิ้งเฉพาะ presence_ping เก่าเกิน 90 วินาที เพื่อไม่ให้รายชื่อค้าง
     if (data.type === 'presence_ping' && data.timestamp && Date.now() - data.timestamp > 90000) {
       return;
