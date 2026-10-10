@@ -96,37 +96,42 @@ function getMarkerIcon(
 
   const ghostClass = isGhostMode && !isCurrentSelected ? 'opacity-25 pointer-events-none transition-opacity duration-200' : '';
 
+  const isImageBlip = Boolean(
+    spotIcon && (spotIcon.startsWith('/') || spotIcon.startsWith('http') || spotIcon.endsWith('.png'))
+  );
+
   let markerHtml = '';
   let iconSize: [number, number] = [42, 48];
   let iconAnchor: [number, number] = [21, 48];
 
   if (isCompactMode) {
-    iconSize = [20, 20];
-    iconAnchor = [10, 10];
+    iconSize = [28, 28];
+    iconAnchor = [14, 14];
     markerHtml = `
-      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 20px; height: 20px;">
+      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 28px; height: 28px;">
         ${isUrgent ? `
-          <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+          <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
+          <div class="marker-urgent-pulse-ring-delayed pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
         ` : isReady ? `
-          <div class="marker-ready-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px;"></div>
+          <div class="marker-ready-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
         ` : isCooldown ? `
-          <div class="marker-pulse-ring pointer-events-none" style="width: 26px; height: 26px; margin-top: -13px; margin-left: -13px; border: 2px solid ${spotColor};"></div>
+          <div class="marker-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px; border: 2px solid ${spotColor};"></div>
         ` : ''}
         <div 
-          class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg border-2 transition-transform duration-200 hover:scale-125 pointer-events-auto select-none"
+          class="blip-sprite-inner flex items-center justify-center transition-transform duration-150 hover:scale-125 pointer-events-auto select-none"
           style="
-            background-color: ${isUrgent ? '#ef4444' : spotColor};
-            border-color: ${isCurrentSelected ? '#ffffff' : '#0f172a'};
             transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
-            box-shadow: ${isCurrentSelected ? '0 0 10px #ffffff' : '0 2px 6px rgba(0,0,0,0.6)'};
-            font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
+            filter: ${isCurrentSelected ? 'drop-shadow(0 0 6px #ffffff) drop-shadow(0 2px 5px rgba(0,0,0,0.95))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.85))'};
             line-height: 1;
           "
           title="[${cat.name}] ${spot.name} (${spot.x}, ${spot.y})"
         >
-          ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
+          ${isImageBlip
+            ? `<img src="${resolveAssetUrl(spotIcon)}" alt="" class="w-[24px] h-[24px] object-contain pointer-events-none select-none" loading="lazy" decoding="async" />`
+            : `<span class="text-[20px] leading-none select-none">${spotIcon}</span>`
+          }
         </div>
-        <!-- Floating Countdown Badge above compact dot (pointer-events-none prevents blocking neighbor pin clicks!) -->
+        <!-- Floating Countdown Badge above compact blip (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
           <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-pulse">
             <span>🔥</span>

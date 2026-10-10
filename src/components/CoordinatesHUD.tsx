@@ -249,19 +249,19 @@ export const CoordinatesHUD = memo(({
           </button>
         )}
 
-        {/* Compact Mode Toggle */}
+        {/* Compact / Radar Blip Mode Toggle */}
         {onToggleCompactMode && (
           <button
             onClick={onToggleCompactMode}
-            title="สลับเป็นหมุดจุดจิ๋ว เพื่อไม่ให้บังพื้นที่และปักจุดติดๆ กันได้ง่าย"
+            title="สลับโหมดไอคอน: เรดาร์ GTA (Blip แท้ไร้กรอบวงกลมแบบในเกม) หรือ หมุดปัก (Pin)"
             className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
               isCompactMode
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold'
                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
             }`}
           >
-            <span>🔘</span>
-            <span>{isCompactMode ? 'หมุดจิ๋ว (เปิด)' : 'หมุดจิ๋ว'}</span>
+            <span>{isCompactMode ? '🎯' : '📍'}</span>
+            <span>{isCompactMode ? 'เรดาร์ GTA (Blip)' : 'หมุดปัก (Pin)'}</span>
           </button>
         )}
 
