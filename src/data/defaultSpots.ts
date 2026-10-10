@@ -24,6 +24,39 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
     borderColor: 'border-amber-500',
     group: 'งานปูน',
   },
+  // === แข่งรถ (Racing) ===
+  race: {
+    id: 'race',
+    name: 'แข่งรถ',
+    nameEn: 'Racing',
+    icon: '/blips/radar_race_land_purple.png',
+    color: '#a855f7',
+    bgColor: 'bg-purple-500/20',
+    borderColor: 'border-purple-500',
+    group: 'แข่งรถ',
+  },
+  // === รีหัว (Head Reset) ===
+  head_reset: {
+    id: 'head_reset',
+    name: 'รีหัว',
+    nameEn: 'Head Reset',
+    icon: '/blips/radar_hospital_green.png',
+    color: '#10b981',
+    bgColor: 'bg-emerald-500/20',
+    borderColor: 'border-emerald-500',
+    group: 'รีหัว',
+  },
+  // === ฟาร์ม (Farm) ===
+  farm: {
+    id: 'farm',
+    name: 'ฟาร์ม',
+    nameEn: 'Farm',
+    icon: '🌾',
+    color: '#eab308',
+    bgColor: 'bg-yellow-500/20',
+    borderColor: 'border-yellow-500',
+    group: 'ฟาร์ม',
+  },
   dealer: {
     id: 'dealer',
     name: 'จุดขายยา',

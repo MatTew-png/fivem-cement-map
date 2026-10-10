@@ -96,17 +96,21 @@ export function App() {
 
   // State: Category Filter Pills on Map
   const [categoriesState, setCategoriesState] = useState<Record<QuickCategory, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('fivem_map_categories_state_v1');
-      if (saved) return JSON.parse(saved);
-    } catch {}
     const cementSaved = localStorage.getItem('fivem_map_show_cement');
-    return {
+    const defaults: Record<QuickCategory, boolean> = {
       cement: cementSaved !== null ? cementSaved === 'true' : true,
+      race: true,
+      head_reset: true,
+      farm: true,
       lands: true,
       fuel: true,
       services: true,
     };
+    try {
+      const saved = localStorage.getItem('fivem_map_categories_state_v1');
+      if (saved) return { ...defaults, ...JSON.parse(saved) };
+    } catch {}
+    return defaults;
   });
 
   // State: Smart Clustering Engine (Default ON)
@@ -395,6 +399,9 @@ export function App() {
   const categoryCounts = useMemo(() => {
     const counts: Record<QuickCategory, number> = {
       cement: 0,
+      race: 0,
+      head_reset: 0,
+      farm: 0,
       lands: 0,
       fuel: 0,
       services: 0,

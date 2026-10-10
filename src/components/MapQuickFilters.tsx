@@ -61,6 +61,78 @@ export const MapQuickFilters = memo(({
           </span>
         </button>
 
+        {/* 2. Race Spots */}
+        <button
+          type="button"
+          onClick={() => handleCategoryClick('race')}
+          title={categoriesState.race ? 'คลิกเพื่อซ่อนจุดแข่งรถบนแมพ' : 'คลิกเพื่อแสดงจุดแข่งรถบนแมพ'}
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+            categoriesState.race
+              ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-sm shadow-purple-500/10'
+              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
+          }`}
+        >
+          <span>🏁</span>
+          <span className="hidden sm:inline">แข่งรถ</span>
+          <span
+            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
+              categoriesState.race
+                ? 'bg-purple-400/20 text-purple-200 border border-purple-400/30'
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            {counts.race}
+          </span>
+        </button>
+
+        {/* 3. Head Reset (Clinic) */}
+        <button
+          type="button"
+          onClick={() => handleCategoryClick('head_reset')}
+          title={categoriesState.head_reset ? 'คลิกเพื่อซ่อนจุดรีหัวบนแมพ' : 'คลิกเพื่อแสดงจุดรีหัวบนแมพ'}
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+            categoriesState.head_reset
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/10'
+              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
+          }`}
+        >
+          <span>🏥</span>
+          <span className="hidden sm:inline">รีหัว</span>
+          <span
+            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
+              categoriesState.head_reset
+                ? 'bg-emerald-400/20 text-emerald-200 border border-emerald-400/30'
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            {counts.head_reset}
+          </span>
+        </button>
+
+        {/* 4. Farm Spots */}
+        <button
+          type="button"
+          onClick={() => handleCategoryClick('farm')}
+          title={categoriesState.farm ? 'คลิกเพื่อซ่อนจุดฟาร์มบนแมพ' : 'คลิกเพื่อแสดงจุดฟาร์มบนแมพ'}
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+            categoriesState.farm
+              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50 shadow-sm shadow-yellow-500/10'
+              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
+          }`}
+        >
+          <span>🌾</span>
+          <span className="hidden sm:inline">ฟาร์ม</span>
+          <span
+            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
+              categoriesState.farm
+                ? 'bg-yellow-400/20 text-yellow-200 border border-yellow-400/30'
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            {counts.farm}
+          </span>
+        </button>
+
         {/* 2. Lands (Royal Kings) */}
         <button
           type="button"

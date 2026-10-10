@@ -3,10 +3,13 @@ import type { CementSpot, ActiveCooldown } from '../types/map';
 import { isCementSpot } from '../data/defaultSpots';
 import { gameCoordsToLatLng } from './crs';
 
-export type QuickCategory = 'cement' | 'lands' | 'fuel' | 'services';
+export type QuickCategory = 'cement' | 'race' | 'head_reset' | 'farm' | 'lands' | 'fuel' | 'services';
 
 export function getSpotQuickCategory(spot: CementSpot): QuickCategory {
   if (isCementSpot(spot)) return 'cement';
+  if (spot.category === 'race' || spot.name.includes('แข่งรถ') || (spot.icon && spot.icon.includes('race_land'))) return 'race';
+  if (spot.category === 'head_reset' || spot.name.includes('รีหัว')) return 'head_reset';
+  if (spot.category === 'farm' || spot.name.includes('ฟาร์ม') || spot.name.includes('ฟาม') || spot.icon === '🌾') return 'farm';
   if (spot.category === 'landmark' || spot.name.startsWith('แลน') || (spot.icon && spot.icon.includes('player_king'))) return 'lands';
   if (spot.category === 'fuel' || spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'))) return 'fuel';
   return 'services';

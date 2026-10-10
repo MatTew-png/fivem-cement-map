@@ -45,7 +45,7 @@ interface SidebarProps {
   onToggleSound?: () => void;
 }
 
-type FilterTab = 'all' | 'dealers' | 'cement' | 'fuel' | 'urgent' | 'landmarks';
+type FilterTab = 'all' | 'dealers' | 'cement' | 'race' | 'head_reset' | 'farm' | 'fuel' | 'urgent' | 'landmarks';
 
 export const Sidebar = memo(({
   spots,
@@ -81,6 +81,9 @@ export const Sidebar = memo(({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     cooldowns: true,
     dealers: true,
+    race: true,
+    head_reset: true,
+    farm: true,
     fuel: true,
     cement: false, // Collapsed by default (87 spots) so screen isn't overwhelmed
     landmarks: false,
@@ -125,6 +128,24 @@ export const Sidebar = memo(({
     Boolean(s.tags?.includes('dealer')) ||
     Boolean(s.tags?.includes('จุดขายยา'));
   const isCement = (s: CementSpot): boolean => isCementSpot(s);
+  const isRace = (s: CementSpot): boolean =>
+    s.category === 'race' ||
+    s.name.includes('แข่งรถ') ||
+    Boolean(s.icon?.includes('race_land')) ||
+    Boolean(s.tags?.includes('race')) ||
+    Boolean(s.tags?.includes('แข่งรถ'));
+  const isHeadReset = (s: CementSpot): boolean =>
+    s.category === 'head_reset' ||
+    s.name.includes('รีหัว') ||
+    Boolean(s.tags?.includes('head_reset')) ||
+    Boolean(s.tags?.includes('รีหัว'));
+  const isFarm = (s: CementSpot): boolean =>
+    s.category === 'farm' ||
+    s.name.includes('ฟาร์ม') ||
+    s.name.includes('ฟาม') ||
+    s.icon === '🌾' ||
+    Boolean(s.tags?.includes('farm')) ||
+    Boolean(s.tags?.includes('ฟาร์ม'));
   const isFuel = (s: CementSpot): boolean =>
     s.category === 'fuel' ||
     Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
@@ -143,12 +164,18 @@ export const Sidebar = memo(({
   const counts = useMemo(() => {
     let dealersCount = 0;
     let cementCount = 0;
+    let raceCount = 0;
+    let headResetCount = 0;
+    let farmCount = 0;
     let fuelCount = 0;
     let landmarksCount = 0;
 
     spots.forEach((s) => {
       if (isDealer(s)) dealersCount++;
       else if (isCement(s)) cementCount++;
+      else if (isRace(s)) raceCount++;
+      else if (isHeadReset(s)) headResetCount++;
+      else if (isFarm(s)) farmCount++;
       else if (isFuel(s)) fuelCount++;
       else landmarksCount++;
     });
@@ -157,6 +184,9 @@ export const Sidebar = memo(({
       total: spots.length,
       dealers: dealersCount,
       cement: cementCount,
+      race: raceCount,
+      head_reset: headResetCount,
+      farm: farmCount,
       fuel: fuelCount,
       landmarks: landmarksCount,
     };
@@ -171,6 +201,12 @@ export const Sidebar = memo(({
         matchTab = isDealer(spot);
       } else if (selectedFilter === 'cement') {
         matchTab = isCement(spot);
+      } else if (selectedFilter === 'race') {
+        matchTab = isRace(spot);
+      } else if (selectedFilter === 'head_reset') {
+        matchTab = isHeadReset(spot);
+      } else if (selectedFilter === 'farm') {
+        matchTab = isFarm(spot);
       } else if (selectedFilter === 'fuel') {
         matchTab = isFuel(spot);
       } else if (selectedFilter === 'urgent') {
@@ -178,7 +214,7 @@ export const Sidebar = memo(({
         const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
         matchTab = rem > 0 && rem <= 180;
       } else if (selectedFilter === 'landmarks') {
-        matchTab = !isDealer(spot) && !isCement(spot) && !isFuel(spot);
+        matchTab = !isDealer(spot) && !isCement(spot) && !isRace(spot) && !isHeadReset(spot) && !isFarm(spot) && !isFuel(spot);
       }
 
       // 2. Search query filter
@@ -208,6 +244,9 @@ export const Sidebar = memo(({
   const groupedSpots = useMemo(() => {
     const dealers: CementSpot[] = [];
     const cement: CementSpot[] = [];
+    const race: CementSpot[] = [];
+    const headReset: CementSpot[] = [];
+    const farm: CementSpot[] = [];
     const fuel: CementSpot[] = [];
     const landmarks: CementSpot[] = [];
     const cooldownList: CementSpot[] = [];
@@ -223,6 +262,12 @@ export const Sidebar = memo(({
         dealers.push(spot);
       } else if (isCement(spot)) {
         cement.push(spot);
+      } else if (isRace(spot)) {
+        race.push(spot);
+      } else if (isHeadReset(spot)) {
+        headReset.push(spot);
+      } else if (isFarm(spot)) {
+        farm.push(spot);
       } else if (isFuel(spot)) {
         fuel.push(spot);
       } else {
@@ -233,6 +278,9 @@ export const Sidebar = memo(({
     return {
       dealers,
       cement,
+      race,
+      headReset,
+      farm,
       fuel,
       landmarks,
       cooldownList,
@@ -498,6 +546,48 @@ export const Sidebar = memo(({
               )}
             </button>
 
+            {/* Race */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('race')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'race'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'bg-purple-950/40 text-purple-300 border border-purple-500/30 hover:bg-purple-900/40'
+              }`}
+            >
+              <span>🏁</span>
+              <span>แข่งรถ ({counts.race})</span>
+            </button>
+
+            {/* Head Reset */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('head_reset')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'head_reset'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
+              }`}
+            >
+              <span>🏥</span>
+              <span>รีหัว ({counts.head_reset})</span>
+            </button>
+
+            {/* Farm */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('farm')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'farm'
+                  ? 'bg-yellow-500 text-slate-950 shadow-md shadow-yellow-500/20'
+                  : 'bg-yellow-950/40 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-900/40'
+              }`}
+            >
+              <span>🌾</span>
+              <span>ฟาร์ม ({counts.farm})</span>
+            </button>
+
             {/* Fuel */}
             <button
               type="button"
@@ -652,7 +742,121 @@ export const Sidebar = memo(({
                 </div>
               )}
 
-              {/* 3. Fuel Stations */}
+              {/* 3. Racing Spots */}
+              {groupedSpots.race.length > 0 && (
+                <div className="rounded-2xl border border-purple-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('race')}
+                    className="w-full flex items-center justify-between p-2.5 bg-purple-950/20 hover:bg-purple-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        🏁
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-purple-200 group-hover:text-purple-100">
+                            แข่งรถ (Racing)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                            {groupedSpots.race.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">สนามแข่งและจุดแข่งรถ</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-purple-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.race ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.race) && (
+                    <div className="p-2 space-y-2 border-t border-purple-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.race.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 4. Head Reset / Clinic */}
+              {groupedSpots.headReset.length > 0 && (
+                <div className="rounded-2xl border border-emerald-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('head_reset')}
+                    className="w-full flex items-center justify-between p-2.5 bg-emerald-950/20 hover:bg-emerald-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        🏥
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-emerald-200 group-hover:text-emerald-100">
+                            รีหัว (Head Reset)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            {groupedSpots.headReset.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">จุดรีหัวและสถานที่พยาบาล</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.head_reset ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.head_reset) && (
+                    <div className="p-2 space-y-2 border-t border-emerald-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.headReset.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 5. Farm Spots */}
+              {groupedSpots.farm.length > 0 && (
+                <div className="rounded-2xl border border-yellow-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('farm')}
+                    className="w-full flex items-center justify-between p-2.5 bg-yellow-950/20 hover:bg-yellow-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-yellow-500/20 border border-yellow-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        🌾
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-yellow-200 group-hover:text-yellow-100">
+                            ฟาร์ม (Farm)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                            {groupedSpots.farm.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">จุดฟาร์มและเก็บเกี่ยววัตถุดิบ</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-yellow-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.farm ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.farm) && (
+                    <div className="p-2 space-y-2 border-t border-yellow-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.farm.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 6. Fuel Stations */}
               {groupedSpots.fuel.length > 0 && (
                 <div className="rounded-2xl border border-cyan-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
                   <button
