@@ -163,6 +163,10 @@ const ICON_CATEGORIES = [
       // 544 Pickup Repair
       { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - แดง (Red)' },
       { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - ขาว (White)' },
+
+      // 186 Handcuff Keys
+      { emoji: '/blips/radar_handcuff_keys_bikers_red.png', name: '[186] Handcuff Keys กุญแจมือไข - แดง (Red)' },
+      { emoji: '/blips/radar_handcuff_keys_bikers.png', name: '[186] Handcuff Keys กุญแจมือไข - ขาว (White)' },
     ],
   },
   {
