@@ -155,6 +155,10 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ม่วง (Purple)' },
       { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ชมพู (Pink)' },
       { emoji: '/blips/radar_bar.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ขาว (White)' },
+
+      // 446 Benny's Motorworks
+      { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - น้ำเงิน (Blue)" },
+      { emoji: '/blips/radar_bennys.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - ขาว (White)" },
     ],
   },
   {
