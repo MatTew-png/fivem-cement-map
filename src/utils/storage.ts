@@ -11,6 +11,9 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     localStorage.removeItem('fivem_cement_spots_v2');
     localStorage.removeItem('fivem_cement_spots_v3');
     localStorage.removeItem('fivem_cement_spots_v4');
+    localStorage.removeItem('fivem_farm_spots_clean_v1');
+    localStorage.removeItem('fivem_farm_cooldowns_v1');
+    localStorage.removeItem('fivem_farm_loops_v1');
 
     const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
     let raw = localStorage.getItem(SPOTS_STORAGE_KEY);
