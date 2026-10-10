@@ -153,6 +153,7 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ขาว (White)' },
 
       // 93 Bar
+      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar บาร์เหล้า / รีหัว - เขียว (Green)' },
       { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ม่วง (Purple)' },
       { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ชมพู (Pink)' },
       { emoji: '/blips/radar_bar.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ขาว (White)' },
