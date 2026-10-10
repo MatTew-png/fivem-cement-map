@@ -138,6 +138,23 @@ const ICON_CATEGORIES = [
       // 362 Mask
       { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ฟ้า (Cyan)' },
       { emoji: '/blips/radar_mask.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ขาว (White)' },
+
+      // 475 Office
+      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / ตึกสำนักงาน - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / ตึกสำนักงาน - ขาว (White)' },
+
+      // 565 Adversary Bunker
+      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา (Gray)' },
+      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว (White)' },
+
+      // 827 Biker Bar
+      { emoji: '/blips/radar_biker_bar_purple.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ม่วง (Purple)' },
+      { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ขาว (White)' },
+
+      // 93 Bar
+      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ม่วง (Purple)' },
+      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ชมพู (Pink)' },
+      { emoji: '/blips/radar_bar.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ขาว (White)' },
     ],
   },
   {
@@ -743,6 +760,7 @@ export const PinModal = ({
                       else if (item.emoji.includes('_orange')) setColor('#f97316');
                       else if (item.emoji.includes('_brown')) setColor('#b45309');
                       else if (item.emoji.includes('_mint')) setColor('#2dd4bf');
+                      else if (item.emoji.includes('_gray')) setColor('#9ca3af');
                     }}
                     title={item.name}
                     className={`h-11 rounded-xl flex items-center justify-center text-xl transition-all ${
