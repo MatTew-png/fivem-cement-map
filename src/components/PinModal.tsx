@@ -115,6 +115,29 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
       { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
       { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
+
+      // 315 Race Land
+      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง (Purple)' },
+      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว (White)' },
+
+      // 134 Crim Cuff Keys
+      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง (Red)' },
+      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว (White)' },
+
+      // 280 Friend
+      { emoji: '/blips/radar_friend_pink.png', name: '[280] Friend เพื่อน / ทีม - ชมพู (Pink)' },
+      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เพื่อน / ทีม - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_friend_green.png', name: '[280] Friend เพื่อน / ทีม - เขียว (Green)' },
+      { emoji: '/blips/radar_friend_red.png', name: '[280] Friend เพื่อน / ทีม - แดง (Red)' },
+      { emoji: '/blips/radar_friend.png', name: '[280] Friend เพื่อน / ทีม - ขาว (White)' },
+
+      // 304 UGC Mission
+      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว (White)' },
+
+      // 362 Mask
+      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_mask.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ขาว (White)' },
     ],
   },
   {
@@ -708,7 +731,19 @@ export const PinModal = ({
                   <button
                     type="button"
                     key={`${item.emoji}-${idx}`}
-                    onClick={() => setIcon(item.emoji)}
+                    onClick={() => {
+                      setIcon(item.emoji);
+                      if (item.emoji.includes('_purple')) setColor('#a855f7');
+                      else if (item.emoji.includes('_red')) setColor('#ef4444');
+                      else if (item.emoji.includes('_pink')) setColor('#ec4899');
+                      else if (item.emoji.includes('_yellow')) setColor('#eab308');
+                      else if (item.emoji.includes('_green')) setColor('#22c55e');
+                      else if (item.emoji.includes('_cyan')) setColor('#06b6d4');
+                      else if (item.emoji.includes('_blue')) setColor('#3b82f6');
+                      else if (item.emoji.includes('_orange')) setColor('#f97316');
+                      else if (item.emoji.includes('_brown')) setColor('#b45309');
+                      else if (item.emoji.includes('_mint')) setColor('#2dd4bf');
+                    }}
                     title={item.name}
                     className={`h-11 rounded-xl flex items-center justify-center text-xl transition-all ${
                       isSelected
