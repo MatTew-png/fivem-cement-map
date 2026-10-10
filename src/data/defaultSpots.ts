@@ -57,6 +57,17 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
     borderColor: 'border-amber-500',
     group: 'ฟาร์ม',
   },
+  // === เควส (Quest) ===
+  quest: {
+    id: 'quest',
+    name: 'เควส',
+    nameEn: 'Quest',
+    icon: '/blips/radar_friend_yellow.png',
+    color: '#eab308',
+    bgColor: 'bg-yellow-500/20',
+    borderColor: 'border-yellow-500',
+    group: 'เควส',
+  },
   dealer: {
     id: 'dealer',
     name: 'จุดขายยา',

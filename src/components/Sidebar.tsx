@@ -45,7 +45,7 @@ interface SidebarProps {
   onToggleSound?: () => void;
 }
 
-type FilterTab = 'all' | 'dealers' | 'cement' | 'race' | 'head_reset' | 'farm' | 'fuel' | 'urgent' | 'landmarks';
+type FilterTab = 'all' | 'dealers' | 'cement' | 'race' | 'head_reset' | 'farm' | 'quest' | 'fuel' | 'urgent' | 'landmarks';
 
 export const Sidebar = memo(({
   spots,
@@ -84,6 +84,7 @@ export const Sidebar = memo(({
     race: true,
     head_reset: true,
     farm: true,
+    quest: true,
     fuel: true,
     cement: false, // Collapsed by default (87 spots) so screen isn't overwhelmed
     landmarks: false,
@@ -150,6 +151,12 @@ export const Sidebar = memo(({
       Boolean(s.tags?.includes('farm')) ||
       Boolean(s.tags?.includes('ฟาร์ม'))
     );
+  const isQuest = (s: CementSpot): boolean =>
+    s.category === 'quest' ||
+    s.name.includes('เควส') ||
+    Boolean(s.icon && s.icon.includes('radar_friend')) ||
+    Boolean(s.tags?.includes('quest')) ||
+    Boolean(s.tags?.includes('เควส'));
   const isFuel = (s: CementSpot): boolean =>
     s.category === 'fuel' ||
     Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
@@ -171,6 +178,7 @@ export const Sidebar = memo(({
     let raceCount = 0;
     let headResetCount = 0;
     let farmCount = 0;
+    let questCount = 0;
     let fuelCount = 0;
     let landmarksCount = 0;
 
@@ -180,6 +188,7 @@ export const Sidebar = memo(({
       else if (isRace(s)) raceCount++;
       else if (isHeadReset(s)) headResetCount++;
       else if (isFarm(s)) farmCount++;
+      else if (isQuest(s)) questCount++;
       else if (isFuel(s)) fuelCount++;
       else landmarksCount++;
     });
@@ -191,6 +200,7 @@ export const Sidebar = memo(({
       race: raceCount,
       head_reset: headResetCount,
       farm: farmCount,
+      quest: questCount,
       fuel: fuelCount,
       landmarks: landmarksCount,
     };
@@ -211,6 +221,8 @@ export const Sidebar = memo(({
         matchTab = isHeadReset(spot);
       } else if (selectedFilter === 'farm') {
         matchTab = isFarm(spot);
+      } else if (selectedFilter === 'quest') {
+        matchTab = isQuest(spot);
       } else if (selectedFilter === 'fuel') {
         matchTab = isFuel(spot);
       } else if (selectedFilter === 'urgent') {
@@ -218,7 +230,7 @@ export const Sidebar = memo(({
         const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
         matchTab = rem > 0 && rem <= 180;
       } else if (selectedFilter === 'landmarks') {
-        matchTab = !isDealer(spot) && !isCement(spot) && !isRace(spot) && !isHeadReset(spot) && !isFarm(spot) && !isFuel(spot);
+        matchTab = !isDealer(spot) && !isCement(spot) && !isRace(spot) && !isHeadReset(spot) && !isFarm(spot) && !isQuest(spot) && !isFuel(spot);
       }
 
       // 2. Search query filter
@@ -251,6 +263,7 @@ export const Sidebar = memo(({
     const race: CementSpot[] = [];
     const headReset: CementSpot[] = [];
     const farm: CementSpot[] = [];
+    const quest: CementSpot[] = [];
     const fuel: CementSpot[] = [];
     const landmarks: CementSpot[] = [];
     const cooldownList: CementSpot[] = [];
@@ -272,6 +285,8 @@ export const Sidebar = memo(({
         headReset.push(spot);
       } else if (isFarm(spot)) {
         farm.push(spot);
+      } else if (isQuest(spot)) {
+        quest.push(spot);
       } else if (isFuel(spot)) {
         fuel.push(spot);
       } else {
@@ -285,6 +300,7 @@ export const Sidebar = memo(({
       race,
       headReset,
       farm,
+      quest,
       fuel,
       landmarks,
       cooldownList,
@@ -592,6 +608,20 @@ export const Sidebar = memo(({
               <span>ฟาร์ม ({counts.farm})</span>
             </button>
 
+            {/* Quest (280 radar_friend) */}
+            <button
+              type="button"
+              onClick={() => setSelectedFilter('quest')}
+              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                selectedFilter === 'quest'
+                  ? 'bg-yellow-500 text-slate-950 shadow-md shadow-yellow-500/20'
+                  : 'bg-yellow-950/40 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-900/40'
+              }`}
+            >
+              <img src="/blips/radar_friend_yellow.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
+              <span>เควส ({counts.quest})</span>
+            </button>
+
             {/* Fuel */}
             <button
               type="button"
@@ -855,6 +885,44 @@ export const Sidebar = memo(({
                   {(isSearching || expandedGroups.farm) && (
                     <div className="p-2 space-y-2 border-t border-amber-900/30 bg-slate-900/30 animate-in fade-in duration-150">
                       {groupedSpots.farm.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quest Spots (radar_friend) */}
+              {groupedSpots.quest.length > 0 && (
+                <div className="rounded-2xl border border-yellow-900/40 bg-slate-950/50 overflow-hidden shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup('quest')}
+                    className="w-full flex items-center justify-between p-2.5 bg-yellow-950/20 hover:bg-yellow-950/30 text-left transition-colors cursor-pointer select-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-yellow-500/20 border border-yellow-500/40 flex items-center justify-center text-sm shadow-inner group-hover:scale-105 transition-transform">
+                        <img src="/blips/radar_friend_yellow.png" alt="" className="w-4 h-4 object-contain" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-yellow-200 group-hover:text-yellow-100">
+                            เควส (Quest)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full font-mono font-bold text-[9px] bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                            {groupedSpots.quest.length}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">จุดเควสและภารกิจ (Blip 280)</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`w-4 h-4 text-yellow-400 transition-transform duration-200 ${
+                        isSearching || expandedGroups.quest ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {(isSearching || expandedGroups.quest) && (
+                    <div className="p-2 space-y-2 border-t border-yellow-900/30 bg-slate-900/30 animate-in fade-in duration-150">
+                      {groupedSpots.quest.map(renderCard)}
                     </div>
                   )}
                 </div>

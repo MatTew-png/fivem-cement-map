@@ -348,6 +348,14 @@ export const SPOT_TYPES: SpotTypeOption[] = [
     hint: 'จุดฟาร์ม/ของเถื่อน (Blip 478)',
   },
   {
+    id: 'quest',
+    label: 'เควส (Quest)',
+    icon: '⭐',
+    defaultColor: '#eab308',
+    defaultIcon: '/blips/radar_friend_yellow.png',
+    hint: 'จุดเควส/ภารกิจ (Blip 280)',
+  },
+  {
     id: 'landmark',
     label: 'แลนด์มาร์ค (Landmark)',
     icon: '👑',

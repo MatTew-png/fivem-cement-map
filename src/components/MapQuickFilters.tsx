@@ -133,6 +133,30 @@ export const MapQuickFilters = memo(({
           </span>
         </button>
 
+        {/* 5. Quest Spots (radar_friend) */}
+        <button
+          type="button"
+          onClick={() => handleCategoryClick('quest')}
+          title={categoriesState.quest ? 'คลิกเพื่อซ่อนจุดเควสบนแมพ' : 'คลิกเพื่อแสดงจุดเควสบนแมพ'}
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+            categoriesState.quest
+              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50 shadow-sm shadow-yellow-500/10'
+              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
+          }`}
+        >
+          <img src="/blips/radar_friend_yellow.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
+          <span className="hidden sm:inline">เควส</span>
+          <span
+            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
+              categoriesState.quest
+                ? 'bg-yellow-400/20 text-yellow-200 border border-yellow-400/30'
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            {counts.quest}
+          </span>
+        </button>
+
         {/* 2. Lands (Royal Kings) */}
         <button
           type="button"
