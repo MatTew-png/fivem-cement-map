@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles, Crown } from 'lucide-react';
-import { verifyPIN, DEFAULT_MASTER_PIN } from '../utils/gangAuth';
+import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles } from 'lucide-react';
+import { verifyPIN } from '../utils/gangAuth';
 import type { GangSession } from '../utils/gangAuth';
 
 interface GangAuthModalProps {
@@ -12,7 +12,6 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showBossHint, setShowBossHint] = useState(false);
 
   // โหลดชื่อเดิมที่เคยกรอกไว้เพื่อความสะดวก
   useEffect(() => {
@@ -54,13 +53,6 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
         setError(result.error || 'รหัสผ่านไม่ถูกต้อง');
       }
     }, 250);
-  };
-
-  const handleFillMasterPin = () => {
-    setPin(DEFAULT_MASTER_PIN);
-    if (!name.trim()) {
-      setName('[01] หัวหน้าแก๊ง');
-    }
   };
 
   return (
@@ -151,38 +143,11 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
           </button>
         </form>
 
-        {/* Footer info / Boss options */}
+        {/* Footer info */}
         <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-          <p className="text-[11px] text-slate-500 mb-2">
+          <p className="text-[11px] text-slate-500">
             💡 ตรวจสอบรหัสผ่านของวันนี้ได้ในช่อง Discord ทางการของแก๊ง
           </p>
-
-          <button
-            type="button"
-            onClick={() => setShowBossHint(!showBossHint)}
-            className="text-[11px] text-amber-400/80 hover:text-amber-300 inline-flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Crown className="w-3 h-3 text-amber-400" />
-            <span>หัวหน้าแก๊ง (Boss Quick Login)</span>
-          </button>
-
-          {showBossHint && (
-            <div className="mt-3 p-3 rounded-xl bg-slate-800/60 border border-amber-500/30 text-left animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
-                <span className="font-semibold text-amber-400">Master PIN ของหัวหน้า:</span>
-                <button
-                  type="button"
-                  onClick={handleFillMasterPin}
-                  className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-mono text-[11px] font-bold border border-amber-500/40"
-                >
-                  กดเพื่อกรอก {DEFAULT_MASTER_PIN}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-400">
-                รหัส Master สามารถเข้าได้ทุกวัน และมีสิทธิ์เปิดดูตารางรหัสล่วงหน้า 7 วัน
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </div>

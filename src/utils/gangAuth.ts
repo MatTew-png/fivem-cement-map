@@ -20,8 +20,8 @@ const MASTER_PIN_KEY = 'runthukverb_master_pin';
 const SESSION_STORAGE_KEY = 'runthukverb_gang_session';
 const ACTIVITY_LOGS_KEY = 'runthukverb_activity_logs';
 
-// Default Master PIN สำหรับหัวหน้าแก๊ง (สามารถใช้เข้าได้ทุกวันและดูตารางรหัส)
-export const DEFAULT_MASTER_PIN = '999999';
+// Default Master PIN สำหรับหัวหน้าแก๊ง (ระงับรหัสเดิม 999999 เพื่อรอหัวหน้ากำหนดรหัสใหม่)
+export const DEFAULT_MASTER_PIN = '';
 
 // ฟังก์ชันแปลง Date เป็นสตริง YYYY-MM-DD ในเขตเวลาท้องถิ่น (Local Time)
 export function getLocalDateString(date: Date = new Date()): string {
@@ -122,7 +122,7 @@ export function verifyPIN(
   const todayPIN = getDailyPIN();
   const masterPIN = getMasterPIN();
 
-  if (cleanPin === masterPIN) {
+  if (masterPIN && masterPIN.length >= 6 && cleanPin === masterPIN) {
     const session: GangSession = {
       memberName: cleanName,
       authDate: getLocalDateString(),
