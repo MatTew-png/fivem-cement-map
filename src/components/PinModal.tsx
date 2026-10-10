@@ -39,10 +39,10 @@ export function renderSpotIcon(icon: string, className: string = 'w-5 h-5') {
   return <span className="inline-block leading-none align-middle">{icon}</span>;
 }
 
-// คลังไอคอนยอดนิยมสำหรับ GTA V FiveM
+// คลังไอคอน FiveM Blips ทางการ (https://docs.fivem.net/docs/game-references/blips/)
 const ICON_CATEGORIES = [
   {
-    group: '⭐ FiveM Blips (ทางการ)',
+    group: '⭐ ทั้งหมด (FiveM Blips)',
     icons: [
       // 469 Weed Pickup / Drug Dealer
       { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - เขียว (Green)' },
@@ -66,98 +66,34 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_player_king_brown.png', name: '[439] King มงกุฎ - น้ำตาล (Brown)' },
       { emoji: '/blips/radar_player_king_pink.png', name: '[439] King มงกุฎ - ชมพู (Pink)' },
 
-      // 67 Security Van
-      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
-
-      // 669 Arena ZR380
-      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
-
-      // 225 Gang Vehicle
-      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
-      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
-      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ปกติ' },
-
-      // 71 Barber
-      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
-      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ปกติ' },
-
-      // 73 Clothes Store
-      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
-      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ปกติ' },
-
-      // 75 Tattoo
-      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
-
-      // 61 Hospital
-      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล / หมอ - เขียว' },
-      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ปกติ' },
-
-      // 60 Police Station
-      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า' },
-      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ปกติ' },
-
-      // 524 Warehouse Vehicle
-      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
-      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
-
-      // 361 Jerry Can
-      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
-
-      // 478 Contraband
-      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เทา' },
-      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ขาว' },
-      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เหลือง' },
-      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ชมพู' },
-      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - น้ำตาล' },
-      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ปกติ' },
-
-      // 318 Garbage
-      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา' },
-      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
-      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
-      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
-
-      // 315 Race Land
-      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง (Purple)' },
-      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว (White)' },
-
-      // 134 Crim Cuff Keys
-      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง (Red)' },
-      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว (White)' },
-
       // 280 Friend
+      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เพื่อน / ทีม / เควส - เหลือง (Yellow)' },
       { emoji: '/blips/radar_friend_pink.png', name: '[280] Friend เพื่อน / ทีม - ชมพู (Pink)' },
-      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เพื่อน / ทีม - เหลือง (Yellow)' },
       { emoji: '/blips/radar_friend_green.png', name: '[280] Friend เพื่อน / ทีม - เขียว (Green)' },
       { emoji: '/blips/radar_friend_red.png', name: '[280] Friend เพื่อน / ทีม - แดง (Red)' },
       { emoji: '/blips/radar_friend.png', name: '[280] Friend เพื่อน / ทีม - ขาว (White)' },
 
-      // 304 UGC Mission
-      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว (White)' },
+      // 478 Contraband
+      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - เทา (Gray)' },
+      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ขาว (White)' },
+      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ชมพู (Pink)' },
+      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - น้ำตาล (Brown)' },
+      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ปกติ' },
 
-      // 362 Mask
-      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_mask.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ขาว (White)' },
-
-      // 475 Office
-      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / ตึกสำนักงาน - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / ตึกสำนักงาน - ขาว (White)' },
-
-      // 565 Adversary Bunker
-      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา (Gray)' },
-      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว (White)' },
+      // 93 Bar
+      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar รีหัว / บาร์เหล้า - ชมพู (Pink)' },
+      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar รีหัว / บาร์เหล้า - เขียว (Green)' },
+      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar รีหัว / บาร์เหล้า - ม่วง (Purple)' },
+      { emoji: '/blips/radar_bar.png', name: '[93] Bar รีหัว / บาร์เหล้า - ขาว (White)' },
 
       // 827 Biker Bar
       { emoji: '/blips/radar_biker_bar_purple.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ม่วง (Purple)' },
       { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ขาว (White)' },
 
-      // 93 Bar
-      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar บาร์เหล้า / รีหัว - เขียว (Green)' },
-      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ม่วง (Purple)' },
-      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ชมพู (Pink)' },
-      { emoji: '/blips/radar_bar.png', name: '[93] Bar บาร์เหล้า / แก้วค็อกเทล - ขาว (White)' },
+      // 315 Race Land
+      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง (Purple)' },
+      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว (White)' },
 
       // 446 Benny's Motorworks
       { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - น้ำเงิน (Blue)" },
@@ -167,126 +103,151 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - แดง (Red)' },
       { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - ขาว (White)' },
 
-      // 186 Handcuff Keys
+      // 134 Crim Cuff Keys & 186 Handcuff Keys
+      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง (Red)' },
+      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว (White)' },
       { emoji: '/blips/radar_handcuff_keys_bikers_red.png', name: '[186] Handcuff Keys กุญแจมือไข - แดง (Red)' },
       { emoji: '/blips/radar_handcuff_keys_bikers.png', name: '[186] Handcuff Keys กุญแจมือไข - ขาว (White)' },
+
+      // 61 Hospital & 60 Police
+      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล / หมอ - เขียว (Green)' },
+      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ปกติ' },
+      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ปกติ' },
+
+      // 361 Jerry Can
+      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
+
+      // 524 Warehouse & 475 Office & 565 Bunker
+      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
+      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
+      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ขาว (White)' },
+      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา (Gray)' },
+      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว (White)' },
+
+      // 318 Garbage
+      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา (Gray)' },
+      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม (Orange)' },
+      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
+
+      // 304 UGC Mission & 362 Mask & 71 Barber & 73 Clothes & 75 Tattoo & Vehicles
+      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว (White)' },
+      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_mask.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ขาว (White)' },
+      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
+      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ปกติ' },
+      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
+      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ปกติ' },
+      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
+      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
+      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
+      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ปกติ' },
+      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
+      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
     ],
   },
   {
-    group: 'ปูน & ก่อสร้าง',
-    icons: [
-      { emoji: '🧱', name: 'ปูนซีเมนต์ / จุดปูน' },
-      { emoji: '🏗️', name: 'ไซต์ก่อสร้าง' },
-      { emoji: '⛏️', name: 'พลั่ว / อีเตอร์' },
-      { emoji: '🔨', name: 'ค้อนช่าง' },
-      { emoji: '🪓', name: 'ขวานตัดไม้' },
-      { emoji: '🚜', name: 'รถแทรกเตอร์' },
-      { emoji: '🚛', name: 'รถบรรทุกส่งของ' },
-    ],
-  },
-  {
-    group: 'แลนด์มาร์ค & มงกุฎ',
-    icons: [
-      { emoji: '👑', name: 'มงกุฎแลนด์มาร์ค' },
-      { emoji: '💎', name: 'เพชร' },
-      { emoji: '⭐', name: 'ดาวเด่น' },
-      { emoji: '🏆', name: 'ถ้วยรางวัล' },
-      { emoji: '🎖️', name: 'เหรียญเกียรติยศ' },
-      { emoji: '🏰', name: 'ปราสาท / วัง' },
-      { emoji: '🚩', name: 'ธงปักจุด' },
-      { emoji: '📍', name: 'หมุดพิกัด' },
-    ],
-  },
-  {
-    group: 'เกษตร & สัตว์',
-    icons: [
-      { emoji: '🌾', name: 'รวงข้าว / นาข้าว' },
-      { emoji: '🌷', name: 'ดอกไม้' },
-      { emoji: '🌽', name: 'ข้าวโพด' },
-      { emoji: '🍇', name: 'องุ่น' },
-      { emoji: '🍎', name: 'แอปเปิ้ล' },
-      { emoji: '🐖', name: 'ฟาร์มหมู / เนื้อหมู' },
-      { emoji: '🥩', name: 'เนื้อสัตว์' },
-      { emoji: '🐄', name: 'วัว / นมวัว' },
-      { emoji: '🐟', name: 'ตกปลา' },
-    ],
-  },
-  {
-    group: 'ไม้ & เหมืองแร่',
-    icons: [
-      { emoji: '🪵', name: 'ท่อนไม้ / โรงเลื่อย' },
-      { emoji: '🌲', name: 'ป่าไม้' },
-      { emoji: '🪚', name: 'เลื่อยไม้' },
-      { emoji: '🪨', name: 'ก้อนหิน / เหมืองหิน' },
-      { emoji: '🪙', name: 'เหรียญแร่ / โทเค็น' },
-      { emoji: '🥇', name: 'ทองคำ' },
-      { emoji: '⚙️', name: 'โรงงานเหล็ก / อะไหล่' },
-      { emoji: '🔩', name: 'น็อต / ตะปู' },
-    ],
-  },
-  {
-    group: 'ยานยนต์ & เดินทาง',
-    icons: [
-      { emoji: '🚗', name: 'โรงรถ / รถยนต์' },
-      { emoji: '🏎️', name: 'รถสปอร์ต' },
-      { emoji: '🏍️', name: 'แก๊งบิ๊กไบค์ / มอเตอร์ไซค์' },
-      { emoji: '🚁', name: 'ลานจอดเฮลิคอปเตอร์' },
-      { emoji: '🚤', name: 'ท่าเรือ / เจ็ทสกี' },
-      { emoji: '⛽', name: 'ปั๊มน้ำมัน' },
-      { emoji: '🔧', name: 'อู่ช่างซ่อมรถ' },
-      { emoji: '🏁', name: 'จุดสตาร์ทแข่งรถ' },
-      { emoji: '🅿️', name: 'จุดจอดรถยนต์' },
-    ],
-  },
-  {
-    group: 'ร้านค้า & บริการ',
-    icons: [
-      { emoji: '🏪', name: 'ร้านสะดวกซื้อ 24 ชม.' },
-      { emoji: '🏬', name: 'ห้างสรรพสินค้า' },
-      { emoji: '🍔', name: 'ร้านเบอร์เกอร์' },
-      { emoji: '🍕', name: 'ร้านพิซซ่า' },
-      { emoji: '☕', name: 'ร้านกาแฟ' },
-      { emoji: '🍺', name: 'ผับ / บาร์เหล้า' },
-      { emoji: '🍸', name: 'คลับใต้ดิน' },
-      { emoji: '💊', name: 'โรงพยาบาล / ร้านยา' },
-      { emoji: '💈', name: 'ร้านตัดผม' },
-      { emoji: '👕', name: 'ร้านเสื้อผ้า' },
-      { emoji: '🎭', name: 'ร้านหน้ากาก' },
-      { emoji: '💰', name: 'ถุงเงิน / รับซื้อของ' },
-      { emoji: '💵', name: 'ธนาคาร / ตู้ ATM' },
-    ],
-  },
-  {
-    group: 'อาวุธ & จุดเสี่ยง',
-    icons: [
-      { emoji: '⚠️', name: 'จุดอันตราย / ปล้น' },
-      { emoji: '💀', name: 'จุดดวล / พื้นที่แดง' },
-      { emoji: '🔫', name: 'ร้านขายปืน' },
-      { emoji: '💣', name: 'ระเบิด' },
-      { emoji: '🗡️', name: 'มีดสั้น' },
-      { emoji: '🚨', name: 'สถานีตำรวจ' },
-      { emoji: '⚡', name: 'โรงไฟฟ้า' },
-      { emoji: '🛑', name: 'จุดตรวจ / ด่าน' },
-      { emoji: '🏠', name: 'เซฟเฮ้าส์ / บ้านพัก' },
-      { emoji: '🗝️', name: 'Rebel / กล่องลับ' },
-    ],
-  },
-  {
-    group: 'ยาเสพติด & ของเถื่อน',
+    group: 'ขายยา & ของเถื่อน',
     icons: [
       { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา (เขียว) / จุดขายยา Dealer' },
       { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา (ขาว) / จุดขายยา Dealer' },
-      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา (ม่วง Purple Haze)' },
       { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา (เหลือง)' },
+      { emoji: '/blips/radar_pickup_weed_red.png', name: '[469] Weed ใบกัญชา (แดง)' },
+      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา (ม่วง Purple Haze)' },
+      { emoji: '/blips/radar_pickup_weed_cyan.png', name: '[469] Weed ใบกัญชา (ฟ้า Cyan)' },
+      { emoji: '/blips/radar_pickup_weed_orange.png', name: '[469] Weed ใบกัญชา (ส้ม)' },
       { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เทา' },
-      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ' },
-      { emoji: '🌿', name: 'ใบกัญชา / สมุนไพร' },
-      { emoji: '💊', name: 'เม็ดยา / สารเคมี' },
-      { emoji: '💉', name: 'เข็มฉีดยา / ยาชา' },
-      { emoji: '🧪', name: 'หลอดทดลองเคมี' },
-      { emoji: '🚬', name: 'บุหรี่ / กัญชาอัดแท่ง' },
-      { emoji: '🍄', name: 'เห็ดเมา' },
-      { emoji: '📦', name: 'กล่องของเถื่อนลับ' },
+      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ขาว' },
+      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เหลือง' },
+      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ชมพู' },
+      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - น้ำตาล' },
+      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ปกติ' },
+      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง' },
+      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว' },
+      { emoji: '/blips/radar_handcuff_keys_bikers_red.png', name: '[186] Handcuff Keys กุญแจมือไข - แดง' },
+      { emoji: '/blips/radar_handcuff_keys_bikers.png', name: '[186] Handcuff Keys กุญแจมือไข - ขาว' },
+    ],
+  },
+  {
+    group: 'แลนด์มาร์ค & เควส',
+    icons: [
+      { emoji: '/blips/radar_player_king_white.png', name: '[439] King มงกุฎ - ขาว (White)' },
+      { emoji: '/blips/radar_player_king_yellow.png', name: '[439] King มงกุฎ - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_player_king_red.png', name: '[439] King มงกุฎ - แดง (Red)' },
+      { emoji: '/blips/radar_player_king_orange.png', name: '[439] King มงกุฎ - ส้ม (Orange)' },
+      { emoji: '/blips/radar_player_king_green.png', name: '[439] King มงกุฎ - เขียว (Green)' },
+      { emoji: '/blips/radar_player_king_cyan.png', name: '[439] King มงกุฎ - ฟ้า (Cyan)' },
+      { emoji: '/blips/radar_player_king_blue.png', name: '[439] King มงกุฎ - น้ำเงิน (Blue)' },
+      { emoji: '/blips/radar_player_king_mint.png', name: '[439] King มงกุฎ - มิ้นต์ (Mint)' },
+      { emoji: '/blips/radar_player_king_purple.png', name: '[439] King มงกุฎ - ม่วง (Purple)' },
+      { emoji: '/blips/radar_player_king_brown.png', name: '[439] King มงกุฎ - น้ำตาล (Brown)' },
+      { emoji: '/blips/radar_player_king_pink.png', name: '[439] King มงกุฎ - ชมพู (Pink)' },
+      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เควส / เพื่อน - เหลือง (Yellow)' },
+      { emoji: '/blips/radar_friend_pink.png', name: '[280] Friend เควส / เพื่อน - ชมพู (Pink)' },
+      { emoji: '/blips/radar_friend_green.png', name: '[280] Friend เควส / เพื่อน - เขียว (Green)' },
+      { emoji: '/blips/radar_friend_red.png', name: '[280] Friend เควส / เพื่อน - แดง (Red)' },
+      { emoji: '/blips/radar_friend.png', name: '[280] Friend เควส / เพื่อน - ขาว (White)' },
+      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง' },
+      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว' },
+    ],
+  },
+  {
+    group: 'ยานยนต์ & แข่งรถ',
+    icons: [
+      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง' },
+      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว' },
+      { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ - น้ำเงิน" },
+      { emoji: '/blips/radar_bennys.png', name: "[446] Benny's อู่แต่งรถ - ขาว" },
+      { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair อู่ซ่อม - แดง' },
+      { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair อู่ซ่อม - ขาว' },
+      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
+      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
+      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ขาว' },
+      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
+      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
+      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
+    ],
+  },
+  {
+    group: 'รีหัว, บาร์ & บริการ',
+    icons: [
+      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar รีหัว / บาร์เหล้า - ชมพู' },
+      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar รีหัว / บาร์เหล้า - เขียว' },
+      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar รีหัว / บาร์เหล้า - ม่วง' },
+      { emoji: '/blips/radar_bar.png', name: '[93] Bar รีหัว / บาร์เหล้า - ขาว' },
+      { emoji: '/blips/radar_biker_bar_purple.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ - ม่วง' },
+      { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ - ขาว' },
+      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล - เขียว' },
+      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ขาว' },
+      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า' },
+      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ขาว' },
+      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
+      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ขาว' },
+      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
+      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ขาว' },
+      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
+      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask ร้านหน้ากาก - ฟ้า' },
+      { emoji: '/blips/radar_mask.png', name: '[362] Mask ร้านหน้ากาก - ขาว' },
+    ],
+  },
+  {
+    group: 'โกดัง, ออฟฟิศ & บังเกอร์',
+    icons: [
+      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
+      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
+      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ฟ้า' },
+      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ขาว' },
+      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา' },
+      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว' },
+      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า' },
+      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา' },
+      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
+      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
+      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
     ],
   },
 ];
@@ -754,9 +715,9 @@ export const PinModal = ({
                     type="text"
                     value={icon}
                     onChange={(e) => setIcon(e.target.value.trim() || '🧱')}
-                    placeholder="เช่น 🧱 หรือ 👑"
-                    maxLength={4}
-                    className="w-16 bg-transparent text-center text-lg font-bold text-white focus:outline-none"
+                    placeholder="เช่น 🧱 หรือ /blips/..."
+                    maxLength={50}
+                    className="w-24 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
                   />
                 )}
               </div>
