@@ -13,8 +13,9 @@ import {
   ChevronUp,
   Footprints,
   Weight,
+  Navigation,
 } from 'lucide-react';
-import type { DistancePoint } from '../types/map';
+import type { DistancePoint, RoutingMode, CementSpot } from '../types/map';
 
 export interface RouteSegment {
   fromLabel: string;
@@ -28,6 +29,10 @@ interface DistanceToolProps {
   points: DistancePoint[];
   totalDistance: number;
   segments: RouteSegment[];
+  routingMode: RoutingMode;
+  onToggleRoutingMode: (mode: RoutingMode) => void;
+  spots?: CementSpot[];
+  onSetRoutePair?: (start: CementSpot, end: CementSpot) => void;
   onClear: () => void;
   onUndo: () => void;
   onLoop: () => void;
@@ -39,12 +44,19 @@ export const DistanceTool = ({
   points,
   totalDistance,
   segments,
+  routingMode,
+  onToggleRoutingMode,
+  spots = [],
+  onSetRoutePair,
   onClear,
   onUndo,
   onLoop,
 }: DistanceToolProps) => {
   const [showLegs, setShowLegs] = useState(false);
   const [showVehicleRef, setShowVehicleRef] = useState(false);
+  const [showPairSelector, setShowPairSelector] = useState(false);
+  const [startSpotId, setStartSpotId] = useState<string>('');
+  const [endSpotId, setEndSpotId] = useState<string>('');
   const [customWeight, setCustomWeight] = useState<number>(50); // Default to 50 kg medium load
   const [copied, setCopied] = useState(false);
 
@@ -137,12 +149,16 @@ export const DistanceTool = ({
             : 'bg-slate-900/90 text-slate-300 border-slate-700/80 hover:bg-slate-800 hover:text-white'
         }`}
       >
-        <Ruler className="w-4 h-4" />
+        {routingMode === 'road' ? <Navigation className="w-4 h-4" /> : <Ruler className="w-4 h-4" />}
         <span className="hidden sm:inline">
-          {isActive ? 'โหมดวัดระยะทาง (เปิด)' : 'วัดระยะทาง / รูทฟาร์ม'}
+          {isActive
+            ? routingMode === 'road'
+              ? 'GPS นำทางตามถนน (เปิด)'
+              : 'วัดระยะทางเส้นตรง (เปิด)'
+            : 'GPS นำทาง / วัดระยะ'}
         </span>
         <span className="sm:hidden">
-          {isActive ? 'วัดระยะ (เปิด)' : 'วัดระยะ'}
+          {isActive ? 'GPS (เปิด)' : 'GPS'}
         </span>
         {points.length > 0 && (
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-950 text-amber-300 border border-amber-400/40">
@@ -157,8 +173,12 @@ export const DistanceTool = ({
           {/* Header */}
           <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800">
             <div className="flex items-center gap-1.5 font-bold text-amber-400">
-              <Ruler className="w-4 h-4 text-amber-400" />
-              <span>คำนวณระยะทาง & รูทฟาร์ม</span>
+              {routingMode === 'road' ? (
+                <Navigation className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Ruler className="w-4 h-4 text-amber-400" />
+              )}
+              <span>{routingMode === 'road' ? 'GPS นำทางตามถนนจริง' : 'วัดระยะทางเส้นตรง'}</span>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -181,9 +201,105 @@ export const DistanceTool = ({
             </div>
           </div>
 
+          {/* Mode Switcher: Road GPS vs Straight Air Distance */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950/80 rounded-xl border border-slate-800 mb-2">
+            <button
+              type="button"
+              onClick={() => onToggleRoutingMode('road')}
+              className={`py-1.5 px-2 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                routingMode === 'road'
+                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+              title="คำนวณเส้นทางตามโค้งถนนจริงในเกม GTA V"
+            >
+              <Navigation className="w-3.5 h-3.5" />
+              <span>🛣️ ทางถนน (GPS)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleRoutingMode('straight')}
+              className={`py-1.5 px-2 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                routingMode === 'straight'
+                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+              title="วัดระยะทางเส้นตรงข้ามตึก/ข้ามเขา (Air Distance)"
+            >
+              <Ruler className="w-3.5 h-3.5" />
+              <span>📏 เส้นตรง (Air)</span>
+            </button>
+          </div>
+
+          {/* Point-to-Point Direct Selector */}
+          {spots && spots.length >= 2 && onSetRoutePair && (
+            <div className="mb-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800/70">
+              <button
+                type="button"
+                onClick={() => setShowPairSelector((p) => !p)}
+                className="w-full flex items-center justify-between text-[11px] text-amber-300 font-bold hover:text-amber-200 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Navigation className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ตั้ง GPS จากจุดนึงไปจุดนึงทันที</span>
+                </span>
+                {showPairSelector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+
+              {showPairSelector && (
+                <div className="mt-2 space-y-1.5 pt-1.5 border-t border-slate-800/60 text-[11px]">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">🟢 จุดเริ่มต้น (Start):</label>
+                    <select
+                      value={startSpotId}
+                      onChange={(e) => setStartSpotId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="">-- เลือกจุดเริ่มต้น --</option>
+                      {spots.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.postal ? `#${s.postal}` : `${Math.round(s.x)}, ${Math.round(s.y)}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">🔴 จุดปลายทาง (Destination):</label>
+                    <select
+                      value={endSpotId}
+                      onChange={(e) => setEndSpotId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="">-- เลือกจุดปลายทาง --</option>
+                      {spots.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.postal ? `#${s.postal}` : `${Math.round(s.x)}, ${Math.round(s.y)}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!startSpotId || !endSpotId || startSpotId === endSpotId}
+                    onClick={() => {
+                      const s1 = spots.find((s) => s.id === startSpotId);
+                      const s2 = spots.find((s) => s.id === endSpotId);
+                      if (s1 && s2) {
+                        onSetRoutePair(s1, s2);
+                      }
+                    }}
+                    className="w-full mt-1 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-bold text-[11px] transition-all cursor-pointer shadow-md shadow-amber-400/20"
+                  >
+                    🚀 ตั้ง GPS นำทางทันที
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick Guide */}
           <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
-            🎯 <strong className="text-amber-300">คลิกที่จุดมาร์คปูน</strong> หรือคลิกบนถนนเพื่อต่อเส้นทางคำนวณ
+            🎯 <strong className="text-amber-300">คลิกที่หมุดบนแผนที่</strong> หรือคลิกบนถนนเพื่อต่อเส้นทาง
           </p>
 
           {/* Metrics Box */}

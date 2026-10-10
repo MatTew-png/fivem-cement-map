@@ -59,3 +59,5 @@ export interface DistancePoint {
   label?: string;
   spotId?: string;
 }
+
+export type RoutingMode = 'road' | 'straight';

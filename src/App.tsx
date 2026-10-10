@@ -10,7 +10,8 @@ import { GtaCrosshair } from './components/GtaCrosshair';
 import { DistanceTool, type RouteSegment } from './components/DistanceTool';
 import { MapQuickFilters } from './components/MapQuickFilters';
 import { Volume2, VolumeX } from 'lucide-react';
-import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint } from './types/map';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from './types/map';
+import { gtaRoadRouter } from './utils/gtaRouter';
 import { DEFAULT_SPOTS, MAP_LAYERS, isCementSpot } from './data/defaultSpots';
 import { getSpotQuickCategory, type QuickCategory } from './utils/clustering';
 import {
@@ -337,12 +338,64 @@ export function App() {
   // State: Distance Measuring & Farming Route Tool
   const [isDistanceMode, setIsDistanceMode] = useState(false);
   const [distancePoints, setDistancePoints] = useState<DistancePoint[]>([]);
+  const [routingMode, setRoutingMode] = useState<RoutingMode>(() => {
+    try {
+      const saved = localStorage.getItem('fivem_map_routing_mode');
+      if (saved === 'road' || saved === 'straight') return saved;
+    } catch {}
+    return 'road';
+  });
+  const [roadRouteData, setRoadRouteData] = useState<{
+    fullPath: { x: number; y: number }[];
+    totalDistance: number;
+    segmentDistances: number[];
+  } | null>(null);
 
-  // Computed: Total Distance & Route Segments
+  // Background pre-load of GTA V road graph
+  useEffect(() => {
+    gtaRoadRouter.init();
+  }, []);
+
+  // Compute Road Route when in 'road' mode
+  useEffect(() => {
+    if (routingMode !== 'road' || distancePoints.length < 2) {
+      setRoadRouteData(null);
+      return;
+    }
+
+    let isMounted = true;
+    gtaRoadRouter.init().then(() => {
+      if (!isMounted) return;
+      const res = gtaRoadRouter.calculateMultiPointRoute(distancePoints);
+      setRoadRouteData(res);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [routingMode, distancePoints]);
+
+  // Computed: Total Distance & Route Segments (Road or Straight)
   const { totalDistance, segments } = useMemo(() => {
     if (distancePoints.length < 2) {
       return { totalDistance: 0, segments: [] as RouteSegment[] };
     }
+
+    if (routingMode === 'road' && roadRouteData) {
+      const segs: RouteSegment[] = [];
+      for (let i = 0; i < distancePoints.length - 1; i++) {
+        const p1 = distancePoints[i];
+        const p2 = distancePoints[i + 1];
+        const dist = roadRouteData.segmentDistances[i] ?? calculateGameDistance(p1, p2);
+        segs.push({
+          fromLabel: p1.label || `จุดที่ ${i + 1}`,
+          toLabel: p2.label || `จุดที่ ${i + 2}`,
+          distance: dist,
+        });
+      }
+      return { totalDistance: roadRouteData.totalDistance, segments: segs };
+    }
+
     let total = 0;
     const segs: RouteSegment[] = [];
     for (let i = 0; i < distancePoints.length - 1; i++) {
@@ -357,7 +410,7 @@ export function App() {
       });
     }
     return { totalDistance: total, segments: segs };
-  }, [distancePoints]);
+  }, [distancePoints, routingMode, roadRouteData]);
 
   // State: Modals & Sidebar
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -696,6 +749,22 @@ export function App() {
     soundEffects.playPinPlaced();
   }, []);
 
+  const handleToggleRoutingMode = useCallback((mode: RoutingMode) => {
+    setRoutingMode(mode);
+    try {
+      localStorage.setItem('fivem_map_routing_mode', mode);
+    } catch {}
+  }, []);
+
+  const handleSetRoutePair = useCallback((startSpot: CementSpot, endSpot: CementSpot) => {
+    setIsDistanceMode(true);
+    setDistancePoints([
+      { x: startSpot.x, y: startSpot.y, label: startSpot.name, spotId: startSpot.id },
+      { x: endSpot.x, y: endSpot.y, label: endSpot.name, spotId: endSpot.id },
+    ]);
+    soundEffects.playPinPlaced();
+  }, []);
+
   const activeLayerConfig = MAP_LAYERS.find((l) => l.id === activeLayer) || MAP_LAYERS[0];
 
   return (
@@ -766,6 +835,8 @@ export function App() {
           lockedCoords={lockedCoords}
           isDistanceMode={isDistanceMode}
           distancePoints={distancePoints}
+          routingMode={routingMode}
+          roadRouteData={roadRouteData}
           onAddDistancePoint={handleAddDistancePoint}
           onStartMeasureFromSpot={handleStartMeasureFromSpot}
           isMaster={gangSession?.isMaster}
@@ -786,6 +857,10 @@ export function App() {
             points={distancePoints}
             totalDistance={totalDistance}
             segments={segments}
+            routingMode={routingMode}
+            onToggleRoutingMode={handleToggleRoutingMode}
+            spots={spots}
+            onSetRoutePair={handleSetRoutePair}
             onClear={handleClearDistance}
             onUndo={handleUndoDistancePoint}
             onLoop={handleLoopDistance}

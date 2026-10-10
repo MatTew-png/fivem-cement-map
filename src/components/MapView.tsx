@@ -8,7 +8,7 @@ import {
   MAP_BOUNDS,
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
-import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, SpotCategoryInfo } from '../types/map';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, SpotCategoryInfo, RoutingMode } from '../types/map';
 import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
 import { soundEffects } from '../utils/sound';
 import { coordsBus } from '../utils/coordsBus';
@@ -54,6 +54,12 @@ interface MapViewProps {
   lockedCoords?: { x: number; y: number } | null;
   isDistanceMode?: boolean;
   distancePoints?: DistancePoint[];
+  routingMode?: RoutingMode;
+  roadRouteData?: {
+    fullPath: { x: number; y: number }[];
+    totalDistance: number;
+    segmentDistances: number[];
+  } | null;
   onAddDistancePoint?: (point: DistancePoint) => void;
   onStartMeasureFromSpot?: (spot: CementSpot) => void;
   isMaster?: boolean;
@@ -219,6 +225,9 @@ function createPopupNode(
     onStartCooldown: (spot: CementSpot, customMinutes?: number) => void;
     onCancelCooldown: (spotId: string) => void;
     onStartMeasureFromSpot?: (spot: CementSpot) => void;
+    onAddDistancePoint?: (point: DistancePoint) => void;
+    isDistanceMode?: boolean;
+    distancePoints?: DistancePoint[];
     onClearSelection?: () => void;
   }>,
   marker: L.Marker
@@ -402,15 +411,28 @@ function createPopupNode(
 
       <!-- Actions: Measure & Edit -->
       <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
-        <button 
-          type="button"
-          id="popup-measure-${spot.id}" 
-          class="py-1 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
-          title="เริ่มวัดระยะทางจากจุดนี้"
-        >
-          <span>📏</span>
-          <span>วัดระยะจากจุดนี้</span>
-        </button>
+        <div class="flex items-center gap-1">
+          <button 
+            type="button"
+            id="popup-measure-${spot.id}" 
+            class="py-1 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+            title="ตั้ง GPS / เริ่มต้นวัดระยะจากจุดนี้"
+          >
+            <span>🧭</span>
+            <span>ตั้ง GPS</span>
+          </button>
+          ${callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints && callbacksRef.current.distancePoints.length >= 1 && callbacksRef.current.distancePoints[0].spotId !== spot.id ? `
+            <button 
+              type="button"
+              id="popup-nav-target-${spot.id}" 
+              class="py-1 px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold transition-colors border border-cyan-500/30 flex items-center gap-1 cursor-pointer"
+              title="ตั้งเป็นจุดหมายปลายทาง"
+            >
+              <span>🎯</span>
+              <span>นำทางมาที่นี่</span>
+            </button>
+          ` : ''}
+        </div>
         <button 
           type="button"
           id="popup-edit-${spot.id}" 
@@ -534,6 +556,22 @@ function createPopupNode(
       e.preventDefault();
       marker.closePopup();
       callbacksRef.current.onStartMeasureFromSpot?.(spot);
+    };
+  }
+
+  const navTargetBtn = popupNode.querySelector(`#popup-nav-target-${spot.id}`) as HTMLElement | null;
+  if (navTargetBtn) {
+    navTargetBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      marker.closePopup();
+      callbacksRef.current.onAddDistancePoint?.({
+        x: spot.x,
+        y: spot.y,
+        label: spot.name,
+        spotId: spot.id,
+      });
+      soundEffects.playPinPlaced();
     };
   }
 
@@ -675,6 +713,8 @@ export const MapView = memo(({
   lockedCoords = null,
   isDistanceMode = false,
   distancePoints = [],
+  routingMode = 'road',
+  roadRouteData = null,
   onAddDistancePoint,
   onStartMeasureFromSpot,
   isMaster = false,
@@ -716,6 +756,7 @@ export const MapView = memo(({
     lockedCoords,
     isDistanceMode,
     distancePoints,
+    routingMode,
     onAddDistancePoint,
     onStartMeasureFromSpot,
     onFocusSpot,
@@ -738,6 +779,7 @@ export const MapView = memo(({
       lockedCoords,
       isDistanceMode,
       distancePoints,
+      routingMode,
       onAddDistancePoint,
       onStartMeasureFromSpot,
       onFocusSpot,
@@ -1468,59 +1510,117 @@ export const MapView = memo(({
 
     const latlngs = distancePoints.map((p) => gameCoordsToLatLng(p.x, p.y));
 
-    // 1. Draw glowing polyline if 2+ points
+    // 1. Draw polyline if 2+ points
     if (latlngs.length > 1) {
-      // Outer dark shadow line for contrast against all map layers
-      const shadowPolyline = L.polyline(latlngs, {
-        color: '#020617',
-        weight: 6,
-        opacity: 0.75,
-        interactive: false,
-      });
-      group.addLayer(shadowPolyline);
+      const isRoadMode = routingMode === 'road' && roadRouteData && roadRouteData.fullPath.length > 1;
 
-      // Inner glowing amber dashed polyline
-      const polyline = L.polyline(latlngs, {
-        color: '#f59e0b',
-        weight: 3.5,
-        dashArray: '8, 8',
-        opacity: 0.95,
-        interactive: false,
-      });
-      group.addLayer(polyline);
+      if (isRoadMode) {
+        const roadLatLngs = roadRouteData.fullPath.map((p) => gameCoordsToLatLng(p.x, p.y));
 
-      // Midpoint distance badges for each segment
-      for (let i = 0; i < distancePoints.length - 1; i++) {
-        const p1 = distancePoints[i];
-        const p2 = distancePoints[i + 1];
-        const segDist = calculateGameDistance(p1, p2);
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-        const midLatLng = gameCoordsToLatLng(midX, midY);
-
-        const distText =
-          segDist >= 1000
-            ? `${(segDist / 1000).toFixed(2)} กม.`
-            : `${segDist} ม.`;
-
-        const badgeIcon = L.divIcon({
-          className: 'custom-leaflet-div-icon',
-          html: `
-            <div class="pointer-events-none flex items-center justify-center -translate-x-1/2 -translate-y-1/2">
-              <span class="bg-slate-950/95 text-amber-300 font-mono font-black text-[10px] px-2 py-0.5 rounded-full border border-amber-500/60 shadow-lg shadow-amber-500/20 whitespace-nowrap backdrop-blur-sm">
-                ${distText}
-              </span>
-            </div>
-          `,
-          iconSize: [0, 0],
-        });
-
-        const badgeMarker = L.marker(midLatLng, {
-          icon: badgeIcon,
+        // Outer Dark Shadow Casing
+        const shadowPolyline = L.polyline(roadLatLngs, {
+          color: '#030712',
+          weight: 7.5,
+          opacity: 0.85,
           interactive: false,
-          zIndexOffset: 1500,
         });
-        group.addLayer(badgeMarker);
+        group.addLayer(shadowPolyline);
+
+        // Neon Blue/Cyan GTA Style GPS Line
+        const polyline = L.polyline(roadLatLngs, {
+          color: '#38bdf8',
+          weight: 4.5,
+          opacity: 0.95,
+          interactive: false,
+        });
+        group.addLayer(polyline);
+
+        // Road segment badges
+        for (let i = 0; i < distancePoints.length - 1; i++) {
+          const p1 = distancePoints[i];
+          const p2 = distancePoints[i + 1];
+          const segDist = roadRouteData.segmentDistances[i] ?? calculateGameDistance(p1, p2);
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const midLatLng = gameCoordsToLatLng(midX, midY);
+
+          const distText =
+            segDist >= 1000
+              ? `${(segDist / 1000).toFixed(2)} กม. (ถนน)`
+              : `${segDist} ม. (ถนน)`;
+
+          const badgeIcon = L.divIcon({
+            className: 'custom-leaflet-div-icon',
+            html: `
+              <div class="pointer-events-none flex items-center justify-center -translate-x-1/2 -translate-y-1/2">
+                <span class="bg-slate-950/95 text-cyan-300 font-mono font-black text-[10px] px-2 py-0.5 rounded-full border border-cyan-500/60 shadow-lg shadow-cyan-500/20 whitespace-nowrap backdrop-blur-sm">
+                  ${distText}
+                </span>
+              </div>
+            `,
+            iconSize: [0, 0],
+          });
+
+          const badgeMarker = L.marker(midLatLng, {
+            icon: badgeIcon,
+            interactive: false,
+            zIndexOffset: 1500,
+          });
+          group.addLayer(badgeMarker);
+        }
+      } else {
+        // Straight line mode (Original Air Distance)
+        const shadowPolyline = L.polyline(latlngs, {
+          color: '#020617',
+          weight: 6,
+          opacity: 0.75,
+          interactive: false,
+        });
+        group.addLayer(shadowPolyline);
+
+        // Inner glowing amber dashed polyline
+        const polyline = L.polyline(latlngs, {
+          color: '#f59e0b',
+          weight: 3.5,
+          dashArray: '8, 8',
+          opacity: 0.95,
+          interactive: false,
+        });
+        group.addLayer(polyline);
+
+        // Midpoint distance badges for each segment
+        for (let i = 0; i < distancePoints.length - 1; i++) {
+          const p1 = distancePoints[i];
+          const p2 = distancePoints[i + 1];
+          const segDist = calculateGameDistance(p1, p2);
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const midLatLng = gameCoordsToLatLng(midX, midY);
+
+          const distText =
+            segDist >= 1000
+              ? `${(segDist / 1000).toFixed(2)} กม. (เส้นตรง)`
+              : `${segDist} ม. (เส้นตรง)`;
+
+          const badgeIcon = L.divIcon({
+            className: 'custom-leaflet-div-icon',
+            html: `
+              <div class="pointer-events-none flex items-center justify-center -translate-x-1/2 -translate-y-1/2">
+                <span class="bg-slate-950/95 text-amber-300 font-mono font-black text-[10px] px-2 py-0.5 rounded-full border border-amber-500/60 shadow-lg shadow-amber-500/20 whitespace-nowrap backdrop-blur-sm">
+                  ${distText}
+                </span>
+              </div>
+            `,
+            iconSize: [0, 0],
+          });
+
+          const badgeMarker = L.marker(midLatLng, {
+            icon: badgeIcon,
+            interactive: false,
+            zIndexOffset: 1500,
+          });
+          group.addLayer(badgeMarker);
+        }
       }
     }
 
@@ -1566,7 +1666,7 @@ export const MapView = memo(({
 
       group.addLayer(ptMarker);
     });
-  }, [isDistanceMode, distancePoints]);
+  }, [isDistanceMode, distancePoints, routingMode, roadRouteData]);
 
   return (
     <div
