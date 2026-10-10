@@ -41,10 +41,10 @@ export type CooldownManifestListener = (activeCooldowns: ActiveCooldown[], sende
 export type SyncRequestListener = () => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
-const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v1';
-const MQTT_SPOTS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/spots_manifest_retained_v2';
-const MQTT_COOLDOWNS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/cooldowns_manifest_retained_v2';
-const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc';
+const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v2';
+const MQTT_SPOTS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/spots_manifest_retained_v3';
+const MQTT_COOLDOWNS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/cooldowns_manifest_retained_v3';
+const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc_v2';
 
 // E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่าย
 function encryptPayload(data: object): string {
@@ -525,6 +525,11 @@ class GangPresenceManager {
 
   private handleMessage(data: any) {
     if (!data || !data.type) return;
+
+    // บล็อกข้อความและการออนไลน์จากชื่อที่ถูกแบน
+    if ((data.memberName || '').trim() === '111111') {
+      return;
+    }
 
     // ละทิ้งเฉพาะ presence_ping เก่าเกิน 90 วินาที เพื่อไม่ให้รายชื่อค้าง
     if (data.type === 'presence_ping' && data.timestamp && Date.now() - data.timestamp > 90000) {
