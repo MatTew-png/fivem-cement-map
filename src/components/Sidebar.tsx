@@ -1002,7 +1002,7 @@ export const Sidebar = memo(({
                         <p className="text-[10px] text-slate-400">
                           {expandedGroups.cement || isSearching
                             ? 'เหมืองจกปูนรอบแมพ'
-                            : 'คลิกเพื่อเปิดดู 87 จุดฟาร์ม'}
+                            : `คลิกเพื่อเปิดดู ${groupedSpots.cement.length} จุดฟาร์ม`}
                         </p>
                       </div>
                     </div>
@@ -1044,7 +1044,7 @@ export const Sidebar = memo(({
                         <p className="text-[10px] text-slate-400">
                           {expandedGroups.landmarks || isSearching
                             ? 'ตำรวจ โรงพยาบาล ร้านค้า อู่รถ'
-                            : 'คลิกเพื่อเปิดดู 25 จุดบริการ'}
+                            : `คลิกเพื่อเปิดดู ${groupedSpots.landmarks.length} จุดบริการ`}
                         </p>
                       </div>
                     </div>
