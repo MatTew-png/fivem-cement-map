@@ -15,18 +15,39 @@ export interface ActivityLog {
   timestamp: number;
 }
 
-export const GANG_SECRET_SEED = 'RUNTHUKVERB_GANG_SECRET_KEY_2026';
+export const GANG_SECRET_SEED = 'RV_Z98X_7K2Q_GANG_VAULT_SEED_2026';
 const MASTER_PIN_KEY = 'runthukverb_master_pin';
-const SESSION_STORAGE_KEY = 'runthukverb_gang_session_v2';
+const SESSION_STORAGE_KEY = 'runthukverb_gang_session_v3';
 const ACTIVITY_LOGS_KEY = 'runthukverb_activity_logs';
 
 // เวลาอ้างอิงสำหรับการรีเซ็ตรหัสผ่านและเตะสมาชิกออกจากระบบทั้งหมด
-export const FORCE_RESET_TIMESTAMP = 1791614490000;
+export const FORCE_RESET_TIMESTAMP = 1791702500000;
+
+// ป้องกันการส่องรหัส 222547 จากหน้าเว็บด้วยการเก็บเป็น Salted Hash แทน Plaintext
+const DEFAULT_MASTER_PIN_HASH = '1f9a5d0f804fc1';
+
+function hashPinWithSalt(pin: string): string {
+  const salt = 'RV_MASTER_KEY_PROTECTOR_9843';
+  const str = pin + ':' + salt;
+  let h1 = 0xdeadbeef, h2 = 0x41c64e6d;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
 
 // ล้างเซสชั่นเก่าและรหัสผ่านเดิม 999999 ทันทีที่เข้าสู่ระบบใหม่
 if (typeof window !== 'undefined' && window.localStorage) {
   try {
     localStorage.removeItem('runthukverb_gang_session');
+    localStorage.removeItem('runthukverb_gang_session_v2');
+    localStorage.removeItem(ACTIVITY_LOGS_KEY);
     if (localStorage.getItem(MASTER_PIN_KEY) === '999999') {
       localStorage.removeItem(MASTER_PIN_KEY);
     }
@@ -35,8 +56,8 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
-// Default Master PIN สำหรับหัวหน้าแก๊ง (รหัสใหม่ที่หัวหน้ากำหนด)
-export const DEFAULT_MASTER_PIN = '222547';
+// Default Master PIN ว่างไว้ ไม่ให้มีเลข 222547 ติดในโค้ดฝั่ง Client
+export const DEFAULT_MASTER_PIN = '';
 
 // ฟังก์ชันแปลง Date เป็นสตริง YYYY-MM-DD ในเขตเวลาท้องถิ่น (Local Time)
 export function getLocalDateString(date: Date = new Date()): string {
@@ -63,13 +84,22 @@ export function getDailyPIN(date: Date = new Date()): string {
   return hashDateToPIN(getLocalDateString(date));
 }
 
-// คืนค่า Master PIN ของหัวหน้าแก๊ง
+// ตรวจสอบ Master PIN โดยไม่ให้มีตัวเลข Plaintext ปรากฏในบันเดิลโค้ด
+export function isMasterPIN(inputPin: string): boolean {
+  const custom = typeof localStorage !== 'undefined' ? localStorage.getItem(MASTER_PIN_KEY) : null;
+  if (custom && custom !== '999999' && custom.length >= 6) {
+    return inputPin === custom;
+  }
+  return hashPinWithSalt(inputPin) === DEFAULT_MASTER_PIN_HASH;
+}
+
+// คืนค่า Master PIN ของหัวหน้าแก๊ง (ถ้ามีบันทึกแบบ Custom ไว้)
 export function getMasterPIN(): string {
   const custom = typeof localStorage !== 'undefined' ? localStorage.getItem(MASTER_PIN_KEY) : null;
   if (custom && custom !== '999999' && custom.length >= 6) {
     return custom;
   }
-  return DEFAULT_MASTER_PIN;
+  return '';
 }
 
 // บันทึก Master PIN ใหม่ (สำหรับหัวหน้า)
@@ -141,9 +171,8 @@ export function verifyPIN(
   }
 
   const todayPIN = getDailyPIN();
-  const masterPIN = getMasterPIN();
 
-  if (masterPIN && masterPIN.length >= 6 && cleanPin === masterPIN) {
+  if (isMasterPIN(cleanPin)) {
     const session: GangSession = {
       memberName: cleanName,
       authDate: getLocalDateString(),
