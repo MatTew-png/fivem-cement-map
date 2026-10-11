@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Clock,
@@ -11,10 +11,24 @@ import {
   Smartphone,
   Monitor,
   Trash2,
+  ShieldAlert,
+  Download,
+  Bell,
+  Search,
 } from 'lucide-react';
 import { gangPresence, type OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession } from '../utils/gangAuth';
 import { getUpcomingPINs, formatPINsForDiscord, logoutGang } from '../utils/gangAuth';
+import {
+  getIpLogs,
+  clearIpLogs,
+  getBannedIps,
+  banIp,
+  unbanIp,
+  getDiscordWebhookUrl,
+  setDiscordWebhookUrl,
+  type IpLogEntry,
+} from '../utils/ipLogger';
 
 interface GangPresenceModalProps {
   isOpen: boolean;
@@ -33,8 +47,21 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   currentSession,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'online' | 'logs' | 'boss'>('online');
+  const [activeTab, setActiveTab] = useState<'online' | 'logs' | 'boss' | 'ip_logs'>('online');
   const [copied, setCopied] = useState(false);
+  const [ipLogs, setIpLogs] = useState<IpLogEntry[]>(() => getIpLogs());
+  const [bannedIps, setBannedIps] = useState<string[]>(() => getBannedIps());
+  const [searchIpText, setSearchIpText] = useState('');
+  const [webhookInput, setWebhookInput] = useState(() => getDiscordWebhookUrl());
+  const [showWebhookConfig, setShowWebhookConfig] = useState(false);
+  const [webhookSavedSuccess, setWebhookSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'ip_logs') {
+      setIpLogs(getIpLogs());
+      setBannedIps(getBannedIps());
+    }
+  }, [activeTab]);
 
   if (!isOpen) return null;
 
@@ -59,6 +86,59 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     const h = String(d.getHours()).padStart(2, '0');
     const m = String(d.getMinutes()).padStart(2, '0');
     return `${h}:${m} น.`;
+  };
+
+  const handleBan = (ip: string) => {
+    banIp(ip);
+    setBannedIps(getBannedIps());
+    setIpLogs(getIpLogs());
+  };
+
+  const handleUnban = (ip: string) => {
+    unbanIp(ip);
+    setBannedIps(getBannedIps());
+    setIpLogs(getIpLogs());
+  };
+
+  const handleClearIpLogs = () => {
+    if (confirm('คุณต้องการลบประวัติ IP ทั้งหมดใช่หรือไม่?')) {
+      clearIpLogs();
+      setIpLogs([]);
+    }
+  };
+
+  const handleSaveWebhook = () => {
+    setDiscordWebhookUrl(webhookInput);
+    setWebhookSavedSuccess(true);
+    setTimeout(() => setWebhookSavedSuccess(false), 2500);
+  };
+
+  const handleExportCsv = () => {
+    const logs = getIpLogs();
+    if (logs.length === 0) {
+      alert('ไม่มีประวัติ Log สำหรับส่งออก');
+      return;
+    }
+    const headers = ['เวลา', 'IP Address', 'จังหวัด/ประเทศ', 'ผู้ให้บริการ(ISP)', 'อุปกรณ์', 'การกระทำ', 'ชื่อที่กรอก', 'รหัสที่พยายามใส่'];
+    const rows = logs.map((l) => [
+      new Date(l.timestamp).toLocaleString('th-TH'),
+      l.ip,
+      `${l.city || ''} ${l.country || ''}`.trim(),
+      l.isp || '',
+      l.device,
+      l.action === 'login_success' ? 'สำเร็จ' : l.action === 'login_fail' ? 'รหัสผิด' : l.action === 'banned_blocked' ? 'ถูกบล็อก' : 'เข้าชมเว็บ',
+      l.memberName || '',
+      l.attemptedPin || '',
+    ]);
+
+    const csvContent = '\uFEFF' + [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `runthukverb_ip_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -160,6 +240,25 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               <Crown className="w-3.5 h-3.5" />
               <span>รหัสแก๊ง 7 วัน</span>
             </button>
+
+            {currentSession?.isMaster && (
+              <button
+                onClick={() => setActiveTab('ip_logs')}
+                className={`flex-1 py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold ${
+                  activeTab === 'ip_logs'
+                    ? 'bg-gradient-to-r from-red-600/30 to-rose-600/20 text-red-300 shadow-sm border border-red-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                <span>บันทึก IP</span>
+                {ipLogs.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-300 text-[10px] font-mono">
+                    {ipLogs.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -379,6 +478,230 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: IP ACCESS LOGS & SECURITY VAULT */}
+          {activeTab === 'ip_logs' && currentSession?.isMaster && (
+            <div className="space-y-3">
+              {/* Top Stats & Actions Bar */}
+              <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-red-400" />
+                    <span>บันทึกประวัติ IP</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-mono">
+                    {ipLogs.length} รายการ
+                  </span>
+                  {bannedIps.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-[10px] text-red-300 font-bold">
+                      แบนอยู่ {bannedIps.length} IP
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowWebhookConfig(!showWebhookConfig)}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors ${
+                      showWebhookConfig
+                        ? 'bg-indigo-600 text-white border-indigo-500'
+                        : 'bg-slate-900 hover:bg-slate-850 text-indigo-300 border-indigo-500/30'
+                    }`}
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>แจ้งเตือน Discord</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportCsv}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                    title="ดาวน์โหลดประวัติเป็นไฟล์ CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>CSV</span>
+                  </button>
+
+                  {ipLogs.length > 0 && (
+                    <button
+                      onClick={handleClearIpLogs}
+                      className="px-2 py-1 rounded-xl text-[11px] font-bold bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/40 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="ล้างประวัติ Log ทั้งหมด"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Discord Webhook Settings Card (Expandable) */}
+              {showWebhookConfig && (
+                <div className="p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-500/40 space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-200 flex items-center gap-1.5">
+                      <Bell className="w-4 h-4 text-indigo-400" />
+                      <span>ตั้งค่าแจ้งเตือน IP เข้าเว็บลง Discord สดๆ</span>
+                    </span>
+                    {webhookSavedSuccess && (
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40 animate-pulse">
+                        บันทึกสำเร็จ!
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    นำ Webhook URL จากห้อง Discord ของคุณมาวาง เพื่อให้ระบบส่งแจ้งเตือน IP ทุกครั้งที่มีคนเปิดเว็บ หรือพิมพ์รหัสผิด ส่งตรงเข้ามือถือทันที
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="https://discord.com/api/webhooks/..."
+                      value={webhookInput}
+                      onChange={(e) => setWebhookInput(e.target.value)}
+                      className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      onClick={handleSaveWebhook}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      บันทึก
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Search Filter */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาตาม IP, ชื่อเล่น, หรือจังหวัด..."
+                  value={searchIpText}
+                  onChange={(e) => setSearchIpText(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-600"
+                />
+              </div>
+
+              {/* Log Entries List */}
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+                {(() => {
+                  const query = searchIpText.toLowerCase().trim();
+                  const filtered = ipLogs.filter((log) => {
+                    if (!query) return true;
+                    return (
+                      log.ip.toLowerCase().includes(query) ||
+                      (log.memberName && log.memberName.toLowerCase().includes(query)) ||
+                      (log.city && log.city.toLowerCase().includes(query)) ||
+                      (log.isp && log.isp.toLowerCase().includes(query)) ||
+                      (log.attemptedPin && log.attemptedPin.includes(query))
+                    );
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-slate-500 text-xs">
+                        {searchIpText ? 'ไม่พบข้อมูล IP ที่ตรงกับการค้นหา' : 'ยังไม่มีบันทึกประวัติการเข้าใช้งาน'}
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((item) => {
+                    const isBanned = bannedIps.includes(item.ip);
+                    const isFail = item.action === 'login_fail';
+                    const isSuccess = item.action === 'login_success';
+                    const isBlocked = item.action === 'banned_blocked';
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-3 rounded-2xl border transition-all text-xs ${
+                          isBanned || isBlocked
+                            ? 'bg-red-950/20 border-red-900/60'
+                            : isFail
+                            ? 'bg-rose-950/15 border-rose-800/40'
+                            : isSuccess
+                            ? 'bg-emerald-950/15 border-emerald-800/40'
+                            : 'bg-slate-950/40 border-slate-850'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            {/* Status Pill */}
+                            {isSuccess && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-[10px] flex items-center gap-1">
+                                <span>🟢 สำเร็จ</span>
+                                {item.isMaster && <span>👑</span>}
+                              </span>
+                            )}
+                            {isFail && (
+                              <span className="px-2 py-0.5 rounded-full bg-red-500/25 border border-red-500/50 text-red-300 font-bold text-[10px] flex items-center gap-1 animate-pulse">
+                                <span>🚨 รหัสผิด!</span>
+                              </span>
+                            )}
+                            {isBlocked && (
+                              <span className="px-2 py-0.5 rounded-full bg-red-950 border border-red-800 text-red-400 font-bold text-[10px]">
+                                ⛔ บล็อกแล้ว
+                              </span>
+                            )}
+                            {item.action === 'visit' && (
+                              <span className="px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[10px]">
+                                🌐 เข้าชมเว็บ
+                              </span>
+                            )}
+
+                            {/* IP Address */}
+                            <span className="font-mono font-bold text-white text-xs select-all">
+                              {item.ip}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400">
+                              {formatTimeStr(item.timestamp)}
+                            </span>
+
+                            {/* Ban / Unban Button */}
+                            {item.ip && item.ip !== 'Unknown' && (
+                              <button
+                                onClick={() => (isBanned ? handleUnban(item.ip) : handleBan(item.ip))}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                                  isBanned
+                                    ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border-emerald-600/50'
+                                    : 'bg-red-950/50 hover:bg-red-900 text-red-300 border-red-800/50'
+                                }`}
+                              >
+                                {isBanned ? '✅ ปลดแบน' : '🚫 แบน IP'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Details Grid */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                          {item.memberName && (
+                            <span className="text-slate-200">
+                              ชื่อ: <strong className="text-amber-300">{item.memberName}</strong>
+                            </span>
+                          )}
+                          {item.attemptedPin && (
+                            <span className="text-red-300 font-mono">
+                              รหัสที่ใส่: <strong className="bg-red-950/60 px-1 rounded border border-red-800/40">{item.attemptedPin}</strong>
+                            </span>
+                          )}
+                          {(item.city || item.isp) && (
+                            <span className="text-slate-400">
+                              📍 {item.city || ''} {item.isp ? `(${item.isp})` : ''}
+                            </span>
+                          )}
+                          <span className="text-slate-500">
+                            📱 {item.device}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}

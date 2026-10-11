@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles } from 'lucide-react';
 import { verifyPIN } from '../utils/gangAuth';
 import type { GangSession } from '../utils/gangAuth';
+import { logIpAccess } from '../utils/ipLogger';
 
 interface GangAuthModalProps {
   onSuccess: (session: GangSession) => void;
@@ -40,6 +41,11 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
       setIsSubmitting(false);
 
       if (result.success) {
+        logIpAccess({
+          action: 'login_success',
+          memberName: name.trim(),
+          isMaster: result.isMaster,
+        });
         localStorage.setItem('runthukverb_last_member_name', name.trim());
         // Create session object
         const session: GangSession = {
@@ -50,6 +56,11 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
         };
         onSuccess(session);
       } else {
+        logIpAccess({
+          action: 'login_fail',
+          memberName: name.trim(),
+          attemptedPin: pin.trim(),
+        });
         setError(result.error || 'รหัสผ่านไม่ถูกต้อง');
       }
     }, 250);

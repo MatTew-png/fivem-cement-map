@@ -31,6 +31,7 @@ import { GangWatermark } from './components/GangWatermark';
 import { setupAntiTamper } from './utils/antiTamper';
 import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
 import { getGangSession, type GangSession, type ActivityLog } from './utils/gangAuth';
+import { detectClientIp, isIpBanned, logIpAccess } from './utils/ipLogger';
 
 export function App() {
   // State: Spots
@@ -175,6 +176,23 @@ export function App() {
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [notifications, setNotifications] = useState<GangNotification[]>([]);
+
+  // State: IP Security & Ban Detection
+  const [isBannedClient, setIsBannedClient] = useState(false);
+  const [clientIpAddress, setClientIpAddress] = useState('');
+
+  // Effect: Immediate Visitor IP Tracking & Ban Enforcement
+  useEffect(() => {
+    detectClientIp().then((info) => {
+      setClientIpAddress(info.ip);
+      if (isIpBanned(info.ip)) {
+        setIsBannedClient(true);
+        logIpAccess({ action: 'banned_blocked' });
+      } else {
+        logIpAccess({ action: 'visit' });
+      }
+    });
+  }, []);
 
   // Effect: Anti-Tamper Protection (Disable contextmenu, F12, DevTools shortcuts)
   useEffect(() => {
@@ -790,6 +808,26 @@ export function App() {
   }, []);
 
   const activeLayerConfig = MAP_LAYERS.find((l) => l.id === activeLayer) || MAP_LAYERS[0];
+
+  if (isBannedClient) {
+    return (
+      <div className="fixed inset-0 z-[99999] bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
+        <div className="w-20 h-20 rounded-3xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-4xl mb-4 text-red-500 animate-pulse shadow-xl shadow-red-500/10">
+          🚫
+        </div>
+        <h1 className="text-2xl font-black text-white mb-2 tracking-wide uppercase">ระงับการเข้าถึงเว็บไซต์</h1>
+        <p className="text-sm text-slate-400 max-w-md mb-2">
+          IP Address ของคุณ (<span className="font-mono text-red-400 font-bold">{clientIpAddress || 'IP ที่ถูกบล็อก'}</span>) ถูกระงับการเข้าใช้งานโดยหัวหน้าแก๊ง
+        </p>
+        <p className="text-xs text-slate-500 max-w-sm mb-6">
+          หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อหัวหน้าแก๊งเพื่อขอปลดแบน IP ของคุณ
+        </p>
+        <div className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[10px] text-slate-500 font-mono">
+          Security Enforcement • FiveM RunThukVerb
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
