@@ -7,10 +7,13 @@ import {
   Package,
   Flame,
   X,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { isCementSpot } from '../data/defaultSpots';
 import { renderSpotIcon } from './PinModal';
+import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 interface MagicSpotCardProps {
   spot: CementSpot;
@@ -49,6 +52,7 @@ export const MagicSpotCard = memo(({
 }: MagicSpotCardProps) => {
   const [mousePos, setMousePos] = useState({ x: -999, y: -999 });
   const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Cooldown status calculation
   const remainingSec = activeCooldown
@@ -414,6 +418,30 @@ export const MagicSpotCard = memo(({
             <span>
               {isUrgent ? cdTimeStr : isCooldown ? cdTimeStr : `${spot.cooldownMinutes || 10}น.`}
             </span>
+          </button>
+
+          {/* Copy Spot Button (for epic-euclid) */}
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
+              await copyToClipboard(json);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1800);
+            }}
+            title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
+            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+              copied
+                ? 'text-emerald-400 bg-emerald-500/15'
+                : 'text-slate-400 hover:text-amber-300 hover:bg-slate-750'
+            }`}
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
           </button>
 
           {/* Edit Button */}

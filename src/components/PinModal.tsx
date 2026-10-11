@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag } from 'lucide-react';
+import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag, Copy } from 'lucide-react';
 import type { CementSpot } from '../types/map';
 import { DEFAULT_SPOTS, isCementSpot } from '../data/defaultSpots';
 import { parseFiveMCoords } from '../utils/crs';
+import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -376,6 +377,7 @@ export const PinModal = ({
   const [cooldownMinutes, setCooldownMinutes] = useState(10);
   const [coordsPasteInput, setCoordsPasteInput] = useState('');
   const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
+  const [copiedSpot, setCopiedSpot] = useState(false);
 
   const handleCoordsPaste = (raw: string) => {
     setCoordsPasteInput(raw);
@@ -945,30 +947,71 @@ export const PinModal = ({
 
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-            {initialSpot?.id && onDelete ? (
-              isOfficial && !isMaster ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm('คุณต้องการลบหมุดนี้ใช่หรือไม่?')) {
-                      onDelete(initialSpot.id!);
-                      onClose();
-                    }
-                  }}
-                  className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
-                  <span>ลบหมุดนี้</span>
-                </button>
-              )
-            ) : (
-              <div />
-            )}
+            <div className="flex items-center gap-2">
+              {initialSpot?.id && onDelete ? (
+                isOfficial && !isMaster ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('คุณต้องการลบหมุดนี้ใช่หรือไม่?')) {
+                        onDelete(initialSpot.id!);
+                        onClose();
+                      }
+                    }}
+                    className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
+                    <span>ลบหมุดนี้</span>
+                  </button>
+                )
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const currentSpotData = {
+                    ...(initialSpot || {}),
+                    id: initialSpot?.id || `spot_${Date.now()}`,
+                    name,
+                    category,
+                    icon,
+                    color,
+                    x: Number(x) || 0,
+                    y: Number(y) || 0,
+                    z: Number(z) || 30.0,
+                    postal,
+                    cooldownMinutes,
+                  };
+                  const jsonStr = JSON.stringify(formatSpotToEuclidObject(currentSpotData as any), null, 2);
+                  copyToClipboard(jsonStr);
+                  setCopiedSpot(true);
+                  setTimeout(() => setCopiedSpot(false), 2000);
+                }}
+                className={`px-3 py-2 text-xs font-medium rounded-xl transition-all border flex items-center gap-1.5 cursor-pointer ${
+                  copiedSpot
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 hover:border-slate-600'
+                }`}
+                title="คัดลอกข้อมูลหมุดนี้ในรูปแบบ JSON สำหรับโปรเจค epic-euclid"
+              >
+                {copiedSpot ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">คัดลอกแล้ว!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>คัดลอก JSON</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             <div className="flex items-center gap-2">
               <button

@@ -14,6 +14,7 @@ import { soundEffects } from '../utils/sound';
 import { coordsBus } from '../utils/coordsBus';
 import { resolveAssetUrl } from './PinModal';
 import { computeClusters, createClusterDivIcon, type ClusterItem } from '../utils/clustering';
+import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
@@ -312,17 +313,28 @@ function createPopupNode(
         </button>
       </div>
 
-      <!-- Actions: Measure & Edit -->
+      <!-- Actions: Measure, Copy & Edit -->
       <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
-        <button 
-          type="button"
-          id="popup-measure-${spot.id}" 
-          class="py-1 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
-          title="เริ่มวัดระยะทางจากจุดนี้"
-        >
-          <span>📏</span>
-          <span>วัดระยะจากจุดนี้</span>
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button 
+            type="button"
+            id="popup-measure-${spot.id}" 
+            class="py-1 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+            title="เริ่มวัดระยะทางจากจุดนี้"
+          >
+            <span>📏</span>
+            <span>วัดระยะ</span>
+          </button>
+          <button 
+            type="button"
+            id="popup-copy-${spot.id}" 
+            class="py-1 px-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 active:scale-95 text-slate-300 hover:text-amber-300 text-[11px] font-medium transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
+            title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
+          >
+            <span>📋</span>
+            <span>คัดลอกหมุด</span>
+          </button>
+        </div>
         <button 
           type="button"
           id="popup-edit-${spot.id}" 
@@ -420,6 +432,15 @@ function createPopupNode(
           >
             <span>🧭</span>
             <span>ตั้ง GPS</span>
+          </button>
+          <button 
+            type="button"
+            id="popup-copy-${spot.id}" 
+            class="py-1 px-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 active:scale-95 text-slate-300 hover:text-amber-300 text-[11px] font-medium transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
+            title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
+          >
+            <span>📋</span>
+            <span>คัดลอกหมุด</span>
           </button>
           ${callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints && callbacksRef.current.distancePoints.length >= 1 && callbacksRef.current.distancePoints[0].spotId !== spot.id ? `
             <button 
@@ -572,6 +593,25 @@ function createPopupNode(
         spotId: spot.id,
       });
       soundEffects.playPinPlaced();
+    };
+  }
+
+  const copyBtn = popupNode.querySelector(`#popup-copy-${spot.id}`) as HTMLElement | null;
+  if (copyBtn) {
+    copyBtn.onclick = async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
+      await copyToClipboard(json);
+      copyBtn.innerHTML = '<span>✅</span><span>คัดลอกแล้ว</span>';
+      copyBtn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
+      soundEffects.playPinPlaced();
+      setTimeout(() => {
+        if (copyBtn) {
+          copyBtn.innerHTML = '<span>📋</span><span>คัดลอกหมุด</span>';
+          copyBtn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
+        }
+      }, 1800);
     };
   }
 

@@ -11,13 +11,25 @@ export function getSpotQuickCategory(spot: CementSpot): QuickCategory {
   if (
     spot.category === 'head_reset' ||
     spot.name.includes('รีหัว') ||
-    (spot.icon && spot.icon.includes('radar_bar') && !spot.icon.includes('biker_bar'))
+    spot.name.includes('ร้านเหล้า') ||
+    Boolean(spot.icon && spot.icon.includes('radar_bar')) ||
+    Boolean(spot.icon && spot.icon.includes('biker_bar'))
   ) return 'head_reset';
   if (
     spot.category === 'farm' ||
+    spot.category === 'rebel' ||
     spot.name.includes('ฟาร์ม') ||
     spot.name.includes('ฟาม') ||
-    (spot.icon && spot.icon.includes('contraband')) ||
+    spot.name.includes('เรเบล') ||
+    spot.name.includes('โพล') ||
+    spot.name.includes('แพ็ค') ||
+    spot.name.includes('หมู') ||
+    spot.name.includes('ขายหมู') ||
+    spot.name.includes('ขายไม้') ||
+    spot.name.includes('ขายข้าว') ||
+    spot.name.includes('ขายดอกไม้') ||
+    Boolean(spot.icon && spot.icon.includes('contraband')) ||
+    Boolean(spot.icon && spot.icon.includes('crim_cuff_keys')) ||
     spot.icon === '🌾'
   ) return 'farm';
   if (

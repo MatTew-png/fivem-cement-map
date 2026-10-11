@@ -138,15 +138,27 @@ export const Sidebar = memo(({
   const isHeadReset = (s: CementSpot): boolean =>
     s.category === 'head_reset' ||
     s.name.includes('รีหัว') ||
-    Boolean(s.icon && s.icon.includes('radar_bar') && !s.icon.includes('biker_bar')) ||
+    s.name.includes('ร้านเหล้า') ||
+    Boolean(s.icon && s.icon.includes('radar_bar')) ||
+    Boolean(s.icon && s.icon.includes('biker_bar')) ||
     Boolean(s.tags?.includes('head_reset')) ||
     Boolean(s.tags?.includes('รีหัว'));
   const isFarm = (s: CementSpot): boolean =>
     !isHeadReset(s) && (
       s.category === 'farm' ||
+      s.category === 'rebel' ||
       s.name.includes('ฟาร์ม') ||
       s.name.includes('ฟาม') ||
+      s.name.includes('เรเบล') ||
+      s.name.includes('โพล') ||
+      s.name.includes('แพ็ค') ||
+      s.name.includes('หมู') ||
+      s.name.includes('ขายหมู') ||
+      s.name.includes('ขายไม้') ||
+      s.name.includes('ขายข้าว') ||
+      s.name.includes('ขายดอกไม้') ||
       Boolean(s.icon && s.icon.includes('contraband')) ||
+      Boolean(s.icon && s.icon.includes('crim_cuff_keys')) ||
       s.icon === '🌾' ||
       Boolean(s.tags?.includes('farm')) ||
       Boolean(s.tags?.includes('ฟาร์ม'))
