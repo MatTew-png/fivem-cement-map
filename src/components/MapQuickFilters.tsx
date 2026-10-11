@@ -6,6 +6,7 @@ import type { QuickCategory } from '../utils/clustering';
 export interface MapQuickFiltersProps {
   categoriesState: Record<QuickCategory, boolean>;
   onToggleCategory: (cat: QuickCategory) => void;
+  onSetCategoriesState?: (state: Record<QuickCategory, boolean>) => void;
   isClusteringEnabled: boolean;
   onToggleClustering: () => void;
   counts: Record<QuickCategory, number>;
@@ -15,6 +16,7 @@ export interface MapQuickFiltersProps {
 export const MapQuickFilters = memo(({
   categoriesState,
   onToggleCategory,
+  onSetCategoriesState,
   isClusteringEnabled,
   onToggleClustering,
   counts,
@@ -37,6 +39,63 @@ export const MapQuickFilters = memo(({
       }`}
     >
       <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/90 backdrop-blur-md px-2 py-1.5 rounded-2xl border border-slate-700/80 shadow-2xl pointer-events-auto overflow-x-auto no-scrollbar">
+        {/* Preset: Focus Head Reset, Farm & Lands */}
+        {onSetCategoriesState && (
+          <button
+            type="button"
+            onClick={() => {
+              const isOnlyResetFarmLands =
+                categoriesState.head_reset &&
+                categoriesState.farm &&
+                categoriesState.lands &&
+                !categoriesState.cement &&
+                !categoriesState.race &&
+                !categoriesState.quest &&
+                !categoriesState.fuel &&
+                !categoriesState.services;
+
+              soundEffects.playPinPlaced();
+              if (isOnlyResetFarmLands) {
+                // Restore all
+                onSetCategoriesState({
+                  cement: true,
+                  race: true,
+                  head_reset: true,
+                  farm: true,
+                  quest: true,
+                  lands: true,
+                  fuel: true,
+                  services: true,
+                });
+              } else {
+                // Focus: รีหัว, ฟาร์ม, แลน
+                onSetCategoriesState({
+                  cement: false,
+                  race: false,
+                  head_reset: true,
+                  farm: true,
+                  quest: false,
+                  lands: true,
+                  fuel: false,
+                  services: false,
+                });
+              }
+            }}
+            title="คลิกเพื่อสลับแสดงเฉพาะ: รีหัว, ฟาร์ม, แลน (สำหรับทำงาน/แคปรูป)"
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+              categoriesState.head_reset && categoriesState.farm && categoriesState.lands && !categoriesState.cement
+                ? 'bg-gradient-to-r from-pink-500/30 via-amber-500/30 to-indigo-500/30 text-amber-200 border-amber-400 shadow-sm shadow-amber-500/20'
+                : 'bg-slate-800/80 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
+            }`}
+          >
+            <span>🎯</span>
+            <span className="font-bold">รีหัว/ฟาร์ม/แลน</span>
+          </button>
+        )}
+
+        {/* Separator */}
+        {onSetCategoriesState && <div className="w-[1px] h-4 bg-slate-700 mx-0.5 shrink-0" />}
+
         {/* 1. Cement Spots */}
         <button
           type="button"

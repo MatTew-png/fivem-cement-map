@@ -12,6 +12,8 @@ export function getSpotQuickCategory(spot: CementSpot): QuickCategory {
     spot.category === 'head_reset' ||
     spot.name.includes('รีหัว') ||
     spot.name.includes('ร้านเหล้า') ||
+    spot.name.includes('อู่') ||
+    spot.id === 'spot-1788676937650' ||
     Boolean(spot.icon && spot.icon.includes('radar_bar')) ||
     Boolean(spot.icon && spot.icon.includes('biker_bar'))
   ) return 'head_reset';

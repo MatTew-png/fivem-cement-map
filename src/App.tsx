@@ -136,6 +136,13 @@ export function App() {
     });
   }, []);
 
+  const handleSetCategoriesState = useCallback((next: Record<QuickCategory, boolean>) => {
+    setCategoriesState(next);
+    localStorage.setItem('fivem_map_categories_state_v1', JSON.stringify(next));
+    setShowCementSpots(next.cement);
+    localStorage.setItem('fivem_map_show_cement', String(next.cement));
+  }, []);
+
   const handleToggleClustering = useCallback(() => {
     setIsClusteringEnabled((prev) => {
       const next = !prev;
@@ -485,7 +492,12 @@ export function App() {
     return spots.filter((spot) => {
       if (selectedSpot?.id === spot.id) return true;
       const cat = getSpotQuickCategory(spot);
-      return categoriesState[cat];
+      if (categoriesState[cat]) return true;
+      // Fallback support for multi-faceted spots
+      if (categoriesState.lands && spot.category === 'landmark') return true;
+      if (categoriesState.head_reset && (spot.category === 'head_reset' || spot.name.includes('รีหัว') || spot.name.includes('อู่') || spot.id === 'spot-1788676937650')) return true;
+      if (categoriesState.farm && (spot.category === 'farm' || spot.category === 'rebel' || spot.name.includes('ขายหมู') || spot.name.includes('ขายข้าว'))) return true;
+      return false;
     });
   }, [spots, categoriesState, selectedSpot?.id]);
 
@@ -820,6 +832,7 @@ export function App() {
         <MapQuickFilters
           categoriesState={categoriesState}
           onToggleCategory={handleToggleCategory}
+          onSetCategoriesState={handleSetCategoriesState}
           isClusteringEnabled={isClusteringEnabled}
           onToggleClustering={handleToggleClustering}
           counts={categoryCounts}

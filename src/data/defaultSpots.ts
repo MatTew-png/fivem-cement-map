@@ -2947,7 +2947,24 @@ export const DEFAULT_SPOTS: CementSpot[] = [
     "requiredItems": [],
     "notes": "",
     "createdAt": 1788676937650,
-    "updatedAt": 1788676937650
+    "updatedAt": 1791602264358
+  },
+  {
+    "id": "spot-1791604241115",
+    "name": "บาร์รีหัว",
+    "category": "head_reset",
+    "icon": "/blips/radar_bar_green.png",
+    "color": "#22c55e",
+    "x": -1824.1,
+    "y": -1211.9,
+    "z": 30,
+    "postal": "",
+    "cooldownMinutes": 10,
+    "yieldDescription": "",
+    "requiredItems": [],
+    "notes": "จุดฟื้นฟูและรีเซ็ตค่าความเหนื่อยล้าของสมอง 0%",
+    "createdAt": 1791604241115,
+    "updatedAt": 1791604241115
   },
   {
     "id": "spot-rebel-south",
