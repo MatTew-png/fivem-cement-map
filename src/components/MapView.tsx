@@ -347,29 +347,84 @@ function createPopupNode(
   } else {
     // ==============================================================
     // Clean Spot Info View ("รู้แค่ว่าจุดตรงนี้" ไม่บังหน้าจอตอนแคปรูป)
-    // มีปุ่ม "⏱️ ตั้งเวลา" เพื่อคลี่แป้นพิมพ์ Numpad ออกมาได้เมื่อต้องการ
+    // ==============================================================
+    // IMAGE 1: Cooldown Numpad Picker (Exact match of Image 1 - ไวต่อการใช้งานทันที)
     // ==============================================================
     popupNode.innerHTML = `
-      <!-- Header: Icon, Category Badge & Spot Name -->
       <div class="flex items-center justify-between gap-1.5 pb-2 border-b border-slate-800/80 mb-2">
         <div class="flex items-center gap-1.5 min-w-0">
           <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
             ${renderSpotIconHtml(spotIcon, 'w-3 h-3')}
             <span>${cat.name}</span>
           </span>
-          <span class="font-bold text-xs text-white truncate max-w-[150px]" title="${spot.name}">${spot.name}</span>
+          <span class="font-bold text-xs text-white truncate max-w-[140px]" title="${spot.name}">${spot.name}</span>
         </div>
-        ${spot.postal ? `<span class="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1 py-0.5 rounded border border-amber-500/40 shrink-0">📮 ${spot.postal}</span>` : ''}
+        <span class="text-[10px] text-slate-400 shrink-0">⏱️ ตั้งเวลา</span>
       </div>
 
-      <!-- Coords & Cooldown info row (รู้พิกัดจุดตรงนี้ชัดเจน) -->
-      <div class="flex items-center justify-between text-[11px] text-slate-300 mb-2 bg-slate-950/70 px-2.5 py-1.5 rounded-xl border border-slate-800/90 shadow-inner">
-        <span class="font-mono text-cyan-300 font-bold text-[11px]">📍 X: ${spot.x.toFixed(1)}, Y: ${spot.y.toFixed(1)}</span>
-        <span class="text-[10px] text-amber-400 font-mono font-semibold">⏱️ คูลดาวน์ ${spot.cooldownMinutes ?? 10} น.</span>
+      <!-- Numpad Display Screen -->
+      <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
+        <div class="flex items-baseline gap-1">
+          <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
+          <span class="text-xs text-slate-400">นาที</span>
+        </div>
+        <button 
+          type="button" 
+          id="numpad-btn-clear-${spot.id}" 
+          class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+        >
+          ✕ ล้าง
+        </button>
       </div>
 
-      <!-- Actions: Measure, Copy, Toggle Numpad & Edit -->
-      <div class="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-800/80">
+      <!-- 3x4 Numpad Keypad -->
+      <div class="grid grid-cols-3 gap-1 mb-2 select-none">
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
+          <button 
+            type="button" 
+            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+            data-key="${num}"
+          >
+            ${num}
+          </button>
+        `).join('')}
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="C"
+          title="ล้างตัวเลข"
+        >
+          C
+        </button>
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="0"
+        >
+          0
+        </button>
+        <button 
+          type="button" 
+          class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+          data-key="BACK"
+          title="ลบตัวล่าสุด"
+        >
+          ⌫
+        </button>
+      </div>
+
+      <!-- Big Start Cooldown Button -->
+      <button 
+        type="button" 
+        id="numpad-btn-start-${spot.id}" 
+        class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
+      >
+        <span>⏱️</span>
+        <span>เริ่มจับเวลา</span>
+      </button>
+
+      <!-- Actions: Measure, Copy & Edit -->
+      <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
         <div class="flex items-center gap-1">
           <button 
             type="button"
@@ -389,15 +444,6 @@ function createPopupNode(
             <span>📋</span>
             <span>คัดลอกหมุด</span>
           </button>
-          <button 
-            type="button"
-            id="popup-toggle-timer-${spot.id}" 
-            class="py-1 px-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 active:scale-95 text-amber-400 hover:text-amber-300 text-[11px] font-medium transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
-            title="กดเพื่อเปิด/ปิด แป้นพิมพ์ตัวเลขตั้งเวลาคูลดาวน์"
-          >
-            <span>⏱️</span>
-            <span>ตั้งเวลา</span>
-          </button>
           ${callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints && callbacksRef.current.distancePoints.length >= 1 && callbacksRef.current.distancePoints[0].spotId !== spot.id ? `
             <button 
               type="button"
@@ -416,70 +462,6 @@ function createPopupNode(
           class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer"
         >
           ✏️ แก้ไข
-        </button>
-      </div>
-
-      <!-- Expandable Numpad Keypad (เริ่มต้นซ่อนไว้ กดปุ่ม '⏱️ ตั้งเวลา' แล้วค่อยเปิด) -->
-      <div id="popup-numpad-container-${spot.id}" class="hidden pt-2 mt-2 border-t border-slate-800">
-        <!-- Numpad Display Screen -->
-        <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
-          <div class="flex items-baseline gap-1">
-            <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
-            <span class="text-xs text-slate-400">นาที</span>
-          </div>
-          <button 
-            type="button" 
-            id="numpad-btn-clear-${spot.id}" 
-            class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            ✕ ล้าง
-          </button>
-        </div>
-
-        <!-- 3x4 Numpad Keypad -->
-        <div class="grid grid-cols-3 gap-1 mb-2 select-none">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
-            <button 
-              type="button" 
-              class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
-              data-key="${num}"
-            >
-              ${num}
-            </button>
-          `).join('')}
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="C"
-            title="ล้างตัวเลข"
-          >
-            C
-          </button>
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="0"
-          >
-            0
-          </button>
-          <button 
-            type="button" 
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
-            data-key="BACK"
-            title="ลบตัวล่าสุด"
-          >
-            ⌫
-          </button>
-        </div>
-
-        <!-- Start Cooldown Button -->
-        <button 
-          type="button" 
-          id="numpad-btn-start-${spot.id}" 
-          class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-1 cursor-pointer"
-        >
-          <span>⏱️</span>
-          <span>เริ่มจับเวลา</span>
         </button>
       </div>
     `;
@@ -632,26 +614,6 @@ function createPopupNode(
           copyBtn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
         }
       }, 1800);
-    };
-  }
-
-  const toggleTimerBtn = popupNode.querySelector(`#popup-toggle-timer-${spot.id}`) as HTMLElement | null;
-  const numpadContainer = popupNode.querySelector(`#popup-numpad-container-${spot.id}`) as HTMLElement | null;
-  if (toggleTimerBtn && numpadContainer) {
-    toggleTimerBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const isHidden = numpadContainer.classList.contains('hidden');
-      if (isHidden) {
-        numpadContainer.classList.remove('hidden');
-        toggleTimerBtn.classList.add('bg-amber-400', 'text-slate-950', 'border-amber-300');
-        toggleTimerBtn.classList.remove('bg-slate-800', 'text-amber-400', 'border-slate-700');
-      } else {
-        numpadContainer.classList.add('hidden');
-        toggleTimerBtn.classList.remove('bg-amber-400', 'text-slate-950', 'border-amber-300');
-        toggleTimerBtn.classList.add('bg-slate-800', 'text-amber-400', 'border-slate-700');
-      }
-      marker.getPopup()?.update();
     };
   }
 
