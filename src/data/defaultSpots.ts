@@ -98,6 +98,16 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
     borderColor: 'border-emerald-500',
     group: 'บริการ',
   },
+  shop: {
+    id: 'shop',
+    name: 'ร้านค้า',
+    nameEn: 'Shop / Store',
+    icon: '/blips/radar_buyers_request.png',
+    color: '#22c55e',
+    bgColor: 'bg-emerald-500/20',
+    borderColor: 'border-emerald-500',
+    group: 'ร้านค้า',
+  },
 
   // === แลนด์มาร์คทั่วไป (General Landmarks) ===
   landmark: {
@@ -628,12 +638,12 @@ export const CATEGORIES: Record<string, SpotCategoryInfo> = {
   },
   restaurant: {
     id: 'restaurant',
-    name: 'Restaurant',
-    nameEn: 'Restaurant',
-    icon: '/blips/radar_bar.png',
-    color: '#22c55e',
-    bgColor: 'bg-emerald-500/20',
-    borderColor: 'border-emerald-500',
+    name: 'ร้านอาหาร / ทำอาหาร',
+    nameEn: 'Restaurant / Cooking',
+    icon: '/blips/radar_pizza_this_orange.png',
+    color: '#f97316',
+    bgColor: 'bg-orange-500/20',
+    borderColor: 'border-orange-500',
     group: 'บริการ & ร้านค้า',
   },
   underground_club: {

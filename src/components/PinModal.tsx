@@ -149,6 +149,13 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ปกติ' },
       { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
       { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
+
+      // 963 Buyers Request ร้านค้า
+      { emoji: '/blips/radar_buyers_request.png', name: '[963] Buyers Request มาร์คร้านค้า / ร้านค้า / จุดรับซื้อ' },
+
+      // 889 Pizza This ร้านอาหาร / จุดทำอาหารเอง
+      { emoji: '/blips/radar_pizza_this_orange.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ส้ม (Orange)' },
+      { emoji: '/blips/radar_pizza_this.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ขาว (White)' },
     ],
   },
   {
@@ -233,6 +240,9 @@ const ICON_CATEGORIES = [
       { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
       { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask ร้านหน้ากาก - ฟ้า' },
       { emoji: '/blips/radar_mask.png', name: '[362] Mask ร้านหน้ากาก - ขาว' },
+      { emoji: '/blips/radar_buyers_request.png', name: '[963] Buyers Request มาร์คร้านค้า / ร้านค้า / จุดรับซื้อ' },
+      { emoji: '/blips/radar_pizza_this_orange.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ส้ม' },
+      { emoji: '/blips/radar_pizza_this.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ขาว' },
     ],
   },
   {
@@ -351,6 +361,22 @@ export const SPOT_TYPES: SpotTypeOption[] = [
     defaultIcon: '/blips/radar_hospital.png',
     hint: 'โรงพยาบาล/สถานที่บริการ',
   },
+  {
+    id: 'shop',
+    label: 'ร้านค้า (Shop)',
+    icon: '🛒',
+    defaultColor: '#22c55e',
+    defaultIcon: '/blips/radar_buyers_request.png',
+    hint: 'มาร์คร้านค้า/จุดรับซื้อ (Blip 963)',
+  },
+  {
+    id: 'restaurant',
+    label: 'ร้านอาหาร (Cooking)',
+    icon: '🍕',
+    defaultColor: '#f97316',
+    defaultIcon: '/blips/radar_pizza_this_orange.png',
+    hint: 'ร้านอาหาร/ทำอาหารเอง (Blip 889)',
+  },
 ];
 
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
@@ -423,6 +449,15 @@ export const PinModal = ({
         initialSpot.category === 'fuel' ||
         initialSpot.name?.includes('น้ำมัน') ||
         initialSpot.icon?.includes('jerry_can');
+      const isShopSpot =
+        initialSpot.category === 'shop' ||
+        initialSpot.name?.includes('ร้านค้า') ||
+        Boolean(initialSpot.icon && initialSpot.icon.includes('radar_buyers_request'));
+      const isRestaurantSpot =
+        initialSpot.category === 'restaurant' ||
+        initialSpot.name?.includes('ร้านอาหาร') ||
+        initialSpot.name?.includes('ทำอาหาร') ||
+        Boolean(initialSpot.icon && initialSpot.icon.includes('radar_pizza_this'));
       const isServicesSpot =
         initialSpot.category === 'services' ||
         initialSpot.category === 'hospital' ||
@@ -433,6 +468,8 @@ export const PinModal = ({
         if (isCement) determinedCat = 'cement_mine';
         else if (isDrug) determinedCat = 'dealer';
         else if (isFuelSpot) determinedCat = 'fuel';
+        else if (isShopSpot) determinedCat = 'shop';
+        else if (isRestaurantSpot) determinedCat = 'restaurant';
         else if (isServicesSpot) determinedCat = 'services';
       }
       setCategory(determinedCat);
@@ -724,6 +761,8 @@ export const PinModal = ({
                       else if (item.emoji.includes('_brown')) setColor('#b45309');
                       else if (item.emoji.includes('_mint')) setColor('#2dd4bf');
                       else if (item.emoji.includes('_gray')) setColor('#9ca3af');
+                      else if (item.emoji.includes('radar_buyers_request')) setColor('#22c55e');
+                      else if (item.emoji.includes('radar_pizza_this')) setColor('#f97316');
                     }}
                     title={item.name}
                     className={`h-11 rounded-xl flex items-center justify-center text-xl transition-all ${
