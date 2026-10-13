@@ -264,19 +264,19 @@ export const MapQuickFilters = memo(({
           </span>
         </button>
 
-        {/* 4. Services (Hospital, Police, Shops, etc.) */}
+        {/* 4. Services & Shops (Hospital, Police, Shops, Food, etc.) */}
         <button
           type="button"
           onClick={() => handleCategoryClick('services')}
-          title={categoriesState.services ? 'คลิกเพื่อซ่อนจุดบริการบนแมพ' : 'คลิกเพื่อแสดงจุดบริการบนแมพ'}
+          title={categoriesState.services ? 'คลิกเพื่อซ่อนจุดร้านค้า/บริการบนแมพ' : 'คลิกเพื่อแสดงจุดร้านค้า/บริการบนแมพ'}
           className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
             categoriesState.services
               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/10'
               : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
           }`}
         >
-          <span>🏥</span>
-          <span className="hidden sm:inline">บริการ</span>
+          <span>🛒</span>
+          <span className="hidden sm:inline">ร้านค้า/บริการ</span>
           <span
             className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
               categoriesState.services

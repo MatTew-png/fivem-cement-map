@@ -512,7 +512,7 @@ export function App() {
       const cat = getSpotQuickCategory(spot);
       if (categoriesState[cat]) return true;
       // Fallback support for multi-faceted spots
-      if (categoriesState.lands && spot.category === 'landmark') return true;
+      if (categoriesState.lands && (spot.category === 'landmark' || spot.category === 'shop' || spot.category === 'restaurant' || spot.name.includes('ร้าน') || Boolean(spot.icon && spot.icon.includes('radar_buyers_request')) || Boolean(spot.icon && spot.icon.includes('radar_pizza_this')))) return true;
       if (categoriesState.head_reset && (spot.category === 'head_reset' || spot.name.includes('รีหัว') || spot.name.includes('อู่') || spot.id === 'spot-1788676937650')) return true;
       if (categoriesState.farm && (spot.category === 'farm' || spot.category === 'rebel' || spot.name.includes('ขายหมู') || spot.name.includes('ขายข้าว'))) return true;
       return false;
@@ -589,6 +589,20 @@ export function App() {
     });
     setSelectedSpot(spot);
     soundEffects.playPinPlaced();
+
+    // มั่นใจว่าหมวดของหมุดที่เพิ่มใหม่จะไม่ถูกซ่อนบนแผนที่ทันที
+    const spotCat = getSpotQuickCategory(spot);
+    setCategoriesState((prev) => {
+      if (!prev[spotCat]) {
+        const next = { ...prev, [spotCat]: true };
+        try {
+          localStorage.setItem('fivem_map_categories_state_v1', JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+      return prev;
+    });
+
     gangPresence.broadcastSpotChange(isNew ? 'add' : 'update', spot);
 
     // ส่งชุดหมุดที่อัปเดตแล้วขึ้น HiveMQ Retained Topic ทันที เพื่อให้คนที่เปิดทีหลังได้หมุดนี้ด้วยแน่นอน!

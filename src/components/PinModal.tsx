@@ -405,8 +405,7 @@ export const PinModal = ({
   const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
   const [copiedSpot, setCopiedSpot] = useState(false);
 
-  const handleCoordsPaste = (raw: string) => {
-    setCoordsPasteInput(raw);
+  const handleSmartPaste = (raw: string) => {
     const parsed = parseFiveMCoords(raw);
     if (parsed) {
       setX(parsed.x);
@@ -414,6 +413,20 @@ export const PinModal = ({
       setZ(parsed.z);
       setCoordsPasteStatus(`✓ พิกัด X: ${parsed.x}, Y: ${parsed.y}, Z: ${parsed.z}`);
       setTimeout(() => setCoordsPasteStatus(null), 3000);
+      return true;
+    }
+    return false;
+  };
+
+  const handleCoordsPaste = (raw: string) => {
+    setCoordsPasteInput(raw);
+    handleSmartPaste(raw);
+  };
+
+  const handleFieldPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (handleSmartPaste(text)) {
+      e.preventDefault();
     }
   };
 
@@ -862,7 +875,7 @@ export const PinModal = ({
                 type="text"
                 value={coordsPasteInput}
                 onChange={(e) => handleCoordsPaste(e.target.value)}
-                placeholder="วางพิกัดจาก FiveM ทันที เช่น vector3(-154.2, -1035.8, 30.5) หรือ /tp ..."
+                placeholder="วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(-154.2, -1035.8, 30.5)..."
                 className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none"
               />
               {coordsPasteInput && (
@@ -885,6 +898,7 @@ export const PinModal = ({
                   step="0.1"
                   required
                   value={x}
+                  onPaste={handleFieldPaste}
                   onChange={(e) => setX(parseFloat(e.target.value) || 0)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
@@ -898,6 +912,7 @@ export const PinModal = ({
                   step="0.1"
                   required
                   value={y}
+                  onPaste={handleFieldPaste}
                   onChange={(e) => setY(parseFloat(e.target.value) || 0)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
@@ -910,6 +925,7 @@ export const PinModal = ({
                   type="number"
                   step="0.1"
                   value={z}
+                  onPaste={handleFieldPaste}
                   onChange={(e) => setZ(parseFloat(e.target.value) || 30)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 font-mono text-xs focus:outline-none focus:border-amber-400"
                 />
