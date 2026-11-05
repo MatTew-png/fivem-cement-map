@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Sparkles } from 'lucide-react';
+import { memo, useState, useRef, useEffect, useMemo } from 'react';
+import { Sparkles, SlidersHorizontal, ChevronDown, Check, Layers } from 'lucide-react';
 import { soundEffects } from '../utils/sound';
 import type { QuickCategory } from '../utils/clustering';
 
@@ -13,6 +13,73 @@ export interface MapQuickFiltersProps {
   sidebarCollapsed?: boolean;
 }
 
+interface CategoryItem {
+  id: QuickCategory;
+  label: string;
+  icon: React.ReactNode;
+  activeColor: string;
+  badgeActiveColor: string;
+}
+
+const CATEGORY_ITEMS: CategoryItem[] = [
+  {
+    id: 'cement',
+    label: 'ปูนซีเมนต์',
+    icon: <span className="text-base leading-none">🧱</span>,
+    activeColor: 'text-amber-300',
+    badgeActiveColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+  },
+  {
+    id: 'race',
+    label: 'แข่งรถ',
+    icon: <span className="text-base leading-none">🏁</span>,
+    activeColor: 'text-purple-300',
+    badgeActiveColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+  },
+  {
+    id: 'head_reset',
+    label: 'รีหัว (Radar Bar)',
+    icon: <img src="/blips/radar_bar_pink.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
+    activeColor: 'text-pink-300',
+    badgeActiveColor: 'bg-pink-500/20 text-pink-300 border-pink-500/40',
+  },
+  {
+    id: 'farm',
+    label: 'ฟาร์ม (Contraband)',
+    icon: <img src="/blips/radar_contraband.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
+    activeColor: 'text-amber-300',
+    badgeActiveColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+  },
+  {
+    id: 'quest',
+    label: 'เควส (Friend)',
+    icon: <img src="/blips/radar_friend_yellow.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
+    activeColor: 'text-yellow-300',
+    badgeActiveColor: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
+  },
+  {
+    id: 'lands',
+    label: 'จุดแลน (Landmark)',
+    icon: <span className="text-base leading-none">👑</span>,
+    activeColor: 'text-indigo-300',
+    badgeActiveColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+  },
+  {
+    id: 'fuel',
+    label: 'ปั๊มน้ำมัน',
+    icon: <span className="text-base leading-none">⛽</span>,
+    activeColor: 'text-cyan-300',
+    badgeActiveColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+  },
+  {
+    id: 'services',
+    label: 'ร้านค้า / บริการ',
+    icon: <span className="text-base leading-none">🛒</span>,
+    activeColor: 'text-emerald-300',
+    badgeActiveColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+  },
+];
+
 export const MapQuickFilters = memo(({
   categoriesState,
   onToggleCategory,
@@ -22,6 +89,53 @@ export const MapQuickFilters = memo(({
   counts,
   sidebarCollapsed = false,
 }: MapQuickFiltersProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const activeCount = useMemo(() => {
+    return Object.values(categoriesState).filter(Boolean).length;
+  }, [categoriesState]);
+
+  const totalCount = CATEGORY_ITEMS.length;
+
+  const isOnlyResetFarmLands = useMemo(() => {
+    return (
+      categoriesState.head_reset &&
+      categoriesState.farm &&
+      categoriesState.lands &&
+      !categoriesState.cement &&
+      !categoriesState.race &&
+      !categoriesState.quest &&
+      !categoriesState.fuel &&
+      !categoriesState.services
+    );
+  }, [categoriesState]);
+
   const handleCategoryClick = (cat: QuickCategory) => {
     soundEffects.playPinPlaced();
     onToggleCategory(cat);
@@ -32,294 +146,255 @@ export const MapQuickFilters = memo(({
     onToggleClustering();
   };
 
+  const handleSelectAll = () => {
+    if (!onSetCategoriesState) return;
+    soundEffects.playPinPlaced();
+    onSetCategoriesState({
+      cement: true,
+      race: true,
+      head_reset: true,
+      farm: true,
+      quest: true,
+      lands: true,
+      fuel: true,
+      services: true,
+    });
+  };
+
+  const handleDeselectAll = () => {
+    if (!onSetCategoriesState) return;
+    soundEffects.playPinPlaced();
+    onSetCategoriesState({
+      cement: false,
+      race: false,
+      head_reset: false,
+      farm: false,
+      quest: false,
+      lands: false,
+      fuel: false,
+      services: false,
+    });
+  };
+
+  const handleToggleFocusPreset = () => {
+    if (!onSetCategoriesState) return;
+    soundEffects.playPinPlaced();
+    if (isOnlyResetFarmLands) {
+      onSetCategoriesState({
+        cement: true,
+        race: true,
+        head_reset: true,
+        farm: true,
+        quest: true,
+        lands: true,
+        fuel: true,
+        services: true,
+      });
+    } else {
+      onSetCategoriesState({
+        cement: false,
+        race: false,
+        head_reset: true,
+        farm: true,
+        quest: false,
+        lands: true,
+        fuel: false,
+        services: false,
+      });
+    }
+  };
+
   return (
     <div
-      className={`absolute top-4 z-[1000] max-w-[calc(100vw-180px)] sm:max-w-none pointer-events-none select-none transition-all duration-300 ${
+      className={`absolute top-4 z-[1000] select-none transition-all duration-300 ${
         sidebarCollapsed ? 'left-36 sm:left-40' : 'left-4'
       }`}
     >
-      <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/90 backdrop-blur-md px-2 py-1.5 rounded-2xl border border-slate-700/80 shadow-2xl pointer-events-auto overflow-x-auto no-scrollbar">
-        {/* Preset: Focus Head Reset, Farm & Lands */}
-        {onSetCategoriesState && (
+      <div className="relative pointer-events-auto" ref={dropdownRef}>
+        {/* Compact Floating Bar */}
+        <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md px-2 py-1.5 rounded-2xl border border-slate-700/80 shadow-2xl">
+          {/* Quick Preset: Focus รีหัว/ฟาร์ม/แลน */}
+          {onSetCategoriesState && (
+            <button
+              type="button"
+              onClick={handleToggleFocusPreset}
+              title="สลับแสดงเฉพาะ: รีหัว, ฟาร์ม, แลน (สำหรับทำงาน/ฟาร์ม)"
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+                isOnlyResetFarmLands
+                  ? 'bg-gradient-to-r from-pink-500/30 via-amber-500/30 to-indigo-500/30 text-amber-200 border-amber-400 shadow-sm shadow-amber-500/20'
+                  : 'bg-slate-800/80 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
+              }`}
+            >
+              <span>🎯</span>
+              <span className="hidden sm:inline">รีหัว/ฟาร์ม/แลน</span>
+              <span className="sm:hidden">3 หมวด</span>
+            </button>
+          )}
+
+          {/* Separator */}
+          {onSetCategoriesState && <div className="w-[1px] h-4 bg-slate-700 mx-0.5 shrink-0" />}
+
+          {/* Dropdown Trigger Button */}
           <button
             type="button"
             onClick={() => {
-              const isOnlyResetFarmLands =
-                categoriesState.head_reset &&
-                categoriesState.farm &&
-                categoriesState.lands &&
-                !categoriesState.cement &&
-                !categoriesState.race &&
-                !categoriesState.quest &&
-                !categoriesState.fuel &&
-                !categoriesState.services;
-
               soundEffects.playPinPlaced();
-              if (isOnlyResetFarmLands) {
-                // Restore all
-                onSetCategoriesState({
-                  cement: true,
-                  race: true,
-                  head_reset: true,
-                  farm: true,
-                  quest: true,
-                  lands: true,
-                  fuel: true,
-                  services: true,
-                });
-              } else {
-                // Focus: รีหัว, ฟาร์ม, แลน
-                onSetCategoriesState({
-                  cement: false,
-                  race: false,
-                  head_reset: true,
-                  farm: true,
-                  quest: false,
-                  lands: true,
-                  fuel: false,
-                  services: false,
-                });
-              }
+              setIsOpen((prev) => !prev);
             }}
-            title="คลิกเพื่อสลับแสดงเฉพาะ: รีหัว, ฟาร์ม, แลน (สำหรับทำงาน/แคปรูป)"
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-              categoriesState.head_reset && categoriesState.farm && categoriesState.lands && !categoriesState.cement
-                ? 'bg-gradient-to-r from-pink-500/30 via-amber-500/30 to-indigo-500/30 text-amber-200 border-amber-400 shadow-sm shadow-amber-500/20'
+            title="คลิกเพื่อเปิดเมนูเลือกตัวกรองหมวดหมู่บนแผนที่"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+              isOpen
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-sm shadow-amber-500/20'
+                : activeCount < totalCount
+                ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 hover:bg-amber-500/20'
                 : 'bg-slate-800/80 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
             }`}
           >
-            <span>🎯</span>
-            <span className="font-bold">รีหัว/ฟาร์ม/แลน</span>
+            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+            <span>ตัวกรองหมวดหมู่</span>
+            <span
+              className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold border ${
+                activeCount === totalCount
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : activeCount === 0
+                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}
+            >
+              {activeCount}/{totalCount}
+            </span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'
+              }`}
+            />
           </button>
+
+          {/* Separator */}
+          <div className="w-[1px] h-4 bg-slate-700 mx-0.5 shrink-0" />
+
+          {/* Smart Clustering Toggle */}
+          <button
+            type="button"
+            onClick={handleClusterClick}
+            title={
+              isClusteringEnabled
+                ? 'โหมดรวมกลุ่มหมุดเปิดอยู่ (คลิกเพื่อกระจายหมุดทั้งหมด)'
+                : 'โหมดรวมกลุ่มหมุดปิดอยู่ (คลิกเพื่อเปิดระบบรวมกลุ่ม)'
+            }
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
+              isClusteringEnabled
+                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-200 border-amber-400/60 shadow-sm shadow-amber-500/10'
+                : 'bg-slate-800/40 text-slate-400 border-slate-700 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <Sparkles
+              className={`w-3.5 h-3.5 transition-colors ${
+                isClusteringEnabled ? 'text-amber-400 animate-pulse' : 'text-slate-500'
+              }`}
+            />
+            <span className="hidden sm:inline">รวมกลุ่ม</span>
+            <span
+              className={`text-[9px] font-mono px-1 py-0.2 rounded font-black ${
+                isClusteringEnabled ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'
+              }`}
+            >
+              {isClusteringEnabled ? 'ON' : 'OFF'}
+            </span>
+          </button>
+        </div>
+
+        {/* Dropdown Menu Popover */}
+        {isOpen && (
+          <div className="absolute top-full left-0 mt-2 w-72 sm:w-80 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-3 z-[1100] animate-in fade-in slide-in-from-top-2 duration-150">
+            {/* Popover Header */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+              <div className="flex items-center gap-1.5 text-xs font-black text-white uppercase tracking-wider">
+                <Layers className="w-3.5 h-3.5 text-amber-400" />
+                <span>ตัวกรองหมวดหมู่บนแมพ</span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono">
+                เปิดอยู่ {activeCount}/{totalCount}
+              </span>
+            </div>
+
+            {/* Quick Actions */}
+            {onSetCategoriesState && (
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-[10px] font-bold text-slate-300 hover:text-white transition-colors cursor-pointer text-center"
+                >
+                  ✓ เปิดทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAll}
+                  className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-750 text-[10px] font-bold text-slate-400 hover:text-red-300 transition-colors cursor-pointer text-center"
+                >
+                  ✕ ปิดทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleFocusPreset}
+                  className="py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-[10px] font-bold text-amber-300 transition-colors cursor-pointer text-center"
+                  title="เปิดเฉพาะ: รีหัว, ฟาร์ม, แลน"
+                >
+                  🎯 3 หมวด
+                </button>
+              </div>
+            )}
+
+            {/* Category Items List */}
+            <div className="space-y-1 max-h-[340px] overflow-y-auto pr-1">
+              {CATEGORY_ITEMS.map((cat) => {
+                const isActive = Boolean(categoriesState[cat.id]);
+                const count = counts[cat.id] || 0;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => handleCategoryClick(cat.id)}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
+                      isActive
+                        ? 'bg-slate-800/80 border-slate-700/80 text-white hover:bg-slate-800 hover:border-slate-600'
+                        : 'bg-slate-900/40 border-transparent text-slate-500 hover:text-slate-400 hover:bg-slate-800/40 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                          isActive
+                            ? 'bg-amber-500 border-amber-400 text-slate-950 font-bold shadow-sm shadow-amber-500/30'
+                            : 'border-slate-700 bg-slate-800 text-transparent'
+                        }`}
+                      >
+                        {isActive && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {cat.icon}
+                        <span className={`font-semibold text-xs ${isActive ? 'text-slate-100' : 'text-slate-500 line-through'}`}>
+                          {cat.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border shrink-0 ${
+                        isActive
+                          ? cat.badgeActiveColor
+                          : 'bg-slate-800/80 border-slate-700/60 text-slate-500'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
-
-        {/* Separator */}
-        {onSetCategoriesState && <div className="w-[1px] h-4 bg-slate-700 mx-0.5 shrink-0" />}
-
-        {/* 1. Cement Spots */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('cement')}
-          title={categoriesState.cement ? 'คลิกเพื่อซ่อนจุดปูนบนแมพ' : 'คลิกเพื่อแสดงจุดปูนบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.cement
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <span>🧱</span>
-          <span className="hidden sm:inline">ปูน</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.cement
-                ? 'bg-amber-400/20 text-amber-200 border border-amber-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.cement}
-          </span>
-        </button>
-
-        {/* 2. Race Spots */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('race')}
-          title={categoriesState.race ? 'คลิกเพื่อซ่อนจุดแข่งรถบนแมพ' : 'คลิกเพื่อแสดงจุดแข่งรถบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.race
-              ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-sm shadow-purple-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <span>🏁</span>
-          <span className="hidden sm:inline">แข่งรถ</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.race
-                ? 'bg-purple-400/20 text-purple-200 border border-purple-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.race}
-          </span>
-        </button>
-
-        {/* 3. Head Reset (93 radar_bar) */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('head_reset')}
-          title={categoriesState.head_reset ? 'คลิกเพื่อซ่อนจุดรีหัวบนแมพ' : 'คลิกเพื่อแสดงจุดรีหัวบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.head_reset
-              ? 'bg-pink-500/20 text-pink-300 border-pink-500/50 shadow-sm shadow-pink-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <img src="/blips/radar_bar_pink.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
-          <span className="hidden sm:inline">รีหัว</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.head_reset
-                ? 'bg-pink-400/20 text-pink-200 border border-pink-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.head_reset}
-          </span>
-        </button>
-
-        {/* 4. Farm Spots (478 radar_contraband) */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('farm')}
-          title={categoriesState.farm ? 'คลิกเพื่อซ่อนจุดฟาร์มบนแมพ' : 'คลิกเพื่อแสดงจุดฟาร์มบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.farm
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <img src="/blips/radar_contraband.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
-          <span className="hidden sm:inline">ฟาร์ม</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.farm
-                ? 'bg-amber-400/20 text-amber-200 border border-amber-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.farm}
-          </span>
-        </button>
-
-        {/* 5. Quest Spots (radar_friend) */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('quest')}
-          title={categoriesState.quest ? 'คลิกเพื่อซ่อนจุดเควสบนแมพ' : 'คลิกเพื่อแสดงจุดเควสบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.quest
-              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50 shadow-sm shadow-yellow-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <img src="/blips/radar_friend_yellow.png" alt="" className="w-3.5 h-3.5 object-contain inline-block pointer-events-none" />
-          <span className="hidden sm:inline">เควส</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.quest
-                ? 'bg-yellow-400/20 text-yellow-200 border border-yellow-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.quest}
-          </span>
-        </button>
-
-        {/* 2. Lands (Royal Kings) */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('lands')}
-          title={categoriesState.lands ? 'คลิกเพื่อซ่อนจุดแลนบนแมพ' : 'คลิกเพื่อแสดงจุดแลนบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.lands
-              ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <span>👑</span>
-          <span className="hidden sm:inline">แลน</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.lands
-                ? 'bg-indigo-400/20 text-indigo-200 border border-indigo-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.lands}
-          </span>
-        </button>
-
-        {/* 3. Fuel Stations */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('fuel')}
-          title={categoriesState.fuel ? 'คลิกเพื่อซ่อนปั๊มน้ำมันบนแมพ' : 'คลิกเพื่อแสดงปั๊มน้ำมันบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.fuel
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <span>⛽</span>
-          <span className="hidden sm:inline">น้ำมัน</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.fuel
-                ? 'bg-cyan-400/20 text-cyan-200 border border-cyan-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.fuel}
-          </span>
-        </button>
-
-        {/* 4. Services & Shops (Hospital, Police, Shops, Food, etc.) */}
-        <button
-          type="button"
-          onClick={() => handleCategoryClick('services')}
-          title={categoriesState.services ? 'คลิกเพื่อซ่อนจุดร้านค้า/บริการบนแมพ' : 'คลิกเพื่อแสดงจุดร้านค้า/บริการบนแมพ'}
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            categoriesState.services
-              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/10'
-              : 'bg-slate-800/40 text-slate-500 border-slate-800 line-through opacity-60 hover:opacity-90 hover:text-slate-400'
-          }`}
-        >
-          <span>🛒</span>
-          <span className="hidden sm:inline">ร้านค้า/บริการ</span>
-          <span
-            className={`font-mono text-[9px] px-1 py-0.2 rounded-full ${
-              categoriesState.services
-                ? 'bg-emerald-400/20 text-emerald-200 border border-emerald-400/30'
-                : 'bg-slate-700 text-slate-400'
-            }`}
-          >
-            {counts.services}
-          </span>
-        </button>
-
-        {/* Separator */}
-        <div className="w-[1px] h-4 bg-slate-750 mx-0.5 shrink-0" />
-
-        {/* 5. Smart Clustering Toggle */}
-        <button
-          type="button"
-          onClick={handleClusterClick}
-          title={
-            isClusteringEnabled
-              ? 'โหมดรวมกลุ่มหมุดเปิดอยู่ (คลิกเพื่อกระจายหมุดทั้งหมด)'
-              : 'โหมดรวมกลุ่มหมุดปิดอยู่ (คลิกเพื่อเปิดระบบรวมกลุ่ม)'
-          }
-          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer shrink-0 border ${
-            isClusteringEnabled
-              ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-200 border-amber-400/60 shadow-sm shadow-amber-500/10'
-              : 'bg-slate-800/40 text-slate-400 border-slate-700 hover:text-slate-200 hover:bg-slate-800'
-          }`}
-        >
-          <Sparkles
-            className={`w-3.5 h-3.5 transition-colors ${
-              isClusteringEnabled ? 'text-amber-400 animate-pulse' : 'text-slate-500'
-            }`}
-          />
-          <span className="hidden sm:inline">รวมกลุ่ม</span>
-          <span
-            className={`text-[9px] font-mono px-1 py-0.2 rounded font-black ${
-              isClusteringEnabled ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'
-            }`}
-          >
-            {isClusteringEnabled ? 'ON' : 'OFF'}
-          </span>
-        </button>
       </div>
     </div>
   );

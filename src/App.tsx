@@ -30,24 +30,40 @@ import { GangToast } from './components/GangToast';
 import { GangWatermark } from './components/GangWatermark';
 import { setupAntiTamper } from './utils/antiTamper';
 import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
-import { getGangSession, type GangSession, type ActivityLog } from './utils/gangAuth';
-import { detectClientIp, isIpBanned, logIpAccess } from './utils/ipLogger';
+import { getGangSession, parseBranch, type GangSession, type ActivityLog } from './utils/gangAuth';
+import { detectClientIp, isIpBanned, logIpAccess, initSecuritySync } from './utils/ipLogger';
 
 export function App() {
+  // State: Gang Authentication & Presence (Loaded first to isolate storage & topic per gang)
+  const [gangSession, setGangSession] = useState<GangSession | null>(() => getGangSession());
+
   // State: Spots
   const [spots, setSpots] = useState<CementSpot[]>(() => {
-    return loadSpotsFromStorage() || DEFAULT_SPOTS;
+    const session = getGangSession();
+    return (session?.gangId ? loadSpotsFromStorage(session.gangId) : loadSpotsFromStorage()) || DEFAULT_SPOTS;
   });
 
   // State: Active Layer (Default to GTALens Game Map matching user's request)
   const [activeLayer, setActiveLayer] = useState<MapTileLayer>('gtalens_game');
 
-  // State: GTA V Crosshair
-  const [showCrosshair, setShowCrosshair] = useState(true);
+  // State: GTA V Crosshair (ปิดเป็นค่าเริ่มต้นตามคำสั่ง พร้อมบันทึกการตั้งค่าลง localStorage)
+  const [showCrosshair, setShowCrosshair] = useState<boolean>(() => {
+    const saved = localStorage.getItem('fivem_map_show_crosshair');
+    return saved !== null ? saved === 'true' : false;
+  });
+
+  const handleToggleCrosshair = useCallback(() => {
+    setShowCrosshair((prev) => {
+      const next = !prev;
+      localStorage.setItem('fivem_map_show_crosshair', String(next));
+      return next;
+    });
+  }, []);
 
   // State: Active Cooldowns
   const [activeCooldowns, setActiveCooldowns] = useState<ActiveCooldown[]>(() => {
-    return loadCooldownsFromStorage();
+    const session = getGangSession();
+    return session?.gangId ? loadCooldownsFromStorage(session.gangId) : loadCooldownsFromStorage();
   });
 
   // State: Coordinates HUD & Zoom & Lock (Decoupled from root re-renders for buttery 144 FPS)
@@ -169,20 +185,47 @@ export function App() {
     return spots.filter(isCementSpot).length;
   }, [spots]);
 
-  // State: Gang Authentication & Presence
-  const [gangSession, setGangSession] = useState<GangSession | null>(() => getGangSession());
+  // State: Gang UI Modals & Members
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
   const [isBentoModalOpen, setIsBentoModalOpen] = useState(false);
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [notifications, setNotifications] = useState<GangNotification[]>([]);
 
+  // Effect: When gang session changes, sync spots & cooldowns for this specific gang
+  useEffect(() => {
+    if (gangSession?.gangId) {
+      const gangSpots = loadSpotsFromStorage(gangSession.gangId);
+      if (gangSpots && gangSpots.length > 0) {
+        setSpots(gangSpots);
+      } else {
+        setSpots(DEFAULT_SPOTS);
+      }
+      const gangCooldowns = loadCooldownsFromStorage(gangSession.gangId);
+      setActiveCooldowns(gangCooldowns);
+    }
+  }, [gangSession?.gangId]);
+
+  const handleCopyGangLink = useCallback(() => {
+    const branch = parseBranch(gangSession?.gangId || gangSession?.gangName);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://runthukverb-cooldown.surge.sh';
+    const link = `${origin}/?branch=${branch.num}`;
+    navigator.clipboard.writeText(link);
+    gangPresence.triggerNotification({
+      type: 'spot_add',
+      title: 'คัดลอกลิงก์สาขาแล้ว!',
+      subtitle: `ส่งลิงก์ ${branch.name} (${link}) ให้เพื่อนเข้าได้ทันที`,
+      icon: '🔗',
+    });
+  }, [gangSession?.gangId, gangSession?.gangName]);
+
   // State: IP Security & Ban Detection
   const [isBannedClient, setIsBannedClient] = useState(false);
   const [clientIpAddress, setClientIpAddress] = useState('');
 
-  // Effect: Immediate Visitor IP Tracking & Ban Enforcement
+  // Effect: Immediate Visitor IP Tracking & Ban Enforcement & Real-time Security Sync
   useEffect(() => {
+    initSecuritySync();
     detectClientIp().then((info) => {
       setClientIpAddress(info.ip);
       if (isIpBanned(info.ip)) {
@@ -200,16 +243,29 @@ export function App() {
     return cleanup;
   }, []);
 
-  // Effect: Periodic Session Validation (เตะผู้ใช้ออกจากระบบทันทีหากเซสชั่นโมฆะหรือถูกรีเซ็ต)
+  // Effect: Periodic Session Validation & URL Branch Sync (ซิงค์สาขาทันทีเมื่อ URL เปลี่ยน หรือเซสชั่นถูกรีเซ็ต)
   useEffect(() => {
-    const timer = setInterval(() => {
+    const syncSession = () => {
       const active = getGangSession();
       if (!active && gangSession) {
         setGangSession(null);
         gangPresence.stop();
+      } else if (
+        active &&
+        (!gangSession ||
+          active.gangId !== gangSession.gangId ||
+          active.isMaster !== gangSession.isMaster)
+      ) {
+        setGangSession(active);
       }
-    }, 2000);
-    return () => clearInterval(timer);
+    };
+
+    const timer = setInterval(syncSession, 1000);
+    window.addEventListener('popstate', syncSession);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('popstate', syncSession);
+    };
   }, [gangSession]);
 
   // Effect: Connect to gang presence & cooldown & spot synchronization
@@ -339,12 +395,12 @@ export function App() {
     // ตอบสนองเมื่อมีเพื่อนในแก๊งร้องขอซิงค์ข้อมูล หรือมีคนเพิ่งต่อเน็ตเข้ามาใหม่
     const unsubSyncReq = gangPresence.subscribeSyncRequest(() => {
       const defIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-      const custom = (loadSpotsFromStorage() || []).filter((s) => !defIds.has(s.id));
+      const custom = (loadSpotsFromStorage(gangSession.gangId) || []).filter((s) => !defIds.has(s.id));
       if (custom.length > 0) {
         gangPresence.broadcastSpotManifest(custom);
       }
       // ส่งคูลดาวน์ที่กำลังนับถอยหลัง ให้คนที่เปิดเว็บตามมาทีหลังได้รับทันที
-      const currentCds = loadCooldownsFromStorage() || [];
+      const currentCds = loadCooldownsFromStorage(gangSession.gangId) || [];
       const now = Date.now();
       const validCds = currentCds.filter((c) => c && c.expiresAt > now - 60000);
       if (validCds.length > 0) {
@@ -354,7 +410,7 @@ export function App() {
 
     // Broadcast our custom spots to any online peer on join & to retained cloud topic
     const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-    const currentCustom = (loadSpotsFromStorage() || []).filter((s) => !defaultIds.has(s.id));
+    const currentCustom = (loadSpotsFromStorage(gangSession.gangId) || []).filter((s) => !defaultIds.has(s.id));
     if (currentCustom.length > 0) {
       gangPresence.broadcastSpotManifest(currentCustom);
     }
@@ -521,13 +577,13 @@ export function App() {
 
   // Auto-save spots
   useEffect(() => {
-    saveSpotsToStorage(spots);
-  }, [spots]);
+    saveSpotsToStorage(spots, gangSession?.gangId);
+  }, [spots, gangSession?.gangId]);
 
   // Auto-save cooldowns
   useEffect(() => {
-    saveCooldownsToStorage(activeCooldowns);
-  }, [activeCooldowns]);
+    saveCooldownsToStorage(activeCooldowns, gangSession?.gangId);
+  }, [activeCooldowns, gangSession?.gangId]);
 
   // Clean expired cooldowns periodically (keeps array reference if nothing expired)
   useEffect(() => {
@@ -726,24 +782,24 @@ export function App() {
 
   const handleImport = useCallback((importedSpots: CementSpot[]) => {
     setSpots(importedSpots);
-    saveSpotsToStorage(importedSpots);
+    saveSpotsToStorage(importedSpots, gangSession?.gangId);
     soundEffects.playPinPlaced();
-  }, []);
+  }, [gangSession?.gangId]);
 
   const handleResetDefault = useCallback(() => {
     setSpots(DEFAULT_SPOTS);
     setActiveCooldowns([]);
-    saveSpotsToStorage(DEFAULT_SPOTS);
-  }, []);
+    saveSpotsToStorage(DEFAULT_SPOTS, gangSession?.gangId);
+  }, [gangSession?.gangId]);
 
   const handleClearAllSpots = useCallback(() => {
     if (confirm('คุณต้องการลบหมุดทั้งหมดบนแผนที่ใช่หรือไม่?')) {
       setSpots([]);
       setActiveCooldowns([]);
-      saveSpotsToStorage([]);
+      saveSpotsToStorage([], gangSession?.gangId);
       setSelectedSpot(null);
     }
-  }, []);
+  }, [gangSession?.gangId]);
 
   // Distance Tool handlers
   const handleToggleDistance = useCallback(() => {
@@ -846,7 +902,11 @@ export function App() {
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
       {/* Subtle Dynamic Watermark Overlay (Anti-Screenshot/Leak) */}
-      <GangWatermark memberName={gangSession?.memberName} authDate={gangSession?.authDate} />
+      <GangWatermark
+        memberName={gangSession?.memberName}
+        gangName={gangSession?.gangName}
+        authDate={gangSession?.authDate}
+      />
 
       {/* Collapsible Left Sidebar */}
       <Sidebar
@@ -869,6 +929,8 @@ export function App() {
         onOpenPresence={() => setIsPresenceModalOpen(true)}
         onOpenBento={() => setIsBentoModalOpen(true)}
         memberName={gangSession?.memberName}
+        gangName={gangSession?.gangName || 'สาขา 1'}
+        onCopyGangLink={handleCopyGangLink}
         isMaster={gangSession?.isMaster}
         isSoundMuted={isSoundMuted}
         onToggleSound={handleToggleSound}
@@ -988,7 +1050,7 @@ export function App() {
           zoom={zoom}
           activeLayerName={activeLayerConfig.name.split(' ')[0]}
           showCrosshair={showCrosshair}
-          onToggleCrosshair={() => setShowCrosshair((prev) => !prev)}
+          onToggleCrosshair={handleToggleCrosshair}
           onPinAtCrosshair={handlePinAtCrosshair}
           isCompactMode={isCompactMode}
           onToggleCompactMode={handleToggleCompactMode}

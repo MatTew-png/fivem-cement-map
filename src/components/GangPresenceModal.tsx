@@ -27,6 +27,7 @@ import {
   unbanIp,
   getDiscordWebhookUrl,
   setDiscordWebhookUrl,
+  subscribeIpLogs,
   type IpLogEntry,
 } from '../utils/ipLogger';
 
@@ -56,6 +57,15 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   const [showWebhookConfig, setShowWebhookConfig] = useState(false);
   const [webhookSavedSuccess, setWebhookSavedSuccess] = useState(false);
 
+  // สมัครรับข้อมูล IP Logs สดแบบ Real-time จากเครือข่าย MQTT
+  useEffect(() => {
+    const unsubscribe = subscribeIpLogs((logs, banned) => {
+      setIpLogs(logs);
+      setBannedIps(banned);
+    });
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'ip_logs') {
       setIpLogs(getIpLogs());
@@ -65,10 +75,12 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
 
   if (!isOpen) return null;
 
-  const upcomingPins = getUpcomingPINs(7);
+  const gangId = currentSession?.gangId || 'branch_1';
+  const gangName = currentSession?.gangName || 'สาขา 1';
+  const upcomingPins = getUpcomingPINs(7, gangId);
 
   const handleCopyDiscord = () => {
-    const text = formatPINsForDiscord();
+    const text = formatPINsForDiscord(gangId);
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -152,8 +164,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white uppercase tracking-wider">
-                  ศูนย์รวมสมาชิกแก๊ง
+                <h3 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>แก๊ง {gangName}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    สาขาเฉพาะ
+                  </span>
                 </h3>
                 {/* NameThatUI Pattern: Status Dot (Presence Indicator) */}
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
@@ -166,7 +181,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               </div>
               <p className="text-[11px] text-slate-400">
                 คุณล็อกอินในชื่อ: <span className="font-bold text-amber-400">{currentSession?.memberName || 'สมาชิก'}</span>
-                {currentSession?.isMaster && ' (👑 หัวหน้าแก๊ง)'}
+                {currentSession?.isMaster && ' (👑 หัวหน้าสาขา)'} • <span className="font-bold text-slate-200">{gangName}</span>
               </p>
             </div>
           </div>
@@ -238,7 +253,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               }`}
             >
               <Crown className="w-3.5 h-3.5" />
-              <span>รหัสแก๊ง 7 วัน</span>
+              <span>รหัสสาขา 7 วัน</span>
             </button>
 
             {currentSession?.isMaster && (

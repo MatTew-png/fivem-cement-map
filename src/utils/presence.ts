@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
-import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED, logoutGang } from './gangAuth';
+import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED, logoutGang, normalizeGangId } from './gangAuth';
 
 export interface OnlineMember {
   clientId: string;
@@ -41,17 +41,13 @@ export type CooldownManifestListener = (activeCooldowns: ActiveCooldown[], sende
 export type SyncRequestListener = () => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
-const MQTT_TOPIC = 'fivem/runthukverb_gang_cooldown/events_v2';
-const MQTT_SPOTS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/spots_manifest_retained_v3';
-const MQTT_COOLDOWNS_RETAINED_TOPIC = 'fivem/runthukverb_gang_cooldown/cooldowns_manifest_retained_v3';
-const BROADCAST_CHANNEL_NAME = 'runthukverb_presence_bc_v2';
 
-// E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่าย
-function encryptPayload(data: object): string {
+// E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่ายแก๊ง
+function encryptPayload(data: object, gangId: string = 'soydark'): string {
   try {
     const jsonStr = JSON.stringify(data);
     const bytes = new TextEncoder().encode(jsonStr);
-    const keyBytes = new TextEncoder().encode(GANG_SECRET_SEED);
+    const keyBytes = new TextEncoder().encode(`${GANG_SECRET_SEED}_${gangId}`);
     const cipherBytes = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) {
       cipherBytes[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
@@ -67,7 +63,7 @@ function encryptPayload(data: object): string {
   }
 }
 
-function decryptPayload(raw: string): any {
+function decryptPayload(raw: string, gangId: string = 'soydark'): any {
   if (typeof raw !== 'string') return null;
   if (!raw.startsWith('GANG_ENC:')) {
     try {
@@ -83,7 +79,7 @@ function decryptPayload(raw: string): any {
     for (let i = 0; i < binary.length; i++) {
       cipherBytes[i] = binary.charCodeAt(i);
     }
-    const keyBytes = new TextEncoder().encode(GANG_SECRET_SEED);
+    const keyBytes = new TextEncoder().encode(`${GANG_SECRET_SEED}_${gangId}`);
     const plainBytes = new Uint8Array(cipherBytes.length);
     for (let i = 0; i < cipherBytes.length; i++) {
       plainBytes[i] = cipherBytes[i] ^ keyBytes[i % keyBytes.length];
@@ -116,16 +112,44 @@ class GangPresenceManager {
   private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
   private isConnected: boolean = false;
 
-  constructor() {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      this.bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-      this.bc.onmessage = (e) => this.handleMessage(e.data);
-    }
+  constructor() {}
+
+  public getGangId(): string {
+    return normalizeGangId(this.session?.gangId || 'soydark');
+  }
+
+  public getMqttTopic(): string {
+    return `fivem/gang_v4_${this.getGangId()}/events`;
+  }
+
+  public getSpotsRetainedTopic(): string {
+    return `fivem/gang_v4_${this.getGangId()}/spots_manifest_retained`;
+  }
+
+  public getCooldownsRetainedTopic(): string {
+    return `fivem/gang_v4_${this.getGangId()}/cooldowns_manifest_retained`;
+  }
+
+  public getBroadcastChannelName(): string {
+    return `fivem_gang_${this.getGangId()}_bc`;
   }
 
   // เริ่มระบบ Presence สำหรับสมาชิกที่ล็อกอินแล้ว
   public start(session: GangSession) {
     this.session = session;
+
+    if (this.bc) {
+      try {
+        this.bc.close();
+      } catch {}
+      this.bc = null;
+    }
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      this.bc = new BroadcastChannel(this.getBroadcastChannelName());
+      this.bc.onmessage = (e) => this.handleMessage(e.data);
+    }
+
     this.addSelfMember();
     this.connectWebSocket();
 
@@ -164,6 +188,13 @@ class GangPresenceManager {
 
     this.sendLeave();
 
+    if (this.bc) {
+      try {
+        this.bc.close();
+      } catch {}
+      this.bc = null;
+    }
+
     if (this.client) {
       try {
         this.client.end(true);
@@ -180,7 +211,7 @@ class GangPresenceManager {
 
   public subscribe(callback: PresenceListener): () => void {
     this.listeners.add(callback);
-    callback(this.getOnlineMembers(), getActivityLogs());
+    callback(this.getOnlineMembers(), getActivityLogs(this.session?.gangId));
     return () => this.listeners.delete(callback);
   }
 
@@ -223,7 +254,7 @@ class GangPresenceManager {
       memberName: this.session.memberName,
       timestamp: Date.now(),
     };
-    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    this.publish(payload, this.getMqttTopic(), { qos: 1 });
   }
 
   // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกใหม่และคนที่เข้าทีหลังได้รับข้อมูลครบถ้วนตลอดไป
@@ -237,9 +268,9 @@ class GangPresenceManager {
       timestamp: Date.now(),
     };
     // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
-    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    this.publish(payload, this.getMqttTopic(), { qos: 1 });
     // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
-    this.publish(payload, MQTT_SPOTS_RETAINED_TOPIC, { qos: 1, retain: true });
+    this.publish(payload, this.getSpotsRetainedTopic(), { qos: 1, retain: true });
   }
 
   // ส่งสำเนาคูลดาวน์ทั้งหมดที่กำลังนับถอยหลัง เพื่อให้สมาชิกที่เปิดเว็บทีหลังได้รับทันที
@@ -256,9 +287,9 @@ class GangPresenceManager {
       timestamp: now,
     };
     // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
-    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    this.publish(payload, this.getMqttTopic(), { qos: 1 });
     // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
-    this.publish(payload, MQTT_COOLDOWNS_RETAINED_TOPIC, { qos: 1, retain: true });
+    this.publish(payload, this.getCooldownsRetainedTopic(), { qos: 1, retain: true });
   }
 
   public triggerNotification(notif: Omit<GangNotification, 'id' | 'timestamp'>) {
@@ -286,7 +317,7 @@ class GangPresenceManager {
     this.publish(payload);
 
     if (action === 'start') {
-      logActivity(this.session.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotName} (${durationMinutes} นาที)`);
+      logActivity(this.session.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotName} (${durationMinutes} นาที)`, this.session.gangId);
       this.notifyListeners();
     }
   }
@@ -311,13 +342,13 @@ class GangPresenceManager {
 
     // บันทึก Activity Log
     if (action === 'add') {
-      logActivity(this.session.memberName, 'spot_add', `ปักหมุดใหม่: ${name}`);
+      logActivity(this.session.memberName, 'spot_add', `ปักหมุดใหม่: ${name}`, this.session.gangId);
     } else if (action === 'delete') {
-      logActivity(this.session.memberName, 'spot_delete', `ลบหมุด: ${name}`);
+      logActivity(this.session.memberName, 'spot_delete', `ลบหมุด: ${name}`, this.session.gangId);
     } else if (action === 'move') {
-      logActivity(this.session.memberName, 'spot_move', `ย้ายพิกัด: ${name}`);
+      logActivity(this.session.memberName, 'spot_move', `ย้ายพิกัด: ${name}`, this.session.gangId);
     } else if (action === 'update') {
-      logActivity(this.session.memberName, 'spot_update', `แก้ไขข้อมูล: ${name}`);
+      logActivity(this.session.memberName, 'spot_update', `แก้ไขข้อมูล: ${name}`, this.session.gangId);
     }
 
     this.notifyListeners();
@@ -390,7 +421,7 @@ class GangPresenceManager {
 
       this.client.on('connect', () => {
         this.isConnected = true;
-        this.client?.subscribe([MQTT_TOPIC, MQTT_SPOTS_RETAINED_TOPIC, MQTT_COOLDOWNS_RETAINED_TOPIC], { qos: 1 }, (err) => {
+        this.client?.subscribe([this.getMqttTopic(), this.getSpotsRetainedTopic(), this.getCooldownsRetainedTopic()], { qos: 1 }, (err) => {
           if (!err) {
             this.sendHeartbeat();
             this.flushOutgoingQueue();
@@ -402,11 +433,11 @@ class GangPresenceManager {
       this.client.on('message', (topic, payload) => {
         try {
           const raw = payload.toString();
-          const data = decryptPayload(raw);
+          const data = decryptPayload(raw, this.getGangId());
           if (data) {
-            if (topic === MQTT_SPOTS_RETAINED_TOPIC) {
+            if (topic === this.getSpotsRetainedTopic()) {
               this.handleRetainedSpotsMessage(data);
-            } else if (topic === MQTT_COOLDOWNS_RETAINED_TOPIC) {
+            } else if (topic === this.getCooldownsRetainedTopic()) {
               this.handleRetainedCooldownsMessage(data);
             } else {
               this.handleMessage(data);
@@ -441,9 +472,10 @@ class GangPresenceManager {
     }
   }
 
-  private publish(data: object, targetTopic: string = MQTT_TOPIC, options: mqtt.IClientPublishOptions = { qos: 1 }) {
+  private publish(data: object, targetTopic?: string, options: mqtt.IClientPublishOptions = { qos: 1 }) {
+    const topic = targetTopic || this.getMqttTopic();
     // ส่งในแท็บเครื่องเดียวกันผ่าน BroadcastChannel
-    if (this.bc && targetTopic === MQTT_TOPIC) {
+    if (this.bc && topic === this.getMqttTopic()) {
       try {
         this.bc.postMessage(data);
       } catch {
@@ -451,19 +483,18 @@ class GangPresenceManager {
       }
     }
 
-    const encryptedStr = encryptPayload(data);
-
-    // เข้ารหัส E2EE ก่อนส่งข้ามเครื่องผ่าน HiveMQ MQTT Broker
+    const encrypted = encryptPayload(data, this.getGangId());
     if (this.client && this.client.connected) {
       try {
-        this.client.publish(targetTopic, encryptedStr, options);
+        this.client.publish(topic, encrypted, options);
       } catch {
-        // Ignore network errors
+        // Ignore
       }
     } else {
-      this.outgoingQueue.push({ topic: targetTopic, payload: encryptedStr, options });
+      this.outgoingQueue.push({ topic, payload: encrypted, options });
     }
   }
+
 
   private handleRetainedSpotsMessage(data: any) {
     if (!data || !Array.isArray(data.customSpots)) return;
@@ -717,7 +748,7 @@ class GangPresenceManager {
 
   // ล้างประวัติกิจกรรมทั้งหมด และแจ้งเตือน UI ให้รีเฟรชทันที
   public clearLogs() {
-    clearActivityLogs();
+    clearActivityLogs(this.session?.gangId);
     this.notifyListeners();
   }
 
@@ -729,12 +760,12 @@ class GangPresenceManager {
       timestamp: Date.now(),
       clientId: this.clientId,
     };
-    this.publish(payload, MQTT_TOPIC, { qos: 1 });
+    this.publish(payload, this.getMqttTopic(), { qos: 1 });
   }
 
   private notifyListeners() {
     const members = this.getOnlineMembers();
-    const logs = getActivityLogs();
+    const logs = getActivityLogs(this.session?.gangId);
     this.listeners.forEach((cb) => cb(members, logs));
   }
 }

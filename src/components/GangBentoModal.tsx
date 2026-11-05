@@ -42,7 +42,7 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
   if (!isOpen) return null;
 
   const now = Date.now();
-  const dailyPin = getDailyPIN();
+  const dailyPin = getDailyPIN(new Date(), currentSession?.gangId);
 
   // Statistics calculation
   const cementCount = useMemo(() => spots.filter((s) => isCementSpot(s)).length, [spots]);
@@ -82,11 +82,11 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   Tactical Intel Dashboard
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-bold">
-                  BENTO GRID
+                  {currentSession?.gangName || 'สาขา 1'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่ายแก๊งรันทุกเวิบ
+                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่าย {currentSession?.gangName || 'สาขา 1'}
               </p>
             </div>
           </div>

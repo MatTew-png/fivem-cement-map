@@ -2,14 +2,16 @@ import React from 'react';
 
 interface GangWatermarkProps {
   memberName?: string;
+  gangName?: string;
   authDate?: string;
 }
 
-export const GangWatermark: React.FC<GangWatermarkProps> = ({ memberName, authDate }) => {
+export const GangWatermark: React.FC<GangWatermarkProps> = ({ memberName, gangName, authDate }) => {
   if (!memberName) return null;
 
   const dateStr = authDate || new Date().toISOString().slice(0, 10);
-  const stampText = `${memberName.toUpperCase()} • ${dateStr} • RUNTHUKVERB GANG CONFIDENTIAL`;
+  const gang = (gangName || 'สาขา 1').toUpperCase();
+  const stampText = `${memberName.toUpperCase()} • ${gang} • ${dateStr} • CONFIDENTIAL`;
 
   return (
     <div 

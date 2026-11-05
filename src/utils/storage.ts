@@ -1,10 +1,18 @@
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { DEFAULT_SPOTS } from '../data/defaultSpots';
+import { normalizeGangId } from './gangAuth';
 
-const SPOTS_STORAGE_KEY = 'fivem_cement_spots_v6';
-const COOLDOWNS_STORAGE_KEY = 'fivem_cement_cooldowns_v6';
+export function getSpotsKey(gangId?: string): string {
+  const norm = gangId ? normalizeGangId(gangId) : 'branch_1';
+  return `fivem_cement_spots_${norm}_v7`;
+}
 
-export function loadSpotsFromStorage(): CementSpot[] | null {
+export function getCooldownsKey(gangId?: string): string {
+  const norm = gangId ? normalizeGangId(gangId) : 'branch_1';
+  return `fivem_cement_cooldowns_${norm}_v7`;
+}
+
+export function loadSpotsFromStorage(gangId?: string): CementSpot[] | null {
   try {
     // Clean up older version keys if present
     localStorage.removeItem('fivem_cement_spots_v1');
@@ -15,19 +23,19 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     localStorage.removeItem('fivem_farm_cooldowns_v1');
     localStorage.removeItem('fivem_farm_loops_v1');
 
+    const key = getSpotsKey(gangId);
     const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-    let raw = localStorage.getItem(SPOTS_STORAGE_KEY);
+    let raw = localStorage.getItem(key);
 
-    // If upgrading to v6: automatically merge latest DEFAULT_SPOTS with any custom spots created by user!
+    // If upgrading: automatically merge from v6 or default spots
     if (!raw) {
-      const v5Raw = localStorage.getItem('fivem_cement_spots_v5');
-      if (v5Raw) {
+      const v6Raw = localStorage.getItem('fivem_cement_spots_v6');
+      if (v6Raw) {
         try {
-          const v5Parsed = JSON.parse(v5Raw) as CementSpot[];
-          const customSpots = v5Parsed.filter((s) => !officialSpotIds.has(s.id));
+          const v6Parsed = JSON.parse(v6Raw) as CementSpot[];
+          const customSpots = v6Parsed.filter((s) => !officialSpotIds.has(s.id));
           const merged = [...DEFAULT_SPOTS, ...customSpots];
-          localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(merged));
-          localStorage.removeItem('fivem_cement_spots_v5');
+          localStorage.setItem(key, JSON.stringify(merged));
           return merged;
         } catch {}
       }
@@ -87,7 +95,7 @@ export function loadSpotsFromStorage(): CementSpot[] | null {
     });
 
     if (modified) {
-      localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(processed));
+      localStorage.setItem(key, JSON.stringify(processed));
     }
     return processed;
   } catch (err) {
@@ -106,10 +114,12 @@ export interface SpotBackupSnapshot {
   spots: CementSpot[];
 }
 
-export function saveBackupSnapshot(spots: CementSpot[]): void {
+export function saveBackupSnapshot(spots: CementSpot[], gangId?: string): void {
   try {
     if (!spots || spots.length === 0) return;
-    const raw = localStorage.getItem(BACKUP_STORAGE_KEY);
+    const norm = gangId ? normalizeGangId(gangId) : 'soydark';
+    const backupKey = `${BACKUP_STORAGE_KEY}_${norm}`;
+    const raw = localStorage.getItem(backupKey);
     const backups: SpotBackupSnapshot[] = raw ? JSON.parse(raw) : [];
 
     const last = backups[0];
@@ -126,27 +136,29 @@ export function saveBackupSnapshot(spots: CementSpot[]): void {
     };
 
     const updated = [newSnapshot, ...backups].slice(0, 15);
-    localStorage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(backupKey, JSON.stringify(updated));
   } catch (err) {
     console.error('Failed to save backup snapshot:', err);
   }
 }
 
-export function getBackupSnapshots(): SpotBackupSnapshot[] {
+export function getBackupSnapshots(gangId?: string): SpotBackupSnapshot[] {
   try {
-    const raw = localStorage.getItem(BACKUP_STORAGE_KEY);
+    const norm = gangId ? normalizeGangId(gangId) : 'soydark';
+    const backupKey = `${BACKUP_STORAGE_KEY}_${norm}`;
+    const raw = localStorage.getItem(backupKey);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function restoreBackupSnapshot(id: string): CementSpot[] | null {
+export function restoreBackupSnapshot(id: string, gangId?: string): CementSpot[] | null {
   try {
-    const backups = getBackupSnapshots();
+    const backups = getBackupSnapshots(gangId);
     const target = backups.find((b) => b.id === id);
     if (target && Array.isArray(target.spots) && target.spots.length > 0) {
-      saveSpotsToStorage(target.spots);
+      saveSpotsToStorage(target.spots, gangId);
       return target.spots;
     }
   } catch (err) {
@@ -155,39 +167,36 @@ export function restoreBackupSnapshot(id: string): CementSpot[] | null {
   return null;
 }
 
-export function saveSpotsToStorage(spots: CementSpot[]): void {
+export function saveSpotsToStorage(spots: CementSpot[], gangId?: string): void {
   try {
-    localStorage.setItem(SPOTS_STORAGE_KEY, JSON.stringify(spots));
-    saveBackupSnapshot(spots);
+    const key = getSpotsKey(gangId);
+    localStorage.setItem(key, JSON.stringify(spots));
+    saveBackupSnapshot(spots, gangId);
   } catch (err) {
     console.error('Failed to save spots to storage:', err);
   }
 }
 
-export function clearAllSpotsFromStorage(): void {
+export function clearAllSpotsFromStorage(gangId?: string): void {
   try {
-    localStorage.removeItem(SPOTS_STORAGE_KEY);
-    localStorage.removeItem(COOLDOWNS_STORAGE_KEY);
-    localStorage.removeItem('fivem_cement_spots_v1');
-    localStorage.removeItem('fivem_cement_spots_v2');
-    localStorage.removeItem('fivem_cement_spots_v3');
-    localStorage.removeItem('fivem_cement_spots_v4');
-    localStorage.removeItem('fivem_cement_spots_v5');
-    localStorage.removeItem('fivem_cement_cooldowns_v5');
+    const key = getSpotsKey(gangId);
+    const cdKey = getCooldownsKey(gangId);
+    localStorage.removeItem(key);
+    localStorage.removeItem(cdKey);
   } catch (err) {
     console.error('Failed to clear spots from storage:', err);
   }
 }
 
-export function loadCooldownsFromStorage(): ActiveCooldown[] {
+export function loadCooldownsFromStorage(gangId?: string): ActiveCooldown[] {
   try {
-    let raw = localStorage.getItem(COOLDOWNS_STORAGE_KEY);
+    const key = getCooldownsKey(gangId);
+    let raw = localStorage.getItem(key);
     if (!raw) {
-      const v5Raw = localStorage.getItem('fivem_cement_cooldowns_v5');
-      if (v5Raw) {
-        localStorage.setItem(COOLDOWNS_STORAGE_KEY, v5Raw);
-        localStorage.removeItem('fivem_cement_cooldowns_v5');
-        raw = v5Raw;
+      const v6Raw = localStorage.getItem('fivem_cement_cooldowns_v6');
+      if (v6Raw) {
+        localStorage.setItem(key, v6Raw);
+        raw = v6Raw;
       }
     }
     if (!raw) return [];
@@ -203,9 +212,10 @@ export function loadCooldownsFromStorage(): ActiveCooldown[] {
   return [];
 }
 
-export function saveCooldownsToStorage(cooldowns: ActiveCooldown[]): void {
+export function saveCooldownsToStorage(cooldowns: ActiveCooldown[], gangId?: string): void {
   try {
-    localStorage.setItem(COOLDOWNS_STORAGE_KEY, JSON.stringify(cooldowns));
+    const key = getCooldownsKey(gangId);
+    localStorage.setItem(key, JSON.stringify(cooldowns));
   } catch (err) {
     console.error('Failed to save cooldowns to storage:', err);
   }

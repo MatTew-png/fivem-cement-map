@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Volume2,
   VolumeX,
+  Share2,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { isCementSpot } from '../data/defaultSpots';
@@ -40,6 +41,8 @@ interface SidebarProps {
   onOpenPresence?: () => void;
   onOpenBento?: () => void;
   memberName?: string;
+  gangName?: string;
+  onCopyGangLink?: () => void;
   isMaster?: boolean;
   isSoundMuted?: boolean;
   onToggleSound?: () => void;
@@ -67,6 +70,8 @@ export const Sidebar = memo(({
   onOpenPresence,
   onOpenBento,
   memberName,
+  gangName = 'สาขา 1',
+  onCopyGangLink,
   isMaster = false,
   isSoundMuted = false,
   onToggleSound,
@@ -373,12 +378,24 @@ export const Sidebar = memo(({
                 🧱
               </div>
               <div>
-                <h1 className="text-xs font-black text-white tracking-wider flex items-center gap-1.5">
-                  <span>รันทุกเวิบ COOLDOWN</span>
-                  <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 py-0.2 rounded border border-amber-500/30">
-                    จุดปูน
-                  </span>
-                </h1>
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-xs font-black text-white tracking-wider flex items-center gap-1.5 truncate">
+                    <span className="truncate max-w-[125px]">{gangName}</span>
+                    <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 py-0.2 rounded border border-amber-500/30 shrink-0">
+                      COOLDOWN
+                    </span>
+                  </h1>
+                  {onCopyGangLink && (
+                    <button
+                      type="button"
+                      onClick={onCopyGangLink}
+                      className="p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                      title={`คัดลอกลิงก์ตรงสำหรับ ${gangName}`}
+                    >
+                      <Share2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
                 {onOpenPresence && (
                   <button
                     type="button"
