@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   X,
   LayoutGrid,
@@ -15,8 +15,7 @@ import {
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession } from '../utils/gangAuth';
-import { getDailyPIN } from '../utils/gangAuth';
-import { isCementSpot } from '../data/defaultSpots';
+import { isCementSpot } from '../utils/spotCategories';
 
 interface GangBentoModalProps {
   isOpen: boolean;
@@ -39,17 +38,35 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
   currentSession,
   onOpenPresence,
 }) => {
-  if (!isOpen) return null;
+  const [now, setNow] = useState(() => Date.now());
 
-  const now = Date.now();
-  const dailyPin = getDailyPIN(new Date(), currentSession?.gangId);
+  useEffect(() => {
+    if (!isOpen) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 5000);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
-  // Statistics calculation
   const cementCount = useMemo(() => spots.filter((s) => isCementSpot(s)).length, [spots]);
   const landmarkCount = spots.length - cementCount;
-  const weedSpotsCount = useMemo(() => spots.filter((s) => s.icon?.includes('weed') || s.name.includes('ยา') || s.name.toLowerCase().includes('weed')).length, [spots]);
+  const weedSpotsCount = useMemo(
+    () =>
+      spots.filter(
+        (s) => s.icon?.includes('weed') || s.name.includes('ยา') || s.name.toLowerCase().includes('weed')
+      ).length,
+    [spots]
+  );
 
-  // Urgent cooldowns
   const urgentCount = useMemo(() => {
     return activeCooldowns.filter((cd) => {
       const rem = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
@@ -57,7 +74,6 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
     }).length;
   }, [activeCooldowns, now]);
 
-  // Next ready cooldown spot
   const nextReady = useMemo(() => {
     if (activeCooldowns.length === 0) return null;
     const sorted = [...activeCooldowns].sort((a, b) => a.expiresAt - b.expiresAt);
@@ -67,9 +83,20 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
     return { name: spot?.name || 'หมุดคูลดาวน์', minutes: remMin };
   }, [activeCooldowns, spots, now]);
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-[9992] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl bg-slate-900/95 border border-slate-800 rounded-3xl shadow-2xl shadow-black/90 flex flex-col max-h-[90vh] overflow-hidden">
+    <div
+      className="fixed inset-0 z-[9992] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bento-dashboard-title"
+        className="relative w-full max-w-4xl bg-slate-900/95 border border-slate-800 rounded-3xl shadow-2xl shadow-black/90 flex flex-col max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-3">
@@ -78,7 +105,7 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white uppercase tracking-wider">
+                <h3 id="bento-dashboard-title" className="text-base font-black text-white uppercase tracking-wider">
                   Tactical Intel Dashboard
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-bold">
@@ -92,7 +119,9 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
+            aria-label="ปิดหน้าต่าง Tactical Intel"
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -193,7 +222,10 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
               <div className="my-2">
                 <div className="text-[11px] text-slate-400 font-medium">รหัสประจำวันวันนี้:</div>
                 <div className="text-2xl font-black text-amber-400 font-mono tracking-widest mt-0.5">
-                  {dailyPin}
+                  ••••••
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  {currentSession?.isMaster ? 'ดูตารางรหัสได้ที่เมนูหัวหน้าแก๊ง' : 'ตรวจสอบจาก Discord ของแก๊ง'}
                 </div>
               </div>
 

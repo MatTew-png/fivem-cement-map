@@ -1,19 +1,22 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapView } from './components/MapView';
-import { Sidebar } from './components/Sidebar';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { CoordinatesHUD } from './components/CoordinatesHUD';
 import { LayerSwitcher } from './components/LayerSwitcher';
-import { PinModal } from './components/PinModal';
 import { CooldownTracker } from './components/CooldownTracker';
-import { ExportImportModal } from './components/ExportImportModal';
 import { GtaCrosshair } from './components/GtaCrosshair';
 import { DistanceTool, type RouteSegment } from './components/DistanceTool';
 import { MapQuickFilters } from './components/MapQuickFilters';
+import { ConfirmModal } from './components/ConfirmModal';
 import { Volume2, VolumeX } from 'lucide-react';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from './types/map';
 import { gtaRoadRouter } from './utils/gtaRouter';
-import { DEFAULT_SPOTS, MAP_LAYERS, isCementSpot } from './data/defaultSpots';
-import { getSpotQuickCategory, type QuickCategory } from './utils/clustering';
+import { DEFAULT_SPOTS, MAP_LAYERS } from './data/defaultSpots';
+import {
+  INITIAL_QUICK_CATEGORIES_STATE,
+  buildEmptyQuickCategoryCounts,
+  getSpotQuickCategory,
+  isCementSpot,
+  type QuickCategory,
+} from './utils/spotCategories';
 import {
   loadSpotsFromStorage,
   saveSpotsToStorage,
@@ -24,14 +27,31 @@ import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
 import { coordsBus } from './utils/coordsBus';
 import { GangAuthModal } from './components/GangAuthModal';
-import { GangPresenceModal } from './components/GangPresenceModal';
-import { GangBentoModal } from './components/GangBentoModal';
 import { GangToast } from './components/GangToast';
 import { GangWatermark } from './components/GangWatermark';
-import { setupAntiTamper } from './utils/antiTamper';
 import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
-import { getGangSession, parseBranch, type GangSession, type ActivityLog } from './utils/gangAuth';
-import { detectClientIp, isIpBanned, logIpAccess, initSecuritySync } from './utils/ipLogger';
+import {
+  getGangSession,
+  logoutGang,
+  parseBranch,
+  verifySessionWithServer,
+  type GangSession,
+  type ActivityLog,
+} from './utils/gangAuth';
+import { detectClientIp, reportVisitToServer } from './utils/ipLogger';
+
+const MapView = lazy(() => import('./components/MapView').then((m) => ({ default: m.MapView })));
+const Sidebar = lazy(() => import('./components/Sidebar').then((m) => ({ default: m.Sidebar })));
+const PinModal = lazy(() => import('./components/PinModal').then((m) => ({ default: m.PinModal })));
+const ExportImportModal = lazy(() =>
+  import('./components/ExportImportModal').then((m) => ({ default: m.ExportImportModal }))
+);
+const GangPresenceModal = lazy(() =>
+  import('./components/GangPresenceModal').then((m) => ({ default: m.GangPresenceModal }))
+);
+const GangBentoModal = lazy(() =>
+  import('./components/GangBentoModal').then((m) => ({ default: m.GangBentoModal }))
+);
 
 export function App() {
   // State: Gang Authentication & Presence (Loaded first to isolate storage & topic per gang)
@@ -116,19 +136,17 @@ export function App() {
   const [categoriesState, setCategoriesState] = useState<Record<QuickCategory, boolean>>(() => {
     const cementSaved = localStorage.getItem('fivem_map_show_cement');
     const defaults: Record<QuickCategory, boolean> = {
-      cement: cementSaved !== null ? cementSaved === 'true' : true,
-      race: true,
-      head_reset: true,
-      farm: true,
-      quest: true,
-      lands: true,
-      fuel: true,
-      services: true,
+      ...INITIAL_QUICK_CATEGORIES_STATE,
+      cement: cementSaved !== null ? cementSaved === 'true' : INITIAL_QUICK_CATEGORIES_STATE.cement,
     };
     try {
       const saved = localStorage.getItem('fivem_map_categories_state_v1');
-      if (saved) return { ...defaults, ...JSON.parse(saved) };
-    } catch {}
+      if (saved) {
+        return { ...defaults, ...(JSON.parse(saved) as Partial<Record<QuickCategory, boolean>>) };
+      }
+    } catch {
+      // Ignore invalid JSON
+    }
     return defaults;
   });
 
@@ -185,7 +203,49 @@ export function App() {
     return spots.filter(isCementSpot).length;
   }, [spots]);
 
-  // State: Gang UI Modals & Members
+  const spotsRef = useRef<CementSpot[]>(spots);
+  useEffect(() => {
+    spotsRef.current = spots;
+  }, [spots]);
+
+  // State: Gang UI Modals, Selection & Members
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [editingSpot, setEditingSpot] = useState<Partial<CementSpot> | null>(null);
+  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fivem_map_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleCollapseSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fivem_map_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Toggle selection: clicking the same spot again deselects it and clears highlight
+  const handleSelectSpot = useCallback((spot: CementSpot | null) => {
+    setSelectedSpot((prev) => {
+      if (prev && spot && prev.id === spot.id) {
+        return null;
+      }
+      return spot;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedSpot(null);
+  }, []);
+
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
   const [isBentoModalOpen, setIsBentoModalOpen] = useState(false);
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
@@ -196,11 +256,9 @@ export function App() {
   useEffect(() => {
     if (gangSession?.gangId) {
       const gangSpots = loadSpotsFromStorage(gangSession.gangId);
-      if (gangSpots && gangSpots.length > 0) {
-        setSpots(gangSpots);
-      } else {
-        setSpots(DEFAULT_SPOTS);
-      }
+      const resolvedSpots = gangSpots && gangSpots.length > 0 ? gangSpots : DEFAULT_SPOTS;
+      spotsRef.current = resolvedSpots;
+      setSpots(resolvedSpots);
       const gangCooldowns = loadCooldownsFromStorage(gangSession.gangId);
       setActiveCooldowns(gangCooldowns);
     }
@@ -208,9 +266,12 @@ export function App() {
 
   const handleCopyGangLink = useCallback(() => {
     const branch = parseBranch(gangSession?.gangId || gangSession?.gangName);
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://runthukverb-cooldown.surge.sh';
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://runthukverb-auth-api.workers.dev';
     const link = `${origin}/?branch=${branch.num}`;
-    navigator.clipboard.writeText(link);
+    navigator.clipboard.writeText(link).catch(() => {});
     gangPresence.triggerNotification({
       type: 'spot_add',
       title: 'คัดลอกลิงก์สาขาแล้ว!',
@@ -221,29 +282,97 @@ export function App() {
 
   // State: IP Security & Ban Detection
   const [isBannedClient, setIsBannedClient] = useState(false);
+  const [banReason, setBanReason] = useState<string | null>(null);
   const [clientIpAddress, setClientIpAddress] = useState('');
 
-  // Effect: Immediate Visitor IP Tracking & Ban Enforcement & Real-time Security Sync
+  // Effect: Immediate Visitor IP Tracking & Server-Side Ban Check on Boot
   useEffect(() => {
-    initSecuritySync();
+    let cancelled = false;
     detectClientIp().then((info) => {
+      if (cancelled) return;
       setClientIpAddress(info.ip);
-      if (isIpBanned(info.ip)) {
+      if (info.banned) {
         setIsBannedClient(true);
-        logIpAccess({ action: 'banned_blocked' });
-      } else {
-        logIpAccess({ action: 'visit' });
+        setBanReason(info.banReason ?? null);
+        logoutGang();
+        setGangSession(null);
+        return;
       }
+
+      const active = getGangSession();
+      reportVisitToServer(active?.memberName || 'Guest', active?.gangId || 'unauthenticated').then((visit) => {
+        if (cancelled) return;
+        if (visit.ip && visit.ip !== 'unknown') {
+          setClientIpAddress(visit.ip);
+        }
+        if (visit.banned) {
+          setIsBannedClient(true);
+          setBanReason(visit.banReason ?? null);
+          logoutGang();
+          setGangSession(null);
+        }
+      });
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Effect: Anti-Tamper Protection (Disable contextmenu, F12, DevTools shortcuts)
+  // Effect: Server-Side Signed Session Verification & Ban Enforcement
   useEffect(() => {
-    const cleanup = setupAntiTamper();
-    return cleanup;
-  }, []);
+    if (!gangSession) return;
+    let cancelled = false;
 
-  // Effect: Periodic Session Validation & URL Branch Sync (ซิงค์สาขาทันทีเมื่อ URL เปลี่ยน หรือเซสชั่นถูกรีเซ็ต)
+    const validateWithServer = async () => {
+      const result = await verifySessionWithServer(gangSession);
+      if (cancelled) return;
+
+      if (result.banned) {
+        setIsBannedClient(true);
+        setBanReason(result.banReason ?? null);
+        logoutGang();
+        gangPresence.stop();
+        setGangSession(null);
+        return;
+      }
+
+      if (!result.valid) {
+        logoutGang();
+        gangPresence.stop();
+        setGangSession(null);
+        setNotifications((prev) => [
+          {
+            id: `session-expired-${Date.now()}`,
+            type: 'cooldown_cancel',
+            title: 'เซสชั่นถูกยกเลิกหรือหมดอายุ',
+            subtitle: 'กรุณายืนยันรหัส PIN ใหม่อีกครั้ง',
+            icon: '🔒',
+            timestamp: Date.now(),
+          },
+          ...prev.slice(0, 6),
+        ]);
+        return;
+      }
+
+      if (
+        result.session &&
+        (result.session.channelKey !== gangSession.channelKey ||
+          result.session.isMaster !== gangSession.isMaster)
+      ) {
+        setGangSession(result.session);
+      }
+    };
+
+    void validateWithServer();
+    const serverCheckTimer = setInterval(validateWithServer, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(serverCheckTimer);
+    };
+  }, [gangSession]);
+
+  // Effect: Periodic Local Session Validation & URL Branch Sync
   useEffect(() => {
     const syncSession = () => {
       const active = getGangSession();
@@ -254,17 +383,20 @@ export function App() {
         active &&
         (!gangSession ||
           active.gangId !== gangSession.gangId ||
-          active.isMaster !== gangSession.isMaster)
+          active.isMaster !== gangSession.isMaster ||
+          active.token !== gangSession.token)
       ) {
         setGangSession(active);
       }
     };
 
-    const timer = setInterval(syncSession, 1000);
+    const timer = setInterval(syncSession, 2000);
     window.addEventListener('popstate', syncSession);
+    window.addEventListener('storage', syncSession);
     return () => {
       clearInterval(timer);
       window.removeEventListener('popstate', syncSession);
+      window.removeEventListener('storage', syncSession);
     };
   }, [gangSession]);
 
@@ -308,12 +440,18 @@ export function App() {
         setSpots((prev) => prev.map((s) => (s.id === event.spot!.id ? event.spot! : s)));
         setSelectedSpot((prev) => (prev?.id === event.spot!.id ? event.spot! : prev));
       } else if (event.action === 'move' && event.spot) {
+        const movedAt = Date.now();
         setSpots((prev) =>
           prev.map((s) =>
             s.id === event.spot!.id
-              ? { ...s, x: event.spot!.x, y: event.spot!.y, updatedAt: Date.now() }
+              ? { ...s, x: event.spot!.x, y: event.spot!.y, updatedAt: movedAt }
               : s
           )
+        );
+        setSelectedSpot((prev) =>
+          prev?.id === event.spot!.id
+            ? { ...prev, x: event.spot!.x, y: event.spot!.y, updatedAt: movedAt }
+            : prev
         );
       } else if (event.action === 'delete') {
         setSpots((prev) => prev.filter((s) => s.id !== event.spotId));
@@ -444,15 +582,9 @@ export function App() {
     segmentDistances: number[];
   } | null>(null);
 
-  // Background pre-load of GTA V road graph
+  // Compute Road Route only when authenticated, in distance mode, and on road routing
   useEffect(() => {
-    gtaRoadRouter.init();
-  }, []);
-
-  // Compute Road Route when in 'road' mode
-  useEffect(() => {
-    if (routingMode !== 'road' || distancePoints.length < 2) {
-      setRoadRouteData(null);
+    if (!gangSession || !isDistanceMode || routingMode !== 'road' || distancePoints.length < 2) {
       return;
     }
 
@@ -466,7 +598,10 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, [routingMode, distancePoints]);
+  }, [gangSession, isDistanceMode, routingMode, distancePoints]);
+
+  const activeRoadRoute =
+    routingMode === 'road' && distancePoints.length >= 2 ? roadRouteData : null;
 
   // Computed: Total Distance & Route Segments (Road or Straight)
   const { totalDistance, segments } = useMemo(() => {
@@ -474,19 +609,19 @@ export function App() {
       return { totalDistance: 0, segments: [] as RouteSegment[] };
     }
 
-    if (routingMode === 'road' && roadRouteData) {
+    if (routingMode === 'road' && activeRoadRoute) {
       const segs: RouteSegment[] = [];
       for (let i = 0; i < distancePoints.length - 1; i++) {
         const p1 = distancePoints[i];
         const p2 = distancePoints[i + 1];
-        const dist = roadRouteData.segmentDistances[i] ?? calculateGameDistance(p1, p2);
+        const dist = activeRoadRoute.segmentDistances[i] ?? calculateGameDistance(p1, p2);
         segs.push({
           fromLabel: p1.label || `จุดที่ ${i + 1}`,
           toLabel: p2.label || `จุดที่ ${i + 2}`,
           distance: dist,
         });
       }
-      return { totalDistance: roadRouteData.totalDistance, segments: segs };
+      return { totalDistance: activeRoadRoute.totalDistance, segments: segs };
     }
 
     let total = 0;
@@ -503,57 +638,11 @@ export function App() {
       });
     }
     return { totalDistance: total, segments: segs };
-  }, [distancePoints, routingMode, roadRouteData]);
-
-  // State: Modals & Sidebar
-  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [editingSpot, setEditingSpot] = useState<Partial<CementSpot> | null>(null);
-  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
-  const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('fivem_map_sidebar_collapsed') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const handleToggleCollapseSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('fivem_map_sidebar_collapsed', String(next));
-      } catch {}
-      return next;
-    });
-  }, []);
-
-  // Toggle selection: clicking the same spot again deselects it and clears highlight
-  const handleSelectSpot = useCallback((spot: CementSpot | null) => {
-    setSelectedSpot((prev) => {
-      if (prev && spot && prev.id === spot.id) {
-        return null;
-      }
-      return spot;
-    });
-  }, []);
-
-  const handleClearSelection = useCallback(() => {
-    setSelectedSpot(null);
-  }, []);
+  }, [distancePoints, routingMode, activeRoadRoute]);
 
   // Category counts for quick filter pills
   const categoryCounts = useMemo(() => {
-    const counts: Record<QuickCategory, number> = {
-      cement: 0,
-      race: 0,
-      head_reset: 0,
-      farm: 0,
-      quest: 0,
-      lands: 0,
-      fuel: 0,
-      services: 0,
-    };
+    const counts = buildEmptyQuickCategoryCounts();
     spots.forEach((spot) => {
       const cat = getSpotQuickCategory(spot);
       counts[cat]++;
@@ -565,13 +654,7 @@ export function App() {
   const visibleSpotsOnMap = useMemo(() => {
     return spots.filter((spot) => {
       if (selectedSpot?.id === spot.id) return true;
-      const cat = getSpotQuickCategory(spot);
-      if (categoriesState[cat]) return true;
-      // Fallback support for multi-faceted spots
-      if (categoriesState.lands && (spot.category === 'landmark' || spot.category === 'shop' || spot.category === 'restaurant' || spot.name.includes('ร้าน') || Boolean(spot.icon && spot.icon.includes('radar_buyers_request')) || Boolean(spot.icon && spot.icon.includes('radar_pizza_this')))) return true;
-      if (categoriesState.head_reset && (spot.category === 'head_reset' || spot.name.includes('รีหัว') || spot.name.includes('อู่') || spot.id === 'spot-1788676937650')) return true;
-      if (categoriesState.farm && (spot.category === 'farm' || spot.category === 'rebel' || spot.name.includes('ขายหมู') || spot.name.includes('ขายข้าว'))) return true;
-      return false;
+      return Boolean(categoriesState[getSpotQuickCategory(spot)]);
     });
   }, [spots, categoriesState, selectedSpot?.id]);
 
@@ -631,18 +714,14 @@ export function App() {
   }, []);
 
   const handleSaveSpot = useCallback((spot: CementSpot) => {
-    let isNew = false;
-    let nextSpots: CementSpot[] = [];
-    setSpots((prev) => {
-      const exists = prev.some((s) => s.id === spot.id);
-      isNew = !exists;
-      if (exists) {
-        nextSpots = prev.map((s) => (s.id === spot.id ? spot : s));
-      } else {
-        nextSpots = [spot, ...prev];
-      }
-      return nextSpots;
-    });
+    const prevSpots = spotsRef.current;
+    const isNew = !prevSpots.some((s) => s.id === spot.id);
+    const nextSpots = isNew
+      ? [spot, ...prevSpots]
+      : prevSpots.map((s) => (s.id === spot.id ? spot : s));
+
+    spotsRef.current = nextSpots;
+    setSpots(nextSpots);
     setSelectedSpot(spot);
     soundEffects.playPinPlaced();
 
@@ -668,11 +747,9 @@ export function App() {
   }, []);
 
   const handleDeleteSpot = useCallback((id: string) => {
-    let nextSpots: CementSpot[] = [];
-    setSpots((prev) => {
-      nextSpots = prev.filter((s) => s.id !== id);
-      return nextSpots;
-    });
+    const nextSpots = spotsRef.current.filter((s) => s.id !== id);
+    spotsRef.current = nextSpots;
+    setSpots(nextSpots);
     setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== id));
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
     gangPresence.broadcastSpotChange('delete', undefined, id);
@@ -685,23 +762,23 @@ export function App() {
 
   const handleSpotMoved = useCallback((spotId: string, newCoords: { x: number; y: number }) => {
     let movedSpot: CementSpot | undefined;
-    let nextSpots: CementSpot[] = [];
-    setSpots((prev) => {
-      nextSpots = prev.map((s) => {
-        if (s.id === spotId) {
-          movedSpot = { ...s, x: newCoords.x, y: newCoords.y, updatedAt: Date.now() };
-          return movedSpot;
-        }
-        return s;
-      });
-      return nextSpots;
+    const movedAt = Date.now();
+    const nextSpots = spotsRef.current.map((s) => {
+      if (s.id === spotId) {
+        movedSpot = { ...s, x: newCoords.x, y: newCoords.y, updatedAt: movedAt };
+        return movedSpot;
+      }
+      return s;
     });
-    if (movedSpot) {
-      gangPresence.broadcastSpotChange('move', movedSpot);
-      const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-      const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
-      gangPresence.broadcastSpotManifest(customSpots);
-    }
+    if (!movedSpot) return;
+
+    spotsRef.current = nextSpots;
+    setSpots(nextSpots);
+    setSelectedSpot((prev) => (prev?.id === spotId ? movedSpot! : prev));
+    gangPresence.broadcastSpotChange('move', movedSpot);
+    const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+    const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
+    gangPresence.broadcastSpotManifest(customSpots);
   }, []);
 
   const handlePinAtCrosshair = useCallback(() => {
@@ -781,24 +858,30 @@ export function App() {
   }, []);
 
   const handleImport = useCallback((importedSpots: CementSpot[]) => {
+    spotsRef.current = importedSpots;
     setSpots(importedSpots);
     saveSpotsToStorage(importedSpots, gangSession?.gangId);
     soundEffects.playPinPlaced();
   }, [gangSession?.gangId]);
 
   const handleResetDefault = useCallback(() => {
+    spotsRef.current = DEFAULT_SPOTS;
     setSpots(DEFAULT_SPOTS);
     setActiveCooldowns([]);
     saveSpotsToStorage(DEFAULT_SPOTS, gangSession?.gangId);
   }, [gangSession?.gangId]);
 
   const handleClearAllSpots = useCallback(() => {
-    if (confirm('คุณต้องการลบหมุดทั้งหมดบนแผนที่ใช่หรือไม่?')) {
-      setSpots([]);
-      setActiveCooldowns([]);
-      saveSpotsToStorage([], gangSession?.gangId);
-      setSelectedSpot(null);
-    }
+    setIsClearConfirmOpen(true);
+  }, []);
+
+  const handleConfirmClearAllSpots = useCallback(() => {
+    spotsRef.current = [];
+    setSpots([]);
+    setActiveCooldowns([]);
+    saveSpotsToStorage([], gangSession?.gangId);
+    setSelectedSpot(null);
+    setIsClearConfirmOpen(false);
   }, [gangSession?.gangId]);
 
   // Distance Tool handlers
@@ -889,6 +972,11 @@ export function App() {
         <p className="text-sm text-slate-400 max-w-md mb-2">
           IP Address ของคุณ (<span className="font-mono text-red-400 font-bold">{clientIpAddress || 'IP ที่ถูกบล็อก'}</span>) ถูกระงับการเข้าใช้งานโดยหัวหน้าแก๊ง
         </p>
+        {banReason && (
+          <p className="text-xs text-red-300 bg-red-950/50 border border-red-500/30 rounded-xl px-3 py-1.5 max-w-md mb-3">
+            เหตุผล: {banReason}
+          </p>
+        )}
         <p className="text-xs text-slate-500 max-w-sm mb-6">
           หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อหัวหน้าแก๊งเพื่อขอปลดแบน IP ของคุณ
         </p>
@@ -899,42 +987,60 @@ export function App() {
     );
   }
 
+  if (!gangSession) {
+    return (
+      <div className="h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
+        <GangAuthModal onSuccess={(session) => setGangSession(session)} />
+        <GangToast
+          notifications={notifications}
+          onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
       {/* Subtle Dynamic Watermark Overlay (Anti-Screenshot/Leak) */}
       <GangWatermark
-        memberName={gangSession?.memberName}
-        gangName={gangSession?.gangName}
-        authDate={gangSession?.authDate}
+        memberName={gangSession.memberName}
+        gangName={gangSession.gangName}
+        authDate={gangSession.authDate}
       />
 
-      {/* Collapsible Left Sidebar */}
-      <Sidebar
-        spots={spots}
-        activeCooldowns={activeCooldowns}
-        onSelectSpot={handleSelectSpot}
-        onAddNewSpot={handleAddNewSpot}
-        onEditSpot={handleEditSpot}
-        onDeleteSpot={handleDeleteSpot}
-        onStartCooldown={handleStartCooldown}
-        onCancelCooldown={handleCancelCooldown}
-        onOpenExportImport={() => setIsExportImportOpen(true)}
-        onClearAllSpots={handleClearAllSpots}
-        selectedSpotId={selectedSpot?.id}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={handleToggleCollapseSidebar}
-        showCementSpots={showCementSpots}
-        onToggleCementSpots={handleToggleCementSpots}
-        onlineCount={onlineMembers.length}
-        onOpenPresence={() => setIsPresenceModalOpen(true)}
-        onOpenBento={() => setIsBentoModalOpen(true)}
-        memberName={gangSession?.memberName}
-        gangName={gangSession?.gangName || 'สาขา 1'}
-        onCopyGangLink={handleCopyGangLink}
-        isMaster={gangSession?.isMaster}
-        isSoundMuted={isSoundMuted}
-        onToggleSound={handleToggleSound}
-      />
+      {/* Collapsible Left Sidebar (Lazy Loaded after Auth) */}
+      <Suspense
+        fallback={
+          sidebarCollapsed ? null : (
+            <aside className="hidden md:block fixed top-0 left-0 bottom-0 z-[1001] w-80 lg:w-96 bg-slate-950 border-r border-slate-800/80 animate-pulse" />
+          )
+        }
+      >
+        <Sidebar
+          spots={spots}
+          activeCooldowns={activeCooldowns}
+          onSelectSpot={handleSelectSpot}
+          onAddNewSpot={handleAddNewSpot}
+          onEditSpot={handleEditSpot}
+          onDeleteSpot={handleDeleteSpot}
+          onStartCooldown={handleStartCooldown}
+          onCancelCooldown={handleCancelCooldown}
+          onOpenExportImport={() => setIsExportImportOpen(true)}
+          onClearAllSpots={handleClearAllSpots}
+          selectedSpotId={selectedSpot?.id}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleCollapseSidebar}
+          showCementSpots={showCementSpots}
+          onToggleCementSpots={handleToggleCementSpots}
+          onlineCount={onlineMembers.length}
+          onOpenPresence={() => setIsPresenceModalOpen(true)}
+          onOpenBento={() => setIsBentoModalOpen(true)}
+          memberName={gangSession.memberName}
+          gangName={gangSession.gangName || 'สาขา 1'}
+          onCopyGangLink={handleCopyGangLink}
+          isMaster={gangSession.isMaster}
+        />
+      </Suspense>
 
       {/* Main Map Area */}
       <main
@@ -953,36 +1059,44 @@ export function App() {
           sidebarCollapsed={sidebarCollapsed}
         />
 
-        {/* Leaflet Map Engine */}
-        <MapView
-          spots={visibleSpotsOnMap}
-          activeLayer={activeLayer}
-          activeCooldowns={activeCooldowns}
-          onMapClickToCreatePin={handleMapClickToCreatePin}
-          onCenterCoordsChange={setMapCenterCoords}
-          onZoomChange={setZoom}
-          onEditSpot={handleEditSpot}
-          onDeleteSpot={handleDeleteSpot}
-          onStartCooldown={handleStartCooldown}
-          onCancelCooldown={handleCancelCooldown}
-          onSpotMoved={handleSpotMoved}
-          selectedSpot={selectedSpot}
-          sidebarCollapsed={sidebarCollapsed}
-          isCompactMode={isCompactMode}
-          isGhostMode={isGhostMode}
-          isCoordsLocked={isCoordsLocked}
-          lockedCoords={lockedCoords}
-          isDistanceMode={isDistanceMode}
-          distancePoints={distancePoints}
-          routingMode={routingMode}
-          roadRouteData={roadRouteData}
-          onAddDistancePoint={handleAddDistancePoint}
-          onStartMeasureFromSpot={handleStartMeasureFromSpot}
-          isMaster={gangSession?.isMaster}
-          isClusteringEnabled={isClusteringEnabled}
-          onFocusSpot={handleFocusSpot}
-          onClearSelection={handleClearSelection}
-        />
+        {/* Leaflet Map Engine (Lazy Loaded after Auth) */}
+        <Suspense
+          fallback={
+            <div className="w-full h-full bg-slate-950 flex items-center justify-center text-xs text-slate-400 font-mono">
+              กำลังโหลดเอนจินแผนที่...
+            </div>
+          }
+        >
+          <MapView
+            spots={visibleSpotsOnMap}
+            activeLayer={activeLayer}
+            activeCooldowns={activeCooldowns}
+            onMapClickToCreatePin={handleMapClickToCreatePin}
+            onCenterCoordsChange={setMapCenterCoords}
+            onZoomChange={setZoom}
+            onEditSpot={handleEditSpot}
+            onDeleteSpot={handleDeleteSpot}
+            onStartCooldown={handleStartCooldown}
+            onCancelCooldown={handleCancelCooldown}
+            onSpotMoved={handleSpotMoved}
+            selectedSpot={selectedSpot}
+            sidebarCollapsed={sidebarCollapsed}
+            isCompactMode={isCompactMode}
+            isGhostMode={isGhostMode}
+            isCoordsLocked={isCoordsLocked}
+            lockedCoords={lockedCoords}
+            isDistanceMode={isDistanceMode}
+            distancePoints={distancePoints}
+            routingMode={routingMode}
+            roadRouteData={activeRoadRoute}
+            onAddDistancePoint={handleAddDistancePoint}
+            onStartMeasureFromSpot={handleStartMeasureFromSpot}
+            isMaster={gangSession.isMaster}
+            isClusteringEnabled={isClusteringEnabled}
+            onFocusSpot={handleFocusSpot}
+            onClearSelection={handleClearSelection}
+          />
+        </Suspense>
 
         {/* GTA V In-Game Reticle / Crosshair */}
         <GtaCrosshair visible={showCrosshair} />
@@ -1009,6 +1123,8 @@ export function App() {
           <button
             type="button"
             onClick={handleToggleSound}
+            aria-pressed={isSoundMuted}
+            aria-label={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์' : 'ปิดเสียงเอฟเฟกต์'}
             className={`pointer-events-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xl border cursor-pointer backdrop-blur-md ${
               isSoundMuted
                 ? 'bg-red-950/90 text-red-300 border-red-500/80 shadow-red-500/20 hover:bg-red-900/90'
@@ -1062,23 +1178,25 @@ export function App() {
           showCementSpots={showCementSpots}
           onToggleCementSpots={handleToggleCementSpots}
           cementCount={cementCount}
-          isSoundMuted={isSoundMuted}
-          onToggleSound={handleToggleSound}
         />
       </main>
 
-      {/* Pin Form Modal */}
-      <PinModal
-        isOpen={isPinModalOpen}
-        onClose={() => {
-          setIsPinModalOpen(false);
-          setEditingSpot(null);
-        }}
-        onSave={handleSaveSpot}
-        initialSpot={editingSpot}
-        onDelete={handleDeleteSpot}
-        isMaster={gangSession?.isMaster}
-      />
+      {/* Lazy-Loaded Modals */}
+      {isPinModalOpen && (
+        <Suspense fallback={null}>
+          <PinModal
+            isOpen={isPinModalOpen}
+            onClose={() => {
+              setIsPinModalOpen(false);
+              setEditingSpot(null);
+            }}
+            onSave={handleSaveSpot}
+            initialSpot={editingSpot}
+            onDelete={handleDeleteSpot}
+            isMaster={gangSession.isMaster}
+          />
+        </Suspense>
+      )}
 
       {/* GTA V HUD Floating Gang Notifications */}
       <GangToast
@@ -1086,47 +1204,64 @@ export function App() {
         onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
       />
 
-      {/* Export / Import Modal */}
-      <ExportImportModal
-        isOpen={isExportImportOpen}
-        onClose={() => setIsExportImportOpen(false)}
-        spots={spots}
-        onImport={handleImport}
-        onResetDefault={handleResetDefault}
-        isMaster={gangSession?.isMaster}
-      />
-
-      {/* Gang Security Gate Modal */}
-      {!gangSession && (
-        <GangAuthModal onSuccess={(session) => setGangSession(session)} />
+      {isExportImportOpen && (
+        <Suspense fallback={null}>
+          <ExportImportModal
+            isOpen={isExportImportOpen}
+            onClose={() => setIsExportImportOpen(false)}
+            spots={spots}
+            onImport={handleImport}
+            onResetDefault={handleResetDefault}
+            isMaster={gangSession.isMaster}
+          />
+        </Suspense>
       )}
 
-      {/* Gang Presence & Boss Modal */}
-      <GangPresenceModal
-        isOpen={isPresenceModalOpen}
-        onClose={() => setIsPresenceModalOpen(false)}
-        onlineMembers={onlineMembers}
-        activityLogs={activityLogs}
-        currentSession={gangSession}
-        onLogout={() => {
-          setGangSession(null);
-          setIsPresenceModalOpen(false);
-        }}
-      />
+      {isPresenceModalOpen && (
+        <Suspense fallback={null}>
+          <GangPresenceModal
+            isOpen={isPresenceModalOpen}
+            onClose={() => setIsPresenceModalOpen(false)}
+            onlineMembers={onlineMembers}
+            activityLogs={activityLogs}
+            currentSession={gangSession}
+            onLogout={() => {
+              logoutGang(gangSession.gangId);
+              gangPresence.stop();
+              setGangSession(null);
+              setIsPresenceModalOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
 
-      {/* NameThatUI Pattern: Tactical Intel Bento Grid Dashboard */}
-      <GangBentoModal
-        isOpen={isBentoModalOpen}
-        onClose={() => setIsBentoModalOpen(false)}
-        spots={spots}
-        activeCooldowns={activeCooldowns}
-        onlineMembers={onlineMembers}
-        activityLogs={activityLogs}
-        currentSession={gangSession}
-        onOpenPresence={() => {
-          setIsBentoModalOpen(false);
-          setIsPresenceModalOpen(true);
-        }}
+      {isBentoModalOpen && (
+        <Suspense fallback={null}>
+          <GangBentoModal
+            isOpen={isBentoModalOpen}
+            onClose={() => setIsBentoModalOpen(false)}
+            spots={spots}
+            activeCooldowns={activeCooldowns}
+            onlineMembers={onlineMembers}
+            activityLogs={activityLogs}
+            currentSession={gangSession}
+            onOpenPresence={() => {
+              setIsBentoModalOpen(false);
+              setIsPresenceModalOpen(true);
+            }}
+          />
+        </Suspense>
+      )}
+
+      <ConfirmModal
+        isOpen={isClearConfirmOpen}
+        title="ลบหมุดทั้งหมดบนแผนที่?"
+        description="คุณต้องการลบหมุดและคูลดาวน์ที่กำลังทำงานทั้งหมดออกจากเครื่องนี้ใช่หรือไม่? (สามารถกดรีเซ็ตกลับเป็นค่าเริ่มต้นได้ภายหลังผ่าน Export / Import)"
+        confirmLabel="ยืนยันลบทั้งหมด"
+        cancelLabel="ยกเลิก"
+        danger
+        onConfirm={handleConfirmClearAllSpots}
+        onCancel={() => setIsClearConfirmOpen(false)}
       />
     </div>
   );

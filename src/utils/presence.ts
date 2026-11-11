@@ -1,7 +1,14 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
-import { logActivity, getActivityLogs, clearActivityLogs, GANG_SECRET_SEED, logoutGang, normalizeGangId } from './gangAuth';
+import {
+  logActivity,
+  getActivityLogs,
+  clearActivityLogs,
+  logoutGang,
+  normalizeGangId,
+  verifySessionWithServer,
+} from './gangAuth';
 
 export interface OnlineMember {
   clientId: string;
@@ -42,12 +49,12 @@ export type SyncRequestListener = () => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 
-// E2EE Symmetric Encryption เพื่อป้องกันการดักจับพิกัดและข้อมูลข้ามเครือข่ายแก๊ง
-function encryptPayload(data: object, gangId: string = 'soydark'): string {
+function encryptPayload(data: object, secretKey: string): string {
   try {
     const jsonStr = JSON.stringify(data);
+    if (!secretKey) return jsonStr;
     const bytes = new TextEncoder().encode(jsonStr);
-    const keyBytes = new TextEncoder().encode(`${GANG_SECRET_SEED}_${gangId}`);
+    const keyBytes = new TextEncoder().encode(secretKey);
     const cipherBytes = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) {
       cipherBytes[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
@@ -63,15 +70,16 @@ function encryptPayload(data: object, gangId: string = 'soydark'): string {
   }
 }
 
-function decryptPayload(raw: string, gangId: string = 'soydark'): any {
+function decryptPayload(raw: string, secretKey: string): Record<string, unknown> | null {
   if (typeof raw !== 'string') return null;
   if (!raw.startsWith('GANG_ENC:')) {
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw) as Record<string, unknown>;
     } catch {
       return null;
     }
   }
+  if (!secretKey) return null;
   try {
     const base64Data = raw.slice(9);
     const binary = atob(base64Data);
@@ -79,13 +87,13 @@ function decryptPayload(raw: string, gangId: string = 'soydark'): any {
     for (let i = 0; i < binary.length; i++) {
       cipherBytes[i] = binary.charCodeAt(i);
     }
-    const keyBytes = new TextEncoder().encode(`${GANG_SECRET_SEED}_${gangId}`);
+    const keyBytes = new TextEncoder().encode(secretKey);
     const plainBytes = new Uint8Array(cipherBytes.length);
     for (let i = 0; i < cipherBytes.length; i++) {
       plainBytes[i] = cipherBytes[i] ^ keyBytes[i % keyBytes.length];
     }
     const jsonStr = new TextDecoder().decode(plainBytes);
-    return JSON.parse(jsonStr);
+    return JSON.parse(jsonStr) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -100,7 +108,6 @@ class GangPresenceManager {
   private pruneTimer: number | null = null;
   private reconnectTimer: number | null = null;
   private membersMap: Map<string, OnlineMember> = new Map();
-  // จดจำเซสชั่นของสมาชิกตามชื่อ เพื่อไม่ให้แจ้งเตือนหรือบันทึก Login ซ้ำเวลาเน็ตหลุด/สลับแท็บ
   private memberSessions: Map<string, { firstJoined: number; lastSeen: number; lastNotifiedJoin: number }> = new Map();
   private listeners: Set<PresenceListener> = new Set();
   private cdListeners: Set<CooldownSyncListener> = new Set();
@@ -112,22 +119,30 @@ class GangPresenceManager {
   private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
   private isConnected: boolean = false;
 
-  constructor() {}
-
   public getGangId(): string {
-    return normalizeGangId(this.session?.gangId || 'soydark');
+    return normalizeGangId(this.session?.gangId || 'branch_1');
+  }
+
+  private getChannelSecret(): string {
+    const channelKey = this.session?.channelKey || this.session?.authDate || '';
+    return `${channelKey}_${this.getGangId()}`;
+  }
+
+  private getChannelNamespace(): string {
+    const key = this.session?.channelKey ? `${this.session.channelKey.slice(0, 8)}_` : '';
+    return `${key}${this.getGangId()}`;
   }
 
   public getMqttTopic(): string {
-    return `fivem/gang_v4_${this.getGangId()}/events`;
+    return `fivem/gang_v5_${this.getChannelNamespace()}/events`;
   }
 
   public getSpotsRetainedTopic(): string {
-    return `fivem/gang_v4_${this.getGangId()}/spots_manifest_retained`;
+    return `fivem/gang_v5_${this.getChannelNamespace()}/spots_manifest_retained`;
   }
 
   public getCooldownsRetainedTopic(): string {
-    return `fivem/gang_v4_${this.getGangId()}/cooldowns_manifest_retained`;
+    return `fivem/gang_v5_${this.getChannelNamespace()}/cooldowns_manifest_retained`;
   }
 
   public getBroadcastChannelName(): string {
@@ -433,7 +448,7 @@ class GangPresenceManager {
       this.client.on('message', (topic, payload) => {
         try {
           const raw = payload.toString();
-          const data = decryptPayload(raw, this.getGangId());
+          const data = decryptPayload(raw, this.getChannelSecret());
           if (data) {
             if (topic === this.getSpotsRetainedTopic()) {
               this.handleRetainedSpotsMessage(data);
@@ -483,7 +498,7 @@ class GangPresenceManager {
       }
     }
 
-    const encrypted = encryptPayload(data, this.getGangId());
+    const encrypted = encryptPayload(data, this.getChannelSecret());
     if (this.client && this.client.connected) {
       try {
         this.client.publish(topic, encrypted, options);
@@ -605,7 +620,7 @@ class GangPresenceManager {
       });
 
       if (isGenuineNewJoin) {
-        logActivity(data.memberName, 'login', 'ออนไลน์เปิดใช้งานแผนที่');
+        logActivity(data.memberName, 'login', 'ออนไลน์เปิดใช้งานแผนที่', this.getGangId());
         this.triggerNotification({
           type: 'member_join',
           title: `${data.memberName} เข้าสู่ระบบ`,
@@ -633,7 +648,12 @@ class GangPresenceManager {
 
       if (data.action === 'start') {
         const spotTitle = data.spotName || 'จุดปูน';
-        logActivity(data.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotTitle} (${data.durationMinutes} นาที)`);
+        logActivity(
+          data.memberName,
+          'cooldown_start',
+          `เริ่มจับเวลาจุด ${spotTitle} (${data.durationMinutes} นาที)`,
+          this.getGangId()
+        );
         this.notifyListeners();
         this.triggerNotification({
           type: 'cooldown_start',
@@ -643,7 +663,12 @@ class GangPresenceManager {
         });
       } else if (data.action === 'cancel') {
         const spotTitle = data.spotName || 'จุดปูน';
-        logActivity(data.memberName, 'cooldown_cancel', `ยกเลิกจับเวลาจุด ${spotTitle}`);
+        logActivity(
+          data.memberName,
+          'cooldown_cancel',
+          `ยกเลิกจับเวลาจุด ${spotTitle}`,
+          this.getGangId()
+        );
         this.notifyListeners();
         this.triggerNotification({
           type: 'cooldown_cancel',
@@ -660,7 +685,7 @@ class GangPresenceManager {
 
       const spotName = data.spot?.name || data.spotId || 'จุดมาร์คเกอร์';
       if (data.action === 'add') {
-        logActivity(data.memberName, 'spot_add', `ปักหมุดใหม่: ${spotName}`);
+        logActivity(data.memberName, 'spot_add', `ปักหมุดใหม่: ${spotName}`, this.getGangId());
         this.notifyListeners();
         this.triggerNotification({
           type: 'spot_add',
@@ -669,7 +694,7 @@ class GangPresenceManager {
           icon: '🧱',
         });
       } else if (data.action === 'update') {
-        logActivity(data.memberName, 'spot_update', `แก้ไขหมุด: ${spotName}`);
+        logActivity(data.memberName, 'spot_update', `แก้ไขหมุด: ${spotName}`, this.getGangId());
         this.notifyListeners();
         this.triggerNotification({
           type: 'spot_update',
@@ -678,7 +703,7 @@ class GangPresenceManager {
           icon: '✏️',
         });
       } else if (data.action === 'move') {
-        logActivity(data.memberName, 'spot_move', `ย้ายพิกัด: ${spotName}`);
+        logActivity(data.memberName, 'spot_move', `ย้ายพิกัด: ${spotName}`, this.getGangId());
         this.notifyListeners();
         this.triggerNotification({
           type: 'spot_move',
@@ -687,7 +712,7 @@ class GangPresenceManager {
           icon: '📍',
         });
       } else if (data.action === 'delete') {
-        logActivity(data.memberName, 'spot_delete', `ลบหมุด: ${spotName}`);
+        logActivity(data.memberName, 'spot_delete', `ลบหมุด: ${spotName}`, this.getGangId());
         this.notifyListeners();
         this.triggerNotification({
           type: 'spot_delete',
@@ -718,14 +743,20 @@ class GangPresenceManager {
         this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกแก๊ง'));
       }
     }
-    // 8. Force Logout (คำสั่งเตะสมาชิกทั้งหมดออกจากระบบ)
-    else if (data.type === 'force_logout') {
-      logoutGang();
-      this.session = null;
-      this.stop();
-      if (typeof window !== 'undefined') {
-        window.location.reload();
-      }
+    // 8. Verified Session Check / Force Logout (ตรวจสอบสิทธิ์กับ Worker API ก่อนออกจากระบบ)
+    else if (data.type === 'force_logout' || data.type === 'session_check') {
+      const currentSession = this.session;
+      if (!currentSession || currentSession.isMaster) return;
+      void verifySessionWithServer(currentSession).then((result) => {
+        if (!result.valid) {
+          logoutGang();
+          this.session = null;
+          this.stop();
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }
+      });
     }
   }
 

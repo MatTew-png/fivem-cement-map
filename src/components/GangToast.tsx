@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { GangNotification } from '../utils/presence';
 
@@ -9,7 +9,7 @@ interface GangToastProps {
 
 export const GangToast: React.FC<GangToastProps> = ({ notifications, onDismiss }) => {
   return (
-    <div className="fixed top-4 right-4 z-[9995] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-3">
+    <div className="fixed bottom-4 right-4 z-[9995] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-3">
       {notifications.map((notif) => (
         <ToastItem key={notif.id} notif={notif} onDismiss={onDismiss} />
       ))}
@@ -23,27 +23,33 @@ const ToastItem: React.FC<{
 }> = ({ notif, onDismiss }) => {
   const [isLeaving, setIsLeaving] = useState(false);
   const [progressWidth, setProgressWidth] = useState('100%');
+  const closeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // NameThatUI Pattern: Progress indicator for auto-dismissing Toast
-    const animTimer = setTimeout(() => {
+    const animTimer = window.setTimeout(() => {
       setProgressWidth('0%');
     }, 50);
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setIsLeaving(true);
-      setTimeout(() => onDismiss(notif.id), 300);
+      closeTimerRef.current = window.setTimeout(() => onDismiss(notif.id), 300);
     }, 7000);
 
     return () => {
-      clearTimeout(animTimer);
-      clearTimeout(timer);
+      window.clearTimeout(animTimer);
+      window.clearTimeout(timer);
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
     };
   }, [notif.id, onDismiss]);
 
   const handleManualClose = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+    }
     setIsLeaving(true);
-    setTimeout(() => onDismiss(notif.id), 300);
+    closeTimerRef.current = window.setTimeout(() => onDismiss(notif.id), 300);
   };
 
   const getBorderColor = () => {
@@ -67,11 +73,10 @@ const ToastItem: React.FC<{
       aria-live="polite"
       className={`relative overflow-hidden pointer-events-auto flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-xl border ${getBorderColor()} shadow-xl transition-all duration-300 ${
         isLeaving
-          ? 'opacity-0 translate-y--2 scale-95'
+          ? 'opacity-0 translate-y-2 scale-95'
           : 'animate-in fade-in slide-in-from-top-3 duration-300'
       }`}
     >
-      {/* NameThatUI Pattern: Progress Bar Countdown */}
       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-800/80 overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 transition-all duration-[6950ms] ease-linear"
@@ -96,7 +101,9 @@ const ToastItem: React.FC<{
       </div>
 
       <button
+        type="button"
         onClick={handleManualClose}
+        aria-label="ปิดการแจ้งเตือน"
         className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition-colors shrink-0 cursor-pointer"
         title="ปิดการแจ้งเตือน"
       >

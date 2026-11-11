@@ -8,31 +8,18 @@ import {
   MAP_BOUNDS,
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
-import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, SpotCategoryInfo, RoutingMode } from '../types/map';
-import { MAP_LAYERS, CATEGORIES, isCementSpot, DEFAULT_SPOTS } from '../data/defaultSpots';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from '../types/map';
+import { MAP_LAYERS, DEFAULT_SPOTS } from '../data/defaultSpots';
 import { soundEffects } from '../utils/sound';
 import { coordsBus } from '../utils/coordsBus';
-import { resolveAssetUrl } from './PinModal';
+import { escapeHtml } from '../utils/html';
+import { getSpotCategoryInfo } from '../utils/spotCategories';
+import { renderSpotIconHtml } from '../utils/spotIcons';
 import { computeClusters, createClusterDivIcon, type ClusterItem } from '../utils/clustering';
 import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
-
-// แยกชัดเจนระหว่างชื่อจุด และประเภทหมวดหมู่
-function getSpotCategoryInfo(spot: CementSpot): SpotCategoryInfo {
-  if (isCementSpot(spot)) return CATEGORIES.cement_mine;
-  if (spot.category && CATEGORIES[spot.category]) {
-    return CATEGORIES[spot.category];
-  }
-  if (spot.category === 'dealer' || spot.name.includes('ขายยา') || spot.tags?.includes('dealer') || spot.tags?.includes('จุดขายยา')) {
-    return CATEGORIES.dealer;
-  }
-  if (spot.category === 'fuel' || spot.name.includes('น้ำมัน') || spot.icon?.includes('jerry_can')) {
-    return CATEGORIES.fuel;
-  }
-  return CATEGORIES.landmark || CATEGORIES.cement_mine;
-}
 
 interface MapViewProps {
   spots: CementSpot[];
@@ -69,16 +56,6 @@ interface MapViewProps {
   onClearSelection?: () => void;
 }
 
-// Helper to render emoji or image blip icon as HTML string
-export function renderSpotIconHtml(icon: string, sizeClass: string = 'w-4 h-4'): string {
-  if (!icon) return '🧱';
-  if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
-    const src = resolveAssetUrl(icon);
-    return `<img src="${src}" class="${sizeClass} object-contain inline-block pointer-events-none drop-shadow-sm align-middle" alt="" loading="lazy" decoding="async" />`;
-  }
-  return `<span class="inline-block leading-none align-middle">${icon}</span>`;
-}
-
 // Helper to generate marker icon with cooldown badge
 function getMarkerIcon(
   spot: CementSpot,
@@ -100,12 +77,12 @@ function getMarkerIcon(
 
   const spotIcon = spot.icon || cat?.icon || '🧱';
   const spotColor = spot.color || cat?.color || '#f59e0b';
+  const safeSpotId = escapeHtml(spot.id);
+  const safeSpotName = escapeHtml(spot.name);
+  const safeCatName = escapeHtml(cat.name);
+  const safeSpotColor = escapeHtml(spotColor);
 
   const ghostClass = isGhostMode && !isCurrentSelected ? 'opacity-25 pointer-events-none transition-opacity duration-200' : '';
-
-  const isImageBlip = Boolean(
-    spotIcon && (spotIcon.startsWith('/') || spotIcon.startsWith('http') || spotIcon.endsWith('.png'))
-  );
 
   let markerHtml = '';
   let iconSize: [number, number] = [42, 48];
@@ -115,14 +92,14 @@ function getMarkerIcon(
     iconSize = [28, 28];
     iconAnchor = [14, 14];
     markerHtml = `
-      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${spot.id}" style="width: 28px; height: 28px;">
+      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 28px; height: 28px;">
         ${isUrgent ? `
           <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
           <div class="marker-urgent-pulse-ring-delayed pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
         ` : isReady ? `
           <div class="marker-ready-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
         ` : isCooldown ? `
-          <div class="marker-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px; border: 2px solid ${spotColor};"></div>
+          <div class="marker-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px; border: 2px solid ${safeSpotColor};"></div>
         ` : ''}
         <div 
           class="blip-sprite-inner flex items-center justify-center transition-transform duration-150 hover:scale-125 pointer-events-auto select-none"
@@ -131,57 +108,52 @@ function getMarkerIcon(
             filter: ${isCurrentSelected ? 'drop-shadow(0 0 6px #ffffff) drop-shadow(0 2px 5px rgba(0,0,0,0.95))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.85))'};
             line-height: 1;
           "
-          title="[${cat.name}] ${spot.name} (${spot.x}, ${spot.y})"
+          title="[${safeCatName}] ${safeSpotName} (${spot.x}, ${spot.y})"
         >
-          ${isImageBlip
-            ? `<img src="${resolveAssetUrl(spotIcon)}" alt="" class="w-[24px] h-[24px] object-contain pointer-events-none select-none" loading="lazy" decoding="async" />`
-            : `<span class="text-[20px] leading-none select-none">${spotIcon}</span>`
-          }
+          ${renderSpotIconHtml(spotIcon, 'w-[24px] h-[24px]')}
         </div>
-        <!-- Floating Countdown Badge above compact blip (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-pulse">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-pulse">
             <span>🔥</span>
-            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+            <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
           </div>
         ` : isReady ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/70 border border-emerald-300 animate-pulse">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/70 border border-emerald-300 animate-pulse">
             <span>✅ เกิดแล้ว!</span>
           </div>
         ` : isCooldown ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
             <span>⏱️</span>
-            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+            <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
           </div>
         ` : ''}
       </div>
     `;
   } else {
     markerHtml = `
-      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${spot.id}" style="width: 42px; height: 48px;">
+      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 42px; height: 48px;">
         ${isUrgent ? `
           <div class="marker-urgent-pulse-ring pointer-events-none"></div>
           <div class="marker-urgent-pulse-ring-delayed pointer-events-none"></div>
         ` : isReady ? `
           <div class="marker-ready-pulse-ring pointer-events-none"></div>
         ` : isCooldown ? `
-          <div class="marker-pulse-ring pointer-events-none" style="border: 2px solid ${spotColor};"></div>
+          <div class="marker-pulse-ring pointer-events-none" style="border: 2px solid ${safeSpotColor};"></div>
         ` : ''}
 
-        <!-- Floating Countdown Badge above teardrop (pointer-events-none prevents blocking neighbor pin clicks!) -->
         ${isUrgent ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-pulse">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-pulse">
             <span>🔥</span>
-            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+            <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
           </div>
         ` : isReady ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold font-sans text-[10px] shadow-lg shadow-emerald-500/80 border border-emerald-300 animate-pulse">
             <span>✅ เกิดแล้ว!</span>
           </div>
         ` : isCooldown ? `
-          <div id="marker-cd-badge-${spot.id}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
+          <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/95 text-amber-300 font-bold font-mono text-[10px] shadow-md border border-amber-500/50">
             <span>⏱️</span>
-            <span id="marker-cd-text-${spot.id}">${cdTimeStr}</span>
+            <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
           </div>
         ` : ''}
 
@@ -189,7 +161,7 @@ function getMarkerIcon(
           <div 
             class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
             style="
-              background-color: ${isUrgent ? '#ef4444' : spotColor};
+              background-color: ${isUrgent ? '#ef4444' : safeSpotColor};
               border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
               transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
               box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
@@ -201,7 +173,7 @@ function getMarkerIcon(
           </div>
           <div 
             class="w-0 h-0 border-x-4 border-x-transparent border-t-[6px] -mt-0.5"
-            style="border-top-color: ${isUrgent ? '#ef4444' : spotColor};"
+            style="border-top-color: ${isUrgent ? '#ef4444' : safeSpotColor};"
           ></div>
         </div>
       </div>
@@ -236,6 +208,11 @@ function createPopupNode(
   const cat = getSpotCategoryInfo(spot);
   const spotIcon = spot.icon || cat?.icon || '🧱';
   const spotColor = spot.color || cat?.color || '#f59e0b';
+  const safeSpotId = escapeHtml(spot.id);
+  const safeSpotName = escapeHtml(spot.name);
+  const safeCatName = escapeHtml(cat.name);
+  const safeSpotColor = escapeHtml(spotColor);
+  const safePostal = spot.postal ? escapeHtml(spot.postal) : '';
 
   const now = Date.now();
   const remainingSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
@@ -255,41 +232,37 @@ function createPopupNode(
   L.DomEvent.disableScrollPropagation(popupNode);
 
   if (isCooldown || isReady) {
-    // ==============================================================
-    // IMAGE 2: Active Cooldown View (Coordinates row removed per user)
-    // ==============================================================
     popupNode.innerHTML = `
       <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
-        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${safeSpotColor}22; color: ${safeSpotColor}; border: 1px solid ${safeSpotColor}55;">
           ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
-          <span>${cat.name}</span>
+          <span>${safeCatName}</span>
         </span>
-        ${spot.postal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${spot.postal}</span>` : ''}
+        ${safePostal ? `<span class="text-[11px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40">📮 ${safePostal}</span>` : ''}
       </div>
 
       <h4 class="font-bold text-sm text-white mb-2 leading-snug flex items-center gap-1.5">
         <span class="text-base flex items-center justify-center">${renderSpotIconHtml(spotIcon, 'w-5 h-5')}</span>
-        <span>${spot.name}</span>
+        <span>${safeSpotName}</span>
       </h4>
 
-      <!-- Cooldown Status Display -->
       <div class="flex items-center justify-between mb-2">
         <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1">
           <span>⏱️</span>
           <span>สถานะคูลดาวน์</span>
         </span>
-        <div id="popup-cd-status-box-${spot.id}">
+        <div id="popup-cd-status-box-${safeSpotId}">
           ${isUrgent ? `
-            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-black text-red-400 animate-pulse">
-              🔥 ใกล้เกิด: <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+            <span id="popup-cd-status-${safeSpotId}" class="text-[11px] font-mono font-black text-red-400 animate-pulse">
+              🔥 ใกล้เกิด: <span id="popup-cd-time-${safeSpotId}">${cdTimeStr}</span>
             </span>
           ` : isReady ? `
-            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-bold text-emerald-400 animate-pulse">
+            <span id="popup-cd-status-${safeSpotId}" class="text-[11px] font-bold text-emerald-400 animate-pulse">
               ✅ ถึงเวลาเกิดแล้ว!
             </span>
           ` : `
-            <span id="popup-cd-status-${spot.id}" class="text-[11px] font-mono font-bold text-amber-400">
-              ⏳ เหลือ <span id="popup-cd-time-${spot.id}">${cdTimeStr}</span>
+            <span id="popup-cd-status-${safeSpotId}" class="text-[11px] font-mono font-bold text-amber-400">
+              ⏳ เหลือ <span id="popup-cd-time-${safeSpotId}">${cdTimeStr}</span>
             </span>
           `}
         </div>
@@ -297,14 +270,14 @@ function createPopupNode(
 
       <div class="flex items-center gap-1.5 mb-2">
         <button 
-          id="popup-cancel-cd-${spot.id}" 
+          data-popup-action="cancel-cd"
           type="button"
           class="flex-1 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 border border-red-500/40 text-[11px] font-bold transition-all text-center cursor-pointer shadow-sm"
         >
           🛑 ยกเลิกจับเวลา
         </button>
         <button 
-          id="popup-reset-cd-${spot.id}" 
+          data-popup-action="reset-cd"
           type="button"
           class="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 text-[11px] font-medium transition-all cursor-pointer"
           title="กดเพื่อตั้งเวลาใหม่"
@@ -313,12 +286,11 @@ function createPopupNode(
         </button>
       </div>
 
-      <!-- Actions: Measure, Copy & Edit -->
       <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
         <div class="flex items-center gap-1.5">
           <button 
             type="button"
-            id="popup-measure-${spot.id}" 
+            data-popup-action="measure"
             class="py-1 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
             title="เริ่มวัดระยะทางจากจุดนี้"
           >
@@ -327,7 +299,7 @@ function createPopupNode(
           </button>
           <button 
             type="button"
-            id="popup-copy-${spot.id}" 
+            data-popup-action="copy"
             class="py-1 px-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 active:scale-95 text-slate-300 hover:text-amber-300 text-[11px] font-medium transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
             title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
           >
@@ -337,7 +309,7 @@ function createPopupNode(
         </div>
         <button 
           type="button"
-          id="popup-edit-${spot.id}" 
+          data-popup-action="edit"
           class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer"
         >
           ✏️ แก้ไข
@@ -345,39 +317,32 @@ function createPopupNode(
       </div>
     `;
   } else {
-    // ==============================================================
-    // Clean Spot Info View ("รู้แค่ว่าจุดตรงนี้" ไม่บังหน้าจอตอนแคปรูป)
-    // ==============================================================
-    // IMAGE 1: Cooldown Numpad Picker (Exact match of Image 1 - ไวต่อการใช้งานทันที)
-    // ==============================================================
     popupNode.innerHTML = `
       <div class="flex items-center justify-between gap-1.5 pb-2 border-b border-slate-800/80 mb-2">
         <div class="flex items-center gap-1.5 min-w-0">
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style="background-color: ${spotColor}22; color: ${spotColor}; border: 1px solid ${spotColor}55;">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style="background-color: ${safeSpotColor}22; color: ${safeSpotColor}; border: 1px solid ${safeSpotColor}55;">
             ${renderSpotIconHtml(spotIcon, 'w-3 h-3')}
-            <span>${cat.name}</span>
+            <span>${safeCatName}</span>
           </span>
-          <span class="font-bold text-xs text-white truncate max-w-[140px]" title="${spot.name}">${spot.name}</span>
+          <span class="font-bold text-xs text-white truncate max-w-[140px]" title="${safeSpotName}">${safeSpotName}</span>
         </div>
         <span class="text-[10px] text-slate-400 shrink-0">⏱️ ตั้งเวลา</span>
       </div>
 
-      <!-- Numpad Display Screen -->
       <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
         <div class="flex items-baseline gap-1">
-          <span id="numpad-display-${spot.id}" class="text-xl font-mono font-black text-slate-600">_</span>
+          <span data-popup-role="numpad-display" class="text-xl font-mono font-black text-slate-600">_</span>
           <span class="text-xs text-slate-400">นาที</span>
         </div>
         <button 
           type="button" 
-          id="numpad-btn-clear-${spot.id}" 
+          data-popup-action="clear-numpad"
           class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
         >
           ✕ ล้าง
         </button>
       </div>
 
-      <!-- 3x4 Numpad Keypad -->
       <div class="grid grid-cols-3 gap-1 mb-2 select-none">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
           <button 
@@ -413,22 +378,20 @@ function createPopupNode(
         </button>
       </div>
 
-      <!-- Big Start Cooldown Button -->
       <button 
         type="button" 
-        id="numpad-btn-start-${spot.id}" 
+        data-popup-action="start-numpad"
         class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
       >
         <span>⏱️</span>
         <span>เริ่มจับเวลา</span>
       </button>
 
-      <!-- Actions: Measure, Copy & Edit -->
       <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
         <div class="flex items-center gap-1">
           <button 
             type="button"
-            id="popup-measure-${spot.id}" 
+            data-popup-action="measure"
             class="py-1 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
             title="ตั้ง GPS / เริ่มต้นวัดระยะจากจุดนี้"
           >
@@ -437,7 +400,7 @@ function createPopupNode(
           </button>
           <button 
             type="button"
-            id="popup-copy-${spot.id}" 
+            data-popup-action="copy"
             class="py-1 px-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 active:scale-95 text-slate-300 hover:text-amber-300 text-[11px] font-medium transition-colors border border-slate-700 flex items-center gap-1 cursor-pointer"
             title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
           >
@@ -447,7 +410,7 @@ function createPopupNode(
           ${callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints && callbacksRef.current.distancePoints.length >= 1 && callbacksRef.current.distancePoints[0].spotId !== spot.id ? `
             <button 
               type="button"
-              id="popup-nav-target-${spot.id}" 
+              data-popup-action="nav-target"
               class="py-1 px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold transition-colors border border-cyan-500/30 flex items-center gap-1 cursor-pointer"
               title="ตั้งเป็นจุดหมายปลายทาง"
             >
@@ -458,7 +421,7 @@ function createPopupNode(
         </div>
         <button 
           type="button"
-          id="popup-edit-${spot.id}" 
+          data-popup-action="edit"
           class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer"
         >
           ✏️ แก้ไข
@@ -467,9 +430,8 @@ function createPopupNode(
     `;
   }
 
-  // Interactive Numpad Logic
   let enteredMinutes = '';
-  const displayEl = popupNode.querySelector(`#numpad-display-${spot.id}`) as HTMLElement | null;
+  const displayEl = popupNode.querySelector('[data-popup-role="numpad-display"]') as HTMLElement | null;
 
   const updateDisplay = () => {
     if (displayEl) {
@@ -484,8 +446,8 @@ function createPopupNode(
   };
 
   const handleDigit = (digit: string) => {
-    if (enteredMinutes.length >= 3) return; // Limit to 3 digits (e.g. up to 999 mins)
-    if (enteredMinutes === '' && digit === '0') return; // Disallow leading zero
+    if (enteredMinutes.length >= 3) return;
+    if (enteredMinutes === '' && digit === '0') return;
     enteredMinutes += digit;
     updateDisplay();
   };
@@ -506,7 +468,9 @@ function createPopupNode(
       if (displayEl) {
         displayEl.textContent = 'กดเลขก่อน';
         displayEl.className = 'text-sm font-sans font-bold text-red-400 animate-pulse';
-        setTimeout(updateDisplay, 800);
+        setTimeout(() => {
+          if (displayEl.isConnected) updateDisplay();
+        }, 800);
       }
       return;
     }
@@ -518,13 +482,11 @@ function createPopupNode(
       durationSeconds: mins * 60,
     };
     marker.setPopupContent(createPopupNode(spot, updatedCd, callbacksRef, marker));
-    // Auto-close dialog immediately after setting timer per user instruction
     marker.closePopup();
     callbacksRef.current.onClearSelection?.();
   };
 
-  const numpadKeys = popupNode.querySelectorAll('.numpad-key');
-  numpadKeys.forEach((keyBtn) => {
+  popupNode.querySelectorAll('.numpad-key').forEach((keyBtn) => {
     (keyBtn as HTMLElement).onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
@@ -535,99 +497,58 @@ function createPopupNode(
     };
   });
 
-  const clearBtn = popupNode.querySelector(`#numpad-btn-clear-${spot.id}`) as HTMLElement | null;
-  if (clearBtn) {
-    clearBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      handleClear();
-    };
-  }
+  const bindAction = (action: string, handler: (el: HTMLElement) => void) => {
+    const btn = popupNode.querySelector(`[data-popup-action="${action}"]`) as HTMLElement | null;
+    if (btn) {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        handler(btn);
+      };
+    }
+  };
 
-  const startBtn = popupNode.querySelector(`#numpad-btn-start-${spot.id}`) as HTMLElement | null;
-  if (startBtn) {
-    startBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      handleStart();
-    };
-  }
+  bindAction('clear-numpad', handleClear);
+  bindAction('start-numpad', handleStart);
+  bindAction('reset-cd', () => {
+    marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
+  });
+  bindAction('cancel-cd', () => {
+    callbacksRef.current.onCancelCooldown(spot.id);
+    marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
+  });
+  bindAction('measure', () => {
+    marker.closePopup();
+    callbacksRef.current.onStartMeasureFromSpot?.(spot);
+  });
+  bindAction('nav-target', () => {
+    marker.closePopup();
+    callbacksRef.current.onAddDistancePoint?.({
+      x: spot.x,
+      y: spot.y,
+      label: spot.name,
+      spotId: spot.id,
+    });
+    soundEffects.playPinPlaced();
+  });
+  bindAction('copy', async (copyBtn) => {
+    const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
+    await copyToClipboard(json);
+    copyBtn.innerHTML = '<span>✅</span><span>คัดลอกแล้ว</span>';
+    copyBtn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
+    soundEffects.playPinPlaced();
+    setTimeout(() => {
+      if (copyBtn.isConnected) {
+        copyBtn.innerHTML = '<span>📋</span><span>คัดลอกหมุด</span>';
+        copyBtn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
+      }
+    }, 1800);
+  });
+  bindAction('edit', () => {
+    callbacksRef.current.onEditSpot(spot);
+    marker.closePopup();
+  });
 
-  const resetBtn = popupNode.querySelector(`#popup-reset-cd-${spot.id}`) as HTMLElement | null;
-  if (resetBtn) {
-    resetBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
-    };
-  }
-
-  const cancelBtn = popupNode.querySelector(`#popup-cancel-cd-${spot.id}`) as HTMLElement | null;
-  if (cancelBtn) {
-    cancelBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      callbacksRef.current.onCancelCooldown(spot.id);
-      marker.setPopupContent(createPopupNode(spot, undefined, callbacksRef, marker));
-    };
-  }
-
-  const measureBtn = popupNode.querySelector(`#popup-measure-${spot.id}`) as HTMLElement | null;
-  if (measureBtn) {
-    measureBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      marker.closePopup();
-      callbacksRef.current.onStartMeasureFromSpot?.(spot);
-    };
-  }
-
-  const navTargetBtn = popupNode.querySelector(`#popup-nav-target-${spot.id}`) as HTMLElement | null;
-  if (navTargetBtn) {
-    navTargetBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      marker.closePopup();
-      callbacksRef.current.onAddDistancePoint?.({
-        x: spot.x,
-        y: spot.y,
-        label: spot.name,
-        spotId: spot.id,
-      });
-      soundEffects.playPinPlaced();
-    };
-  }
-
-  const copyBtn = popupNode.querySelector(`#popup-copy-${spot.id}`) as HTMLElement | null;
-  if (copyBtn) {
-    copyBtn.onclick = async (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
-      await copyToClipboard(json);
-      copyBtn.innerHTML = '<span>✅</span><span>คัดลอกแล้ว</span>';
-      copyBtn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
-      soundEffects.playPinPlaced();
-      setTimeout(() => {
-        if (copyBtn) {
-          copyBtn.innerHTML = '<span>📋</span><span>คัดลอกหมุด</span>';
-          copyBtn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-500/10');
-        }
-      }, 1800);
-    };
-  }
-
-  const editBtn = popupNode.querySelector(`#popup-edit-${spot.id}`) as HTMLElement | null;
-  if (editBtn) {
-    editBtn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      callbacksRef.current.onEditSpot(spot);
-      marker.closePopup();
-    };
-  }
-
-  // Keyboard support when popup has focus
   popupNode.tabIndex = 0;
   popupNode.onkeydown = (e: KeyboardEvent) => {
     if (e.key >= '0' && e.key <= '9') {
@@ -650,7 +571,11 @@ function createPopupNode(
 
 function createClusterPopupNode(
   cluster: ClusterItem,
-  callbacksRef: React.MutableRefObject<any>,
+  callbacksRef: React.MutableRefObject<{
+    onFocusSpot?: (spot: CementSpot) => void;
+    activeCooldowns?: ActiveCooldown[];
+    spotsById?: Map<string, CementSpot>;
+  }>,
   marker: L.Marker
 ): HTMLElement {
   const container = document.createElement('div');
@@ -678,10 +603,13 @@ function createClusterPopupNode(
     <div class="max-h-56 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
       ${cluster.spots
         .map((spot) => {
-          const cat = getSpotCategoryInfo(spot);
-          const icon = spot.icon || cat?.icon || '🧱';
+          const liveSpot = callbacksRef.current.spotsById?.get(spot.id) ?? spot;
+          const cat = getSpotCategoryInfo(liveSpot);
+          const icon = liveSpot.icon || cat?.icon || '🧱';
+          const safeId = escapeHtml(liveSpot.id);
+          const safeName = escapeHtml(liveSpot.name);
           const activeCd = callbacksRef.current.activeCooldowns?.find(
-            (c: any) => c.spotId === spot.id
+            (c) => c.spotId === liveSpot.id
           );
           const now = Date.now();
           const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
@@ -695,19 +623,19 @@ function createClusterPopupNode(
             <div class="flex items-center gap-2 min-w-0">
               <span class="shrink-0 flex items-center justify-center">${renderSpotIconHtml(icon, 'w-4 h-4')}</span>
               <div class="min-w-0">
-                <div class="font-bold text-white truncate text-[11px] leading-tight">${spot.name}</div>
+                <div class="font-bold text-white truncate text-[11px] leading-tight">${safeName}</div>
                 <div class="text-[10px] text-slate-400 font-mono">
                   ${
                     remSec > 0
                       ? `<span class="${isUrgent ? 'text-red-400 font-bold animate-pulse' : 'text-amber-300 font-semibold'}">⏱️ ${cdTimeStr}</span>`
-                      : `X: ${spot.x.toFixed(0)}, Y: ${spot.y.toFixed(0)}`
+                      : `X: ${liveSpot.x.toFixed(0)}, Y: ${liveSpot.y.toFixed(0)}`
                   }
                 </div>
               </div>
             </div>
             
             <div class="flex items-center gap-1 shrink-0">
-              <button id="cluster-spot-focus-${spot.id}" class="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition-colors shadow-sm cursor-pointer">
+              <button type="button" data-cluster-spot-id="${safeId}" class="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition-colors shadow-sm cursor-pointer">
                 เลือก
               </button>
             </div>
@@ -718,14 +646,16 @@ function createClusterPopupNode(
     </div>
   `;
 
-  // Attach click listeners to "เลือก" (focus) buttons
-  cluster.spots.forEach((spot) => {
-    const focusBtn = container.querySelector(`#cluster-spot-focus-${spot.id}`) as HTMLElement | null;
-    if (focusBtn) {
-      focusBtn.onclick = (e) => {
+  // Attach click listeners using data attribute (safe for any spot id characters)
+  const spotMap = new Map(cluster.spots.map((s) => [s.id, callbacksRef.current.spotsById?.get(s.id) ?? s]));
+  container.querySelectorAll('[data-cluster-spot-id]').forEach((btn) => {
+    const id = btn.getAttribute('data-cluster-spot-id');
+    const targetSpot = id ? spotMap.get(id) : undefined;
+    if (targetSpot) {
+      (btn as HTMLElement).onclick = (e) => {
         e.stopPropagation();
         marker.closePopup();
-        callbacksRef.current.onFocusSpot?.(spot);
+        callbacksRef.current.onFocusSpot?.(targetSpot);
         soundEffects.playPinPlaced();
       };
     }
@@ -777,13 +707,13 @@ export const MapView = memo(({
   const [mapReady, setMapReady] = useState(false);
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(3);
 
+  const initialLayerRef = useRef(activeLayer);
   const activeCooldownsRef = useRef(activeCooldowns);
-  activeCooldownsRef.current = activeCooldowns;
   const selectedSpotRef = useRef(selectedSpot);
-  selectedSpotRef.current = selectedSpot;
   const prevActiveCooldownsRef = useRef<ActiveCooldown[]>(activeCooldowns);
+  const spotsByIdRef = useRef<Map<string, CementSpot>>(new Map());
 
-  // Store callbacks in ref to avoid re-binding map events on parent re-renders
+  // Store callbacks and mutable snapshots in refs via effect (avoids render-time ref mutation)
   const callbacksRef = useRef({
     onMapClickToCreatePin,
     onCursorMove,
@@ -804,9 +734,14 @@ export const MapView = memo(({
     onFocusSpot,
     onClearSelection,
     activeCooldowns,
+    spotsById: new Map<string, CementSpot>(),
   });
 
   useEffect(() => {
+    const spotsMap = new Map(spots.map((s) => [s.id, s]));
+    spotsByIdRef.current = spotsMap;
+    activeCooldownsRef.current = activeCooldowns;
+    selectedSpotRef.current = selectedSpot;
     callbacksRef.current = {
       onMapClickToCreatePin,
       onCursorMove,
@@ -827,14 +762,17 @@ export const MapView = memo(({
       onFocusSpot,
       onClearSelection,
       activeCooldowns,
+      spotsById: spotsMap,
     };
   });
 
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
+    const markersMap = markersMapRef.current;
+    const clusterMarkersMap = clusterMarkersMapRef.current;
 
-    const layerConfig = MAP_LAYERS.find((l) => l.id === activeLayer) || MAP_LAYERS[0];
+    const layerConfig = MAP_LAYERS.find((l) => l.id === initialLayerRef.current) || MAP_LAYERS[0];
 
     const initialCenter = gameCoordsToLatLng(0, 0);
 
@@ -885,11 +823,12 @@ export const MapView = memo(({
     setMapReady(true);
 
     // Zoom listener
-    map.on('zoomend', () => {
+    const handleZoomEnd = () => {
       const z = map.getZoom();
       setCurrentMapZoom(z);
       callbacksRef.current.onZoomChange(z);
-    });
+    };
+    map.on('zoomend', handleZoomEnd);
     setCurrentMapZoom(map.getZoom());
     callbacksRef.current.onZoomChange(map.getZoom());
 
@@ -907,7 +846,6 @@ export const MapView = memo(({
     let lastCoords: { x: number; y: number } | null = null;
 
     const handleMouseMove = (e: L.LeafletMouseEvent) => {
-      // Dynamic rubberband polyline to current cursor in distance mode
       if (callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints.length > 0) {
         const pts = callbacksRef.current.distancePoints;
         const lastPt = pts[pts.length - 1];
@@ -932,7 +870,6 @@ export const MapView = memo(({
         map.removeLayer(rubberbandPolylineRef.current);
       }
 
-      // If coordinates are locked, freeze coordinate updates
       if (callbacksRef.current.isCoordsLocked) return;
 
       lastCoords = latLngToGameCoords(e.latlng);
@@ -955,7 +892,6 @@ export const MapView = memo(({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      // Keep last known coordinates active when leaving map so HUD buttons (พิกัด, pin) remain stable without vanishing or jitter
     };
 
     map.on('mousemove', handleMouseMove);
@@ -965,14 +901,17 @@ export const MapView = memo(({
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
+      map.off('zoomend', handleZoomEnd);
       map.off('move', handleMapMove);
       map.off('moveend', handleMapMove);
+      map.off('mousemove', handleMouseMove);
       map.getContainer().removeEventListener('mouseleave', handleMouseLeave);
       if (rubberbandPolylineRef.current && map.hasLayer(rubberbandPolylineRef.current)) {
         map.removeLayer(rubberbandPolylineRef.current);
         rubberbandPolylineRef.current = null;
       }
-      markersMapRef.current.clear();
+      markersMap.clear();
+      clusterMarkersMap.clear();
       markersLayerGroupRef.current = null;
       lockedLayerGroupRef.current = null;
       distanceLayerGroupRef.current = null;
@@ -1019,12 +958,11 @@ export const MapView = memo(({
     currentTileLayerRef.current = newTileLayer;
   }, [activeLayer]);
 
-  // Handle map events (double-click for pin creation)
+  // Handle map events (single unified double-click + fast double-tap pin creation)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Unified trigger with debouncing to prevent double execution
     let lastTriggerTime = 0;
     const triggerCreatePin = (coords: { x: number; y: number }) => {
       const now = Date.now();
@@ -1038,7 +976,6 @@ export const MapView = memo(({
     let lastClickCoords: { x: number; y: number } | null = null;
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
-      // Ignore click if originating from within a popup, marker, or control
       const target = (e.originalEvent?.target as HTMLElement) || null;
       if (
         target?.closest('.leaflet-popup') ||
@@ -1051,7 +988,6 @@ export const MapView = memo(({
         return;
       }
 
-      // Close open popup when clicking outside on the map & clear highlight
       map.closePopup();
       callbacksRef.current.onClearSelection?.();
 
@@ -1067,7 +1003,6 @@ export const MapView = memo(({
         return;
       }
 
-      // Fast double-tap / double-click detection (within 400ms)
       const now = Date.now();
       const coords = latLngToGameCoords(e.latlng);
       if (
@@ -1084,27 +1019,8 @@ export const MapView = memo(({
       lastClickCoords = coords;
     };
 
-    const handleMapDblClick = (e: L.LeafletMouseEvent) => {
-      const target = (e.originalEvent?.target as HTMLElement) || null;
-      if (
-        target?.closest('.leaflet-popup') ||
-        target?.closest('.leaflet-control') ||
-        target?.closest('.custom-pin-marker') ||
-        target?.closest('.custom-compact-marker') ||
-        target?.closest('input') ||
-        target?.closest('button')
-      ) {
-        return;
-      }
-
-      const coords = latLngToGameCoords(e.latlng);
-      triggerCreatePin(coords);
-    };
-
-    // Native DOM double-click handler on map container ensures reliable event capture
     const container = map.getContainer();
     const handleNativeDblClick = (e: MouseEvent) => {
-      // Allow Shift or Alt key or Ghost Mode to bypass marker hit testing
       if (!e.shiftKey && !e.altKey && !isGhostMode) {
         const target = e.target as HTMLElement | null;
         if (
@@ -1123,15 +1039,15 @@ export const MapView = memo(({
     };
 
     map.on('click', handleMapClick);
-    map.on('dblclick', handleMapDblClick);
     container.addEventListener('dblclick', handleNativeDblClick);
 
     return () => {
       map.off('click', handleMapClick);
-      map.off('dblclick', handleMapDblClick);
       container.removeEventListener('dblclick', handleNativeDblClick);
     };
   }, [mapReady, isGhostMode]);
+
+  const selectedSpotId = selectedSpot?.id ?? null;
 
   // Synchronize Markers & Clusters on Map (only when spots, clusters, mode, or selection changes)
   useEffect(() => {
@@ -1139,13 +1055,12 @@ export const MapView = memo(({
     const group = markersLayerGroupRef.current;
     if (!map || !group) return;
 
-    // 1. Calculate clusters based on current zoom, spots, and activeCooldowns
     const clusters = computeClusters(
       map,
       spots,
       currentMapZoom,
       activeCooldowns,
-      selectedSpot?.id,
+      selectedSpotId ?? undefined,
       isClusteringEnabled
     );
 
@@ -1160,7 +1075,6 @@ export const MapView = memo(({
       }
     });
 
-    // 2. Remove obsolete single markers
     markersMapRef.current.forEach((marker, id) => {
       if (!activeSingleSpotIds.has(id)) {
         group.removeLayer(marker);
@@ -1168,7 +1082,6 @@ export const MapView = memo(({
       }
     });
 
-    // 3. Remove obsolete cluster markers
     clusterMarkersMapRef.current.forEach((marker, id) => {
       if (!activeClusterIds.has(id)) {
         group.removeLayer(marker);
@@ -1176,17 +1089,17 @@ export const MapView = memo(({
       }
     });
 
-    // 4. Add or update spots / clusters
     clusters.forEach((item) => {
       if (!item.isCluster) {
         const spot = item.spots[0];
+        const spotId = spot.id;
         const latlng = item.latlng;
-        const isCurrentSelected = selectedSpot?.id === spot.id;
-        const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
+        const isCurrentSelected = selectedSpotId === spotId;
+        const activeCd = activeCooldowns.find((c) => c.spotId === spotId);
         const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
         const zIndexOffset = isCurrentSelected ? 2000 : activeCd ? 300 : 0;
 
-        const existing = markersMapRef.current.get(spot.id);
+        const existing = markersMapRef.current.get(spotId);
         if (existing) {
           if (!group.hasLayer(existing)) {
             group.addLayer(existing);
@@ -1215,8 +1128,9 @@ export const MapView = memo(({
 
           marker.bindPopup(
             () => {
-              const cd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
-              return createPopupNode(spot, cd, callbacksRef, marker);
+              const liveSpot = spotsByIdRef.current.get(spotId) ?? spot;
+              const cd = activeCooldownsRef.current.find((c) => c.spotId === spotId);
+              return createPopupNode(liveSpot, cd, callbacksRef, marker);
             },
             {
               maxWidth: 320,
@@ -1229,19 +1143,20 @@ export const MapView = memo(({
           );
 
           marker.on('click', (e) => {
+            const liveSpot = spotsByIdRef.current.get(spotId) ?? spot;
             if (callbacksRef.current.isDistanceMode) {
               L.DomEvent.stopPropagation(e);
               marker.closePopup();
               callbacksRef.current.onAddDistancePoint?.({
-                x: spot.x,
-                y: spot.y,
-                label: spot.name,
-                spotId: spot.id,
+                x: liveSpot.x,
+                y: liveSpot.y,
+                label: liveSpot.name,
+                spotId: liveSpot.id,
               });
               soundEffects.playPinPlaced();
               return;
             }
-            callbacksRef.current.onFocusSpot?.(spot);
+            callbacksRef.current.onFocusSpot?.(liveSpot);
           });
 
           marker.on('popupopen', () => {
@@ -1250,7 +1165,7 @@ export const MapView = memo(({
               return;
             }
             markersMapRef.current.forEach((otherMarker, otherId) => {
-              if (otherId !== spot.id && otherMarker.isPopupOpen()) {
+              if (otherId !== spotId && otherMarker.isPopupOpen()) {
                 otherMarker.closePopup();
               }
             });
@@ -1261,8 +1176,8 @@ export const MapView = memo(({
           });
 
           marker.on('popupclose', () => {
-            const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spot.id);
-            const isSelected = selectedSpotRef.current?.id === spot.id;
+            const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spotId);
+            const isSelected = selectedSpotRef.current?.id === spotId;
             marker.setZIndexOffset(isSelected ? 2000 : currentCd ? 300 : 0);
             if (isSelected) {
               callbacksRef.current.onClearSelection?.();
@@ -1272,15 +1187,14 @@ export const MapView = memo(({
           marker.on('dragend', () => {
             const newLatLng = marker.getLatLng();
             const newCoords = latLngToGameCoords(newLatLng);
-            callbacksRef.current.onSpotMoved?.(spot.id, newCoords);
+            callbacksRef.current.onSpotMoved?.(spotId, newCoords);
             soundEffects.playPinPlaced();
           });
 
           group.addLayer(marker);
-          markersMapRef.current.set(spot.id, marker);
+          markersMapRef.current.set(spotId, marker);
         }
       } else {
-        // Multi-spot Cluster
         const cluster = item;
         const icon = createClusterDivIcon(cluster);
         const zIndexOffset = cluster.urgentCooldown ? 1500 : cluster.hasActiveCooldown ? 800 : 100;
@@ -1323,7 +1237,6 @@ export const MapView = memo(({
             const lls = cluster.spots.map((s) => gameCoordsToLatLng(s.x, s.y));
             const bounds = L.latLngBounds(lls);
 
-            // If spots have geographical spread and we aren't near max zoom, smoothly zoom in!
             if (currentZ < 8 && bounds.isValid() && bounds.getNorthEast().distanceTo(bounds.getSouthWest()) > 0.04) {
               map.flyToBounds(bounds, {
                 padding: [70, 70],
@@ -1331,7 +1244,6 @@ export const MapView = memo(({
                 duration: 0.45,
               });
             } else {
-              // Extremely close or identical spots -> Open the Cluster Popup!
               clusterMarker.openPopup();
             }
           });
@@ -1355,7 +1267,7 @@ export const MapView = memo(({
   }, [
     mapReady,
     spots,
-    selectedSpot?.id,
+    selectedSpotId,
     isCompactMode,
     isGhostMode,
     isMaster,
@@ -1369,7 +1281,6 @@ export const MapView = memo(({
     const prevCds = prevActiveCooldownsRef.current;
     prevActiveCooldownsRef.current = activeCooldowns;
 
-    // Detect which spot IDs have cooldown changes
     const changedSpotIds = new Set<string>();
     activeCooldowns.forEach((cd) => {
       const old = prevCds.find((p) => p.spotId === cd.spotId);
@@ -1388,7 +1299,7 @@ export const MapView = memo(({
       const spot = spots.find((s) => s.id === spotId);
       if (!marker || !spot) return;
       const activeCd = activeCooldowns.find((c) => c.spotId === spot.id);
-      const isCurrentSelected = selectedSpot?.id === spot.id;
+      const isCurrentSelected = selectedSpotId === spot.id;
       marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd));
       const zIndex = marker.isPopupOpen() ? 3500 : isCurrentSelected ? 2000 : activeCd ? 300 : 0;
       marker.setZIndexOffset(zIndex);
@@ -1396,15 +1307,12 @@ export const MapView = memo(({
         marker.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, marker));
       }
     });
-  }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+  }, [activeCooldowns, spots, selectedSpotId, isCompactMode, isGhostMode]);
 
   // Dedicated 1-second real-time countdown updater
-  // Crucial: Directly updates badge text and popup timer in the DOM!
-  // NEVER calls marker.setIcon() on tick, eliminating Leaflet DOM recreation, click loss, and popup auto-close!
   useEffect(() => {
     if (activeCooldowns.length === 0) return;
 
-    // Track urgent & ready spots so we only update icon when crossing boundaries
     const urgentSpots = new Set<string>();
     const readySpots = new Set<string>();
     activeCooldowns.forEach((cd) => {
@@ -1424,13 +1332,11 @@ export const MapView = memo(({
         const cdSeconds = remainingSec % 60;
         const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
-        // 1. Direct DOM update for marker badge text (instant, zero DOM thrashing)
         const badgeText = document.getElementById(`marker-cd-text-${cd.spotId}`);
         if (badgeText) {
           badgeText.textContent = cdTimeStr;
         }
 
-        // Only recreate icon when crossing urgent or ready boundaries
         const wasUrgent = urgentSpots.has(cd.spotId);
         const wasReady = readySpots.has(cd.spotId);
         if (isUrgent !== wasUrgent || isReady !== wasReady) {
@@ -1443,24 +1349,24 @@ export const MapView = memo(({
           const marker = markersMapRef.current.get(cd.spotId);
           const spot = spots.find((s) => s.id === cd.spotId);
           if (marker && spot) {
-            const isCurrentSelected = selectedSpot?.id === spot.id;
+            const isCurrentSelected = selectedSpotId === spot.id;
             marker.setIcon(getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, cd));
           }
         }
 
-        // 2. Direct DOM update for popup countdown text if open
         const timerSpan = document.getElementById(`popup-cd-time-${cd.spotId}`);
         if (timerSpan) {
           timerSpan.textContent = cdTimeStr;
         }
         const statusBox = document.getElementById(`popup-cd-status-box-${cd.spotId}`);
         if (statusBox) {
+          const safeSpotId = escapeHtml(cd.spotId);
           if (isReady && !statusBox.innerHTML.includes('ถึงเวลาเกิดแล้ว')) {
-            statusBox.innerHTML = `<span id="popup-cd-status-${cd.spotId}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>`;
+            statusBox.innerHTML = `<span id="popup-cd-status-${safeSpotId}" class="text-[11px] font-bold text-emerald-400 animate-pulse">✅ ถึงเวลาเกิดแล้ว!</span>`;
           } else if (isUrgent && !statusBox.innerHTML.includes('ใกล้เกิด')) {
             statusBox.innerHTML = `
-              <span id="popup-cd-status-${cd.spotId}" class="text-[11px] font-mono font-bold text-red-400 animate-pulse">
-                🔥 ใกล้เกิด: <span id="popup-cd-time-${cd.spotId}">${cdTimeStr}</span>
+              <span id="popup-cd-status-${safeSpotId}" class="text-[11px] font-mono font-bold text-red-400 animate-pulse">
+                🔥 ใกล้เกิด: <span id="popup-cd-time-${safeSpotId}">${cdTimeStr}</span>
               </span>
             `;
           }
@@ -1469,7 +1375,7 @@ export const MapView = memo(({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeCooldowns, spots, selectedSpot?.id, isCompactMode, isGhostMode]);
+  }, [activeCooldowns, spots, selectedSpotId, isCompactMode, isGhostMode]);
 
   // Pan to selected spot safely and open popup (starts from null, so any selection is explicit)
   useEffect(() => {
@@ -1698,7 +1604,7 @@ export const MapView = memo(({
         zIndexOffset: 2500 + index,
       });
 
-      ptMarker.bindTooltip(pt.label || `จุดที่ ${index + 1}`, {
+      ptMarker.bindTooltip(escapeHtml(pt.label || `จุดที่ ${index + 1}`), {
         permanent: true,
         direction: 'top',
         offset: [0, -14],

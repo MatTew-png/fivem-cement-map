@@ -1,99 +1,83 @@
 import type { CementSpot, ActiveCooldown } from '../types/map';
-import { DEFAULT_SPOTS } from '../data/defaultSpots';
-import { normalizeGangId } from './gangAuth';
+import { DEFAULT_SPOTS } from '../data/defaultSpots.ts';
+import { normalizeGangId } from './gangAuth.ts';
+import { isImageIconString, sanitizeIconUrl } from './html.ts';
+
+const DEFAULT_BRANCH_ID = 'branch_1';
+
+function resolveNormBranch(gangId?: string): string {
+  return gangId ? normalizeGangId(gangId) : DEFAULT_BRANCH_ID;
+}
 
 export function getSpotsKey(gangId?: string): string {
-  const norm = gangId ? normalizeGangId(gangId) : 'branch_1';
-  return `fivem_cement_spots_${norm}_v7`;
+  return `fivem_cement_spots_${resolveNormBranch(gangId)}_v7`;
 }
 
 export function getCooldownsKey(gangId?: string): string {
-  const norm = gangId ? normalizeGangId(gangId) : 'branch_1';
-  return `fivem_cement_cooldowns_${norm}_v7`;
+  return `fivem_cement_cooldowns_${resolveNormBranch(gangId)}_v7`;
+}
+
+function escapeLuaString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
 }
 
 export function loadSpotsFromStorage(gangId?: string): CementSpot[] | null {
   try {
-    // Clean up older version keys if present
-    localStorage.removeItem('fivem_cement_spots_v1');
-    localStorage.removeItem('fivem_cement_spots_v2');
-    localStorage.removeItem('fivem_cement_spots_v3');
-    localStorage.removeItem('fivem_cement_spots_v4');
-    localStorage.removeItem('fivem_farm_spots_clean_v1');
-    localStorage.removeItem('fivem_farm_cooldowns_v1');
-    localStorage.removeItem('fivem_farm_loops_v1');
-
     const key = getSpotsKey(gangId);
     const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-    let raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(key);
 
-    // If upgrading: automatically merge from v6 or default spots
     if (!raw) {
       const v6Raw = localStorage.getItem('fivem_cement_spots_v6');
       if (v6Raw) {
         try {
-          const v6Parsed = JSON.parse(v6Raw) as CementSpot[];
-          const customSpots = v6Parsed.filter((s) => !officialSpotIds.has(s.id));
-          const merged = [...DEFAULT_SPOTS, ...customSpots];
-          localStorage.setItem(key, JSON.stringify(merged));
-          return merged;
-        } catch {}
+          const v6Parsed = JSON.parse(v6Raw);
+          if (Array.isArray(v6Parsed)) {
+            const customSpots = v6Parsed.filter(
+              (s: CementSpot) => s && typeof s.id === 'string' && !officialSpotIds.has(s.id)
+            );
+            const merged = [...DEFAULT_SPOTS, ...customSpots];
+            localStorage.setItem(key, JSON.stringify(merged));
+            return merged;
+          }
+        } catch {
+          // Ignore malformed legacy storage
+        }
       }
       return null;
     }
 
     const parsed = JSON.parse(raw);
-    const existingMap = new Map<string, CementSpot>(parsed.map((s: CementSpot) => [s.id, s]));
+    if (!Array.isArray(parsed)) return null;
 
-    // Ensure all official DEFAULT_SPOTS are present and up to date
-    let modified = false;
-    DEFAULT_SPOTS.forEach((defSpot) => {
+    const existingMap = new Map<string, CementSpot>();
+    for (const item of parsed) {
+      if (item && typeof item.id === 'string' && Number.isFinite(item.x) && Number.isFinite(item.y)) {
+        existingMap.set(item.id, item as CementSpot);
+      }
+    }
+
+    let modified = existingMap.size !== parsed.length;
+    for (const defSpot of DEFAULT_SPOTS) {
       const existing = existingMap.get(defSpot.id);
       if (!existing) {
         existingMap.set(defSpot.id, defSpot);
         modified = true;
-      } else {
-        // ซิงค์หมวดหมู่และไอคอนทางการให้ตรงกับส่วนกลางล่าสุดเสมอ
-        if (existing.category !== defSpot.category || existing.icon !== defSpot.icon) {
-          existing.category = defSpot.category;
-          existing.icon = defSpot.icon;
-          modified = true;
-        }
+      } else if (existing.category !== defSpot.category || existing.icon !== defSpot.icon) {
+        existingMap.set(defSpot.id, {
+          ...existing,
+          category: defSpot.category,
+          icon: defSpot.icon,
+        });
+        modified = true;
       }
-    });
+    }
 
-    const ORIGINAL_LAN_SPOTS: Record<string, { name: string; icon: string; color: string }> = {
-      'spot-1789097466769': { name: 'แลนน้ำตาล', icon: '/blips/radar_player_king_brown.png', color: '#b45309' },
-      'spot-1789097316804': { name: 'แลนส้ม', icon: '/blips/radar_player_king_orange.png', color: '#f59e0b' },
-      'spot-1789097276171': { name: 'แลนม่วง', icon: '/blips/radar_player_king_purple.png', color: '#a855f7' },
-      'spot-1789096983908': { name: 'แลนเหลือง', icon: '/blips/radar_player_king_yellow.png', color: '#eab308' },
-      'spot-1789096945374': { name: 'แลนขาว', icon: '/blips/radar_player_king_white.png', color: '#ffffff' },
-      'spot-1789096643659': { name: 'แลนแดง', icon: '/blips/radar_player_king_red.png', color: '#ef4444' },
-      'spot-1789096538636': { name: 'แลนชมพู', icon: '/blips/radar_player_king_pink.png', color: '#ec4899' },
-      'spot-1789096402896': { name: 'แลนเขียว', icon: '/blips/radar_player_king_green.png', color: '#22c55e' },
-      'spot-1789096384446': { name: 'แลนมิ้น', icon: '/blips/radar_player_king_mint.png', color: '#2dd4bf' },
-      'spot-1789096326164': { name: 'แลนน้ำเงิน', icon: '/blips/radar_player_king_blue.png', color: '#3b82f6' },
-      'spot-1789096309666': { name: 'แลนฟ้า', icon: '/blips/radar_player_king_cyan.png', color: '#06b6d4' },
-    };
-
-    const processed = Array.from(existingMap.values()).map((item: CementSpot) => {
-      const current = { ...item };
-      // คืนค่าจุดแลนทั้ง 11 จุดให้กลับเป็นชื่อและไอคอนเดิมอย่างแน่นอน
-      if (ORIGINAL_LAN_SPOTS[current.id]) {
-        const orig = ORIGINAL_LAN_SPOTS[current.id];
-        if (current.name !== orig.name || current.icon !== orig.icon || current.color !== orig.color) {
-          current.name = orig.name;
-          current.icon = orig.icon;
-          current.color = orig.color;
-          current.category = 'landmark';
-          current.notes = '';
-          delete current.tags;
-          modified = true;
-        }
-      }
-      return current;
-    });
-
+    const processed = Array.from(existingMap.values());
     if (modified) {
       localStorage.setItem(key, JSON.stringify(processed));
     }
@@ -117,7 +101,7 @@ export interface SpotBackupSnapshot {
 export function saveBackupSnapshot(spots: CementSpot[], gangId?: string): void {
   try {
     if (!spots || spots.length === 0) return;
-    const norm = gangId ? normalizeGangId(gangId) : 'soydark';
+    const norm = resolveNormBranch(gangId);
     const backupKey = `${BACKUP_STORAGE_KEY}_${norm}`;
     const raw = localStorage.getItem(backupKey);
     const backups: SpotBackupSnapshot[] = raw ? JSON.parse(raw) : [];
@@ -144,10 +128,11 @@ export function saveBackupSnapshot(spots: CementSpot[], gangId?: string): void {
 
 export function getBackupSnapshots(gangId?: string): SpotBackupSnapshot[] {
   try {
-    const norm = gangId ? normalizeGangId(gangId) : 'soydark';
+    const norm = resolveNormBranch(gangId);
     const backupKey = `${BACKUP_STORAGE_KEY}_${norm}`;
     const raw = localStorage.getItem(backupKey);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -236,26 +221,57 @@ export function parseImportedSpots(jsonString: string): CementSpot[] {
   if (!Array.isArray(parsed)) {
     throw new Error('รูปแบบไฟล์ JSON ไม่ถูกต้อง (ต้องเป็น Array ของหมุด)');
   }
-  return parsed.map((item, index) => {
-    if (typeof item.x !== 'number' || typeof item.y !== 'number') {
+  return parsed.map((rawItem, index) => {
+    const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+    const x = Number(item.x);
+    const y = Number(item.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw new Error(`หมุดลำดับที่ ${index + 1} ไม่มีพิกัด X หรือ Y ที่ถูกต้อง`);
     }
+
+    const rawName = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : `จุดปูน #${index + 1}`;
+    const rawZ = Number(item.z);
+    const rawCooldown = Number(item.cooldownMinutes);
+    const rawIcon = typeof item.icon === 'string' ? item.icon.trim() : undefined;
+    const safeIcon = rawIcon
+      ? isImageIconString(rawIcon)
+        ? sanitizeIconUrl(rawIcon)
+        : rawIcon.slice(0, 16)
+      : undefined;
+
+    const tags = Array.isArray(item.tags)
+      ? item.tags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0).map((t) => t.trim())
+      : undefined;
+
     return {
-      id: item.id || `spot-${Date.now()}-${index}`,
-      name: item.name || `จุดปูน #${index + 1}`,
-      category: item.category || (item.name?.trim() === 'ปูน' ? 'cement_mine' : 'landmark'),
-      x: item.x,
-      y: item.y,
-      z: item.z ?? 30.0,
-      postal: item.postal || '',
-      cooldownMinutes: item.cooldownMinutes ?? 10,
-      yieldDescription: item.yieldDescription || '',
-      requiredItems: Array.isArray(item.requiredItems) ? item.requiredItems : [],
-      notes: item.notes || '',
-      color: item.color || '#f59e0b',
-      icon: item.icon || undefined,
-      createdAt: item.createdAt || Date.now(),
-      updatedAt: item.updatedAt || Date.now(),
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `spot-${Date.now()}-${index}`,
+      name: rawName.slice(0, 80),
+      category:
+        typeof item.category === 'string' && item.category.trim()
+          ? item.category.trim()
+          : rawName === 'ปูน'
+            ? 'cement_mine'
+            : 'landmark',
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      z: Number.isFinite(rawZ) ? Math.round(rawZ * 10) / 10 : 30.0,
+      postal: typeof item.postal === 'string' ? item.postal.trim().slice(0, 24) : '',
+      cooldownMinutes:
+        Number.isFinite(rawCooldown) && rawCooldown >= 0
+          ? Math.min(60, Math.round(rawCooldown))
+          : 10,
+      yieldDescription: typeof item.yieldDescription === 'string' ? item.yieldDescription.trim() : '',
+      requiredItems: Array.isArray(item.requiredItems)
+        ? item.requiredItems.filter((r): r is string => typeof r === 'string')
+        : [],
+      notes: typeof item.notes === 'string' ? item.notes.trim() : '',
+      color: typeof item.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(item.color.trim())
+        ? item.color.trim()
+        : '#f59e0b',
+      icon: safeIcon,
+      tags: tags && tags.length > 0 ? tags : undefined,
+      createdAt: typeof item.createdAt === 'number' && Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
+      updatedAt: typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
     };
   });
 }
@@ -281,10 +297,10 @@ export function formatFiveMLuaTable(spots: CementSpot[]): string {
   spots.forEach((spot) => {
     const z = spot.z !== undefined ? spot.z.toFixed(2) : '30.0';
     lines.push(`    {`);
-    lines.push(`        name = "${spot.name}",`);
-    lines.push(`        category = "${spot.category}",`);
+    lines.push(`        name = "${escapeLuaString(spot.name)}",`);
+    lines.push(`        category = "${escapeLuaString(spot.category || 'landmark')}",`);
     lines.push(`        coords = vector3(${spot.x.toFixed(2)}, ${spot.y.toFixed(2)}, ${z}),`);
-    if (spot.postal) lines.push(`        postal = "${spot.postal}",`);
+    if (spot.postal) lines.push(`        postal = "${escapeLuaString(spot.postal)}",`);
     if (spot.cooldownMinutes) lines.push(`        cooldown = ${spot.cooldownMinutes * 60}, -- seconds`);
     lines.push(`    },`);
   });

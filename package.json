@@ -6,10 +6,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "dev:worker": "wrangler dev",
+    "typecheck": "wrangler types && tsc -b --noEmit && tsc --noEmit -p tsconfig.worker.json",
+    "build": "wrangler types && tsc -b && tsc --noEmit -p tsconfig.worker.json && vite build",
+    "lint": "oxlint src worker tests",
+    "test": "node --test tests/*.test.ts",
     "preview": "vite preview",
-    "deploy:surge": "npm run build && surge ./dist runthukverb-cooldown.surge.sh"
+    "cf-typegen": "wrangler types",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:preview": "npm run build && wrangler versions upload"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -30,11 +35,9 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
-    "puppeteer-core": "^25.10.0",
-    "snappyjs": "^0.7.0",
-    "surge": "^0.44.3",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "wrangler": "^4.160.0"
   }
 }

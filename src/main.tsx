@@ -39,21 +39,28 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <p className="text-xs text-red-300 font-mono bg-red-950/40 p-3 rounded-xl border border-red-800/40">
               {this.state.error?.message || 'Unknown Application Error'}
             </p>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <button
-                onClick={() => {
-                  localStorage.clear();
-                  window.location.reload();
-                }}
-                className="px-4 py-2 bg-amber-400 text-slate-950 rounded-xl font-bold text-xs hover:bg-amber-300 transition-colors"
-              >
-                ล้างข้อมูลแคชและรีโหลด
-              </button>
-              <button
+                type="button"
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-slate-800 text-slate-200 rounded-xl font-medium text-xs hover:bg-slate-700 transition-colors"
+                className="px-4 py-2 bg-amber-400 text-slate-950 rounded-xl font-bold text-xs hover:bg-amber-300 transition-colors cursor-pointer"
               >
                 รีโหลดหน้าเว็บ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem('fivem_map_categories_state_v1');
+                    localStorage.removeItem('fivem_cooldown_muted');
+                  } catch {
+                    // Ignore
+                  }
+                  window.location.reload();
+                }}
+                className="px-4 py-2 bg-slate-800 text-slate-200 rounded-xl font-medium text-xs hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                รีเซ็ตการตั้งค่าหน้าจอ (ไม่ลบหมุด)
               </button>
             </div>
           </div>

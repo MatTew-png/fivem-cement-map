@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+@theme {
+  --color-slate-850: #162033;
+  --color-slate-750: #293548;
+}
+
 /* Custom Leaflet Map styling for GTA V FiveM */
 .leaflet-container {
   width: 100%;
@@ -318,5 +323,69 @@
   user-select: none !important;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.75));
 }
+
+@keyframes ui-enter {
+  from {
+    opacity: var(--ui-enter-opacity, 1);
+    transform: translate3d(0, var(--ui-enter-translate-y, 0), 0) scale(var(--ui-enter-scale, 1));
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+@utility animate-in {
+  animation: ui-enter var(--tw-duration, 200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility fade-in {
+  --ui-enter-opacity: 0;
+}
+
+@utility zoom-in-95 {
+  --ui-enter-scale: 0.95;
+}
+
+@utility slide-in-from-top-2 {
+  --ui-enter-translate-y: -0.5rem;
+}
+
+@utility slide-in-from-top-3 {
+  --ui-enter-translate-y: -0.75rem;
+}
+
+@utility animate-shake {
+  animation: ui-shake 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-shake,
+  .animate-bounce,
+  .animate-pulse,
+  .custom-pin-marker.is-ready,
+  .marker-lock-ring {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 
 

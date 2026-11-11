@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { X, Download, Upload, Copy, Check, FileJson, Code2, RefreshCw, AlertCircle, Lock, Sparkles } from 'lucide-react';
 import type { CementSpot } from '../types/map';
@@ -13,7 +13,7 @@ import {
   formatSpotToVector3,
   copyToClipboard,
 } from '../utils/spotExport';
-import { CATEGORIES } from '../data/defaultSpots';
+import { CATEGORIES } from '../utils/spotCategories';
 
 interface ExportImportModalProps {
   isOpen: boolean;
@@ -32,7 +32,9 @@ export const ExportImportModal = ({
   onResetDefault,
   isMaster = false,
 }: ExportImportModalProps) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua' | 'euclid'>('euclid');
+  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua' | 'euclid'>(
+    isMaster ? 'euclid' : 'import'
+  );
   const [euclidFormat, setEuclidFormat] = useState<'json' | 'astro' | 'vector3'>('json');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [copiedEuclid, setCopiedEuclid] = useState(false);
@@ -40,23 +42,33 @@ export const ExportImportModal = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [copiedJSON, setCopiedJSON] = useState(false);
   const [copiedLua, setCopiedLua] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    setConfirmReset(false);
+    setImportError(null);
+    if (!isMaster) {
+      setActiveTab('import');
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isMaster, onClose]);
 
-  const jsonContent = JSON.stringify(spots, null, 2);
-  const luaContent = formatFiveMLuaTable(spots);
-
-  const handleCopyJSON = () => {
-    navigator.clipboard.writeText(jsonContent);
-    setCopiedJSON(true);
-    setTimeout(() => setCopiedJSON(false), 2000);
-  };
-
-  const handleCopyLua = () => {
-    navigator.clipboard.writeText(luaContent);
-    setCopiedLua(true);
-    setTimeout(() => setCopiedLua(false), 2000);
-  };
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   const uniqueCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -72,6 +84,7 @@ export const ExportImportModal = ({
   }, [spots, selectedCategory]);
 
   const euclidPreviewContent = useMemo(() => {
+    if (!isMaster) return '';
     if (euclidFormat === 'json') {
       return formatSpotsToEuclidJSON(filteredSpots);
     }
@@ -79,12 +92,32 @@ export const ExportImportModal = ({
       return formatSpotsToAstroRecord(filteredSpots);
     }
     return filteredSpots.map((s) => `  ['${s.id}'] = ${formatSpotToVector3(s)}, -- ${s.name}`).join('\n');
-  }, [filteredSpots, euclidFormat]);
+  }, [isMaster, filteredSpots, euclidFormat]);
+
+  const jsonContent = useMemo(() => (isMaster ? JSON.stringify(spots, null, 2) : ''), [isMaster, spots]);
+  const luaContent = useMemo(() => (isMaster ? formatFiveMLuaTable(spots) : ''), [isMaster, spots]);
+
+  if (!isOpen) return null;
+
+  const scheduleResetFlag = (setter: (v: boolean) => void) => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    setter(true);
+    copyTimerRef.current = window.setTimeout(() => setter(false), 2000);
+  };
+
+  const handleCopyJSON = async () => {
+    await copyToClipboard(jsonContent);
+    scheduleResetFlag(setCopiedJSON);
+  };
+
+  const handleCopyLua = async () => {
+    await copyToClipboard(luaContent);
+    scheduleResetFlag(setCopiedLua);
+  };
 
   const handleCopyEuclid = async () => {
     await copyToClipboard(euclidPreviewContent);
-    setCopiedEuclid(true);
-    setTimeout(() => setCopiedEuclid(false), 2000);
+    scheduleResetFlag(setCopiedEuclid);
   };
 
   const handleDownloadEuclid = () => {
@@ -131,8 +164,17 @@ export const ExportImportModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-import-modal-title"
+        className="relative w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60">
           <div className="flex items-center gap-2">
@@ -140,22 +182,27 @@ export const ExportImportModal = ({
               <FileJson className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">จัดการและแชร์ข้อมูลหมุด</h2>
-              <p className="text-xs text-slate-400">ส่งออก / นำเข้า หรือแปลงเป็นโค้ด FiveM</p>
+              <h2 id="export-import-modal-title" className="text-base font-bold text-white">
+                จัดการและแชร์ข้อมูลหมุด
+              </h2>
+              <p className="text-xs text-slate-400">นำเข้า JSON{isMaster ? ' / ส่งออกข้อมูล / แปลง FiveM Lua' : ' เพิ่มจุดสำหรับสาขา'}</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            aria-label="ปิดหน้าต่างจัดการข้อมูลหมุด"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* NameThatUI Pattern: Segmented Control */}
+        {/* Segmented Control */}
         <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800">
           <div className="p-1 bg-slate-950 border border-slate-800 rounded-xl flex gap-1">
             <button
+              type="button"
               onClick={() => setActiveTab('euclid')}
               className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'euclid'
@@ -207,7 +254,19 @@ export const ExportImportModal = ({
           {/* TAB 1: epic-euclid Export */}
           {activeTab === 'euclid' && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+              {!isMaster ? (
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
+                  <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
+                    <Lock className="w-4 h-4 text-red-400" />
+                    <span>สิทธิ์เฉพาะหัวหน้าแก๊ง (Master PIN)</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    การส่งออกพิกัดไปยัง epic-euclid ถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊งเท่านั้น
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
                 <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                 </div>
@@ -308,58 +367,96 @@ export const ExportImportModal = ({
                   {euclidPreviewContent}
                 </pre>
               </div>
+                </>
+              )}
             </div>
           )}
 
           {activeTab === 'export' && (
             <div className="space-y-3">
-              <p className="text-slate-300">
-                คุณมีหมุดทั้งหมด <strong className="text-amber-400">{spots.length}</strong> จุด
-                สามารถคัดลอกหรือบันทึกเป็นไฟล์ JSON เพื่อนำไปใช้งานร่วมกันได้
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => exportSpotsToJSON(spots)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>ดาวน์โหลดไฟล์ JSON (.json)</span>
-                </button>
-                <button
-                  onClick={handleCopyJSON}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 transition-all cursor-pointer"
-                >
-                  {copiedJSON ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedJSON ? 'คัดลอกเรียบร้อยแล้ว!' : 'คัดลอก JSON Text'}</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('euclid')}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40 transition-all cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>ส่งออกไป epic-euclid</span>
-                </button>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold text-slate-300 block">รีเซ็ตข้อมูลเริ่มต้น</span>
-                  <span className="text-slate-500 text-[11px]">โหลดจุดปูนยอดนิยมดั้งเดิมของระบบ</span>
+              {!isMaster ? (
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
+                  <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
+                    <Lock className="w-4 h-4 text-red-400" />
+                    <span>สิทธิ์เฉพาะหัวหน้าแก๊ง (Master PIN)</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    การส่งออกพิกัดทั้งหมดถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊งเพื่อป้องกันพิกัดหลุด
+                  </p>
                 </div>
-                <button
-                  onClick={() => {
-                    if (confirm('คุณต้องการรีเซ็ตหมุดทั้งหมดกลับเป็นค่าเริ่มต้นหรือไม่?')) {
-                      onResetDefault();
-                      onClose();
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>รีเซ็ตค่าเริ่มต้น</span>
-                </button>
-              </div>
+              ) : (
+                <>
+                  <p className="text-slate-300">
+                    คุณมีหมุดทั้งหมด <strong className="text-amber-400">{spots.length}</strong> จุด
+                    สามารถคัดลอกหรือบันทึกเป็นไฟล์ JSON เพื่อนำไปใช้งานร่วมกันได้
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => exportSpotsToJSON(spots)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>ดาวน์โหลดไฟล์ JSON (.json)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyJSON}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 transition-all cursor-pointer"
+                    >
+                      {copiedJSON ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedJSON ? 'คัดลอกเรียบร้อยแล้ว!' : 'คัดลอก JSON Text'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('euclid')}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40 transition-all cursor-pointer"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>ส่งออกไป epic-euclid</span>
+                    </button>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <span className="font-semibold text-slate-300 block">รีเซ็ตข้อมูลเริ่มต้น</span>
+                      <span className="text-slate-500 text-[11px]">โหลดจุดปูนยอดนิยมดั้งเดิมของระบบ</span>
+                    </div>
+                    {confirmReset ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onResetDefault();
+                            onClose();
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>ยืนยันรีเซ็ตทั้งหมด</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmReset(false)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmReset(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>รีเซ็ตค่าเริ่มต้น</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

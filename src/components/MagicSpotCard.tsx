@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import {
   Clock,
   Crosshair,
@@ -11,8 +11,8 @@ import {
   Check,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
-import { isCementSpot } from '../data/defaultSpots';
-import { renderSpotIcon } from './PinModal';
+import { isCementSpot } from '../utils/spotCategories';
+import { renderSpotIcon } from '../utils/spotIcons';
 import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 interface MagicSpotCardProps {
@@ -53,6 +53,16 @@ export const MagicSpotCard = memo(({
   const [mousePos, setMousePos] = useState({ x: -999, y: -999 });
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+    };
+  }, []);
 
   // Cooldown status calculation
   const remainingSec = activeCooldown
@@ -197,21 +207,22 @@ export const MagicSpotCard = memo(({
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
           {isSelected && (
-            <span
+            <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectSpot(spot);
               }}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[9px] hover:bg-amber-300 transition-colors shadow-sm"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[9px] hover:bg-amber-300 transition-colors shadow-sm cursor-pointer"
               title="คลิกเพื่อยกเลิกการเลือก"
             >
               <span>เลือกอยู่</span>
               <X className="w-2.5 h-2.5" />
-            </span>
+            </button>
           )}
           {/* Quick Cooldown Pill */}
           {isUrgent ? (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono font-black text-[9px] animate-bounce shadow">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono font-black text-[9px] shadow">
               <Flame className="w-2.5 h-2.5 text-yellow-300" />
               {cdTimeStr}
             </span>
@@ -273,7 +284,7 @@ export const MagicSpotCard = memo(({
       {isUrgent ? (
         <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold text-[11px] mb-2 shadow-md">
           <span className="flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
+            <Flame className="w-3.5 h-3.5 text-yellow-300" />
             <span>ใกล้เกิดแล้ว! ต่ำกว่า 3 นาที</span>
           </span>
           <span className="font-mono font-black text-xs">{cdTimeStr}</span>
@@ -317,7 +328,8 @@ export const MagicSpotCard = memo(({
           </span>
 
           {isSelected && (
-            <span
+            <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectSpot(spot);
@@ -327,7 +339,7 @@ export const MagicSpotCard = memo(({
             >
               <span>กำลังเลือก</span>
               <X className="w-2.5 h-2.5" />
-            </span>
+            </button>
           )}
         </div>
 
@@ -404,7 +416,7 @@ export const MagicSpotCard = memo(({
             title={activeCooldown ? 'ปรับเวลาหรือยกเลิกคูลดาวน์' : 'เลือกเวลาคูลดาวน์'}
             className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all border cursor-pointer ${
               isUrgent
-                ? 'bg-red-600 text-white border-yellow-300 font-black animate-bounce shadow-md shadow-red-600/50'
+                ? 'bg-red-600 text-white border-yellow-300 font-black shadow-md shadow-red-600/50'
                 : activeCooldown
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -428,9 +440,11 @@ export const MagicSpotCard = memo(({
               const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
               await copyToClipboard(json);
               setCopied(true);
-              setTimeout(() => setCopied(false), 1800);
+              if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+              copyTimerRef.current = window.setTimeout(() => setCopied(false), 1800);
             }}
             title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
+            aria-label="คัดลอกข้อมูลหมุด JSON"
             className={`p-1 rounded-lg transition-colors cursor-pointer ${
               copied
                 ? 'text-emerald-400 bg-emerald-500/15'
@@ -452,25 +466,43 @@ export const MagicSpotCard = memo(({
               onEditSpot(spot);
             }}
             title="แก้ไขข้อมูลหมุด"
+            aria-label={`แก้ไข ${spot.name}`}
             className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-750 transition-colors cursor-pointer"
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
 
-          {/* Delete Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(`คุณต้องการลบ "${spot.name}" หรือไม่?`)) {
+          {/* Delete Button (two-step inline confirmation) */}
+          {confirmDelete ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                setConfirmDelete(false);
                 onDeleteSpot(spot.id);
-              }
-            }}
-            title="ลบหมุดนี้"
-            className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-750 transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+              }}
+              title="คลิกอีกครั้งเพื่อยืนยันการลบ"
+              className="px-1.5 py-0.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] transition-colors cursor-pointer"
+            >
+              ยืนยันลบ?
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDelete(true);
+                if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                deleteTimerRef.current = window.setTimeout(() => setConfirmDelete(false), 3000);
+              }}
+              title="ลบหมุดนี้"
+              aria-label={`ลบ ${spot.name}`}
+              className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-750 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

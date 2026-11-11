@@ -13,12 +13,10 @@ import {
   Flame,
   LayoutList,
   SlidersHorizontal,
-  Volume2,
-  VolumeX,
   Share2,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
-import { isCementSpot } from '../data/defaultSpots';
+import { getSpotQuickCategory } from '../utils/spotCategories';
 import { MagicSpotCard } from './MagicSpotCard';
 
 interface SidebarProps {
@@ -44,8 +42,6 @@ interface SidebarProps {
   gangName?: string;
   onCopyGangLink?: () => void;
   isMaster?: boolean;
-  isSoundMuted?: boolean;
-  onToggleSound?: () => void;
 }
 
 type FilterTab = 'all' | 'dealers' | 'cement' | 'race' | 'head_reset' | 'farm' | 'quest' | 'fuel' | 'urgent' | 'landmarks';
@@ -73,8 +69,6 @@ export const Sidebar = memo(({
   gangName = 'สาขา 1',
   onCopyGangLink,
   isMaster = false,
-  isSoundMuted = false,
-  onToggleSound,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<FilterTab>('all');
@@ -103,7 +97,7 @@ export const Sidebar = memo(({
   };
 
   // Real-time timer tick for countdown displays
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (activeCooldowns.length === 0) return;
     const interval = setInterval(() => {
@@ -125,59 +119,7 @@ export const Sidebar = memo(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Spot classifier helpers
-  const isDealer = (s: CementSpot): boolean =>
-    s.category === 'dealer' ||
-    s.name === 'จุดขายยา' ||
-    s.name.includes('ขายยา') ||
-    Boolean(s.icon?.includes('pickup_weed')) ||
-    Boolean(s.tags?.includes('dealer')) ||
-    Boolean(s.tags?.includes('จุดขายยา'));
-  const isCement = (s: CementSpot): boolean => isCementSpot(s);
-  const isRace = (s: CementSpot): boolean =>
-    s.category === 'race' ||
-    s.name.includes('แข่งรถ') ||
-    Boolean(s.icon?.includes('race_land')) ||
-    Boolean(s.tags?.includes('race')) ||
-    Boolean(s.tags?.includes('แข่งรถ'));
-  const isHeadReset = (s: CementSpot): boolean =>
-    s.category === 'head_reset' ||
-    s.name.includes('รีหัว') ||
-    s.name.includes('ร้านเหล้า') ||
-    Boolean(s.icon && s.icon.includes('radar_bar')) ||
-    Boolean(s.icon && s.icon.includes('biker_bar')) ||
-    Boolean(s.tags?.includes('head_reset')) ||
-    Boolean(s.tags?.includes('รีหัว'));
-  const isFarm = (s: CementSpot): boolean =>
-    !isHeadReset(s) && (
-      s.category === 'farm' ||
-      s.category === 'rebel' ||
-      s.name.includes('ฟาร์ม') ||
-      s.name.includes('ฟาม') ||
-      s.name.includes('เรเบล') ||
-      s.name.includes('โพล') ||
-      s.name.includes('แพ็ค') ||
-      s.name.includes('หมู') ||
-      s.name.includes('ขายหมู') ||
-      s.name.includes('ขายไม้') ||
-      s.name.includes('ขายข้าว') ||
-      s.name.includes('ขายดอกไม้') ||
-      Boolean(s.icon && s.icon.includes('contraband')) ||
-      Boolean(s.icon && s.icon.includes('crim_cuff_keys')) ||
-      s.icon === '🌾' ||
-      Boolean(s.tags?.includes('farm')) ||
-      Boolean(s.tags?.includes('ฟาร์ม'))
-    );
-  const isQuest = (s: CementSpot): boolean =>
-    s.category === 'quest' ||
-    s.name.includes('เควส') ||
-    Boolean(s.icon && s.icon.includes('radar_friend')) ||
-    Boolean(s.tags?.includes('quest')) ||
-    Boolean(s.tags?.includes('เควส'));
-  const isFuel = (s: CementSpot): boolean =>
-    s.category === 'fuel' ||
-    Boolean(s.name.includes('น้ำมัน') || (s.icon && s.icon.includes('jerry_can')));
-
+  // Spot classifier helpers via SSOT getSpotQuickCategory
   // Count spots with urgent cooldown (<= 3 mins)
   const urgentCount = useMemo(() => {
     return spots.filter((spot) => {
@@ -200,13 +142,14 @@ export const Sidebar = memo(({
     let landmarksCount = 0;
 
     spots.forEach((s) => {
-      if (isDealer(s)) dealersCount++;
-      else if (isCement(s)) cementCount++;
-      else if (isRace(s)) raceCount++;
-      else if (isHeadReset(s)) headResetCount++;
-      else if (isFarm(s)) farmCount++;
-      else if (isQuest(s)) questCount++;
-      else if (isFuel(s)) fuelCount++;
+      const quick = getSpotQuickCategory(s);
+      if (quick === 'dealer') dealersCount++;
+      else if (quick === 'cement') cementCount++;
+      else if (quick === 'race') raceCount++;
+      else if (quick === 'head_reset') headResetCount++;
+      else if (quick === 'farm') farmCount++;
+      else if (quick === 'quest') questCount++;
+      else if (quick === 'fuel') fuelCount++;
       else landmarksCount++;
     });
 
@@ -226,28 +169,30 @@ export const Sidebar = memo(({
   // Filter spots based on tab and search
   const filteredSpots = useMemo(() => {
     return spots.filter((spot) => {
+      const quick = getSpotQuickCategory(spot);
+
       // 1. Tab filter
       let matchTab = true;
       if (selectedFilter === 'dealers') {
-        matchTab = isDealer(spot);
+        matchTab = quick === 'dealer';
       } else if (selectedFilter === 'cement') {
-        matchTab = isCement(spot);
+        matchTab = quick === 'cement';
       } else if (selectedFilter === 'race') {
-        matchTab = isRace(spot);
+        matchTab = quick === 'race';
       } else if (selectedFilter === 'head_reset') {
-        matchTab = isHeadReset(spot);
+        matchTab = quick === 'head_reset';
       } else if (selectedFilter === 'farm') {
-        matchTab = isFarm(spot);
+        matchTab = quick === 'farm';
       } else if (selectedFilter === 'quest') {
-        matchTab = isQuest(spot);
+        matchTab = quick === 'quest';
       } else if (selectedFilter === 'fuel') {
-        matchTab = isFuel(spot);
+        matchTab = quick === 'fuel';
       } else if (selectedFilter === 'urgent') {
         const cd = activeCooldowns.find((c) => c.spotId === spot.id);
         const rem = cd ? Math.max(0, Math.floor((cd.expiresAt - now) / 1000)) : -1;
         matchTab = rem > 0 && rem <= 180;
       } else if (selectedFilter === 'landmarks') {
-        matchTab = !isDealer(spot) && !isCement(spot) && !isRace(spot) && !isHeadReset(spot) && !isFarm(spot) && !isQuest(spot) && !isFuel(spot);
+        matchTab = quick === 'lands' || quick === 'services';
       }
 
       // 2. Search query filter
@@ -292,19 +237,20 @@ export const Sidebar = memo(({
         cooldownList.push(spot);
       }
 
-      if (isDealer(spot)) {
+      const quick = getSpotQuickCategory(spot);
+      if (quick === 'dealer') {
         dealers.push(spot);
-      } else if (isCement(spot)) {
+      } else if (quick === 'cement') {
         cement.push(spot);
-      } else if (isRace(spot)) {
+      } else if (quick === 'race') {
         race.push(spot);
-      } else if (isHeadReset(spot)) {
+      } else if (quick === 'head_reset') {
         headReset.push(spot);
-      } else if (isFarm(spot)) {
+      } else if (quick === 'farm') {
         farm.push(spot);
-      } else if (isQuest(spot)) {
+      } else if (quick === 'quest') {
         quest.push(spot);
-      } else if (isFuel(spot)) {
+      } else if (quick === 'fuel') {
         fuel.push(spot);
       } else {
         landmarks.push(spot);
@@ -364,7 +310,7 @@ export const Sidebar = memo(({
       {/* Sidebar Container */}
       <aside
         className={`fixed top-0 left-0 bottom-0 z-[1050] bg-slate-900/95 backdrop-blur-2xl border-r border-slate-800 shadow-2xl flex flex-col transition-all duration-300 ${
-          isCollapsed ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden' : 'w-80 sm:w-96'
+          isCollapsed ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden' : 'w-80 lg:w-96'
         }`}
       >
         {/* ======================================================== */}
@@ -414,23 +360,8 @@ export const Sidebar = memo(({
               </div>
             </div>
 
-            {/* Header Right Actions: Sound Mute Toggle & Collapse Menu Button */}
+            {/* Header Right Actions: Collapse Menu Button */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {onToggleSound && (
-                <button
-                  type="button"
-                  onClick={onToggleSound}
-                  className={`p-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                    isSoundMuted
-                      ? 'bg-red-500/20 text-red-300 border-red-500/60 shadow-sm shadow-red-500/20 hover:bg-red-500/30'
-                      : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800'
-                  }`}
-                  title={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์ (ขณะนี้ปิดเสียงโหมดสตรีม)' : 'ปิดเสียงเอฟเฟกต์ (โหมดสตรีม)'}
-                >
-                  {isSoundMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-slate-300" />}
-                </button>
-              )}
-
               {/* Collapse toggle button (Accessible on all devices - desktop & mobile) */}
               <button
                 type="button"
@@ -568,32 +499,38 @@ export const Sidebar = memo(({
             )}
 
             {/* Cement Mines */}
-            <button
-              type="button"
-              onClick={() => setSelectedFilter('cement')}
-              className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedFilter === 'cement'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-850 text-amber-300 border border-amber-500/30 hover:bg-slate-800'
-              }`}
-            >
-              <span>🧱</span>
-              <span>ปูน ({counts.cement})</span>
+            <div className="flex items-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedFilter('cement')}
+                className={`px-2 py-1 shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                  onToggleCementSpots ? 'rounded-l-xl border-r-0' : 'rounded-xl'
+                } ${
+                  selectedFilter === 'cement'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-850 text-amber-300 border-amber-500/30 hover:bg-slate-800'
+                }`}
+              >
+                <span>🧱</span>
+                <span>ปูน ({counts.cement})</span>
+              </button>
               {onToggleCementSpots && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleCementSpots();
-                  }}
+                <button
+                  type="button"
+                  onClick={onToggleCementSpots}
                   title={showCementSpots ? 'กำลังแสดงบนแมพ (คลิกเพื่อซ่อน)' : 'ซ่อนอยู่บนแมพ (คลิกเพื่อแสดง)'}
-                  className={`ml-0.5 px-1 py-0.1 rounded text-[8px] font-mono ${
-                    showCementSpots ? 'bg-amber-400/30 text-amber-100' : 'bg-slate-750 text-slate-400'
+                  aria-label={showCementSpots ? 'ซ่อนจุดปูนบนแผนที่' : 'แสดงจุดปูนบนแผนที่'}
+                  aria-pressed={showCementSpots}
+                  className={`px-1.5 py-1 rounded-r-xl border text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                    showCementSpots
+                      ? 'bg-amber-500/25 text-amber-200 border-amber-500/40 hover:bg-amber-500/35'
+                      : 'bg-slate-800 text-slate-400 border-amber-500/30 hover:text-white'
                   }`}
                 >
                   {showCementSpots ? '✓' : '✕'}
-                </span>
+                </button>
               )}
-            </button>
+            </div>
 
             {/* Race */}
             <button
@@ -670,7 +607,7 @@ export const Sidebar = memo(({
               <button
                 type="button"
                 onClick={() => setSelectedFilter('urgent')}
-                className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer animate-bounce ${
+                className={`px-2 py-1 rounded-xl shrink-0 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
                   selectedFilter === 'urgent'
                     ? 'bg-red-600 text-white shadow-lg shadow-red-600/40'
                     : 'bg-red-950/60 text-red-300 border border-red-500/60 hover:bg-red-900/60'

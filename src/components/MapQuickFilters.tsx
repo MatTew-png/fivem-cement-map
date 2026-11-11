@@ -1,7 +1,11 @@
 import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, SlidersHorizontal, ChevronDown, Check, Layers } from 'lucide-react';
 import { soundEffects } from '../utils/sound';
-import type { QuickCategory } from '../utils/clustering';
+import {
+  INITIAL_QUICK_CATEGORIES_STATE,
+  QUICK_CATEGORY_OPTIONS,
+  type QuickCategory,
+} from '../utils/spotCategories';
 
 export interface MapQuickFiltersProps {
   categoriesState: Record<QuickCategory, boolean>;
@@ -13,72 +17,17 @@ export interface MapQuickFiltersProps {
   sidebarCollapsed?: boolean;
 }
 
-interface CategoryItem {
-  id: QuickCategory;
-  label: string;
-  icon: React.ReactNode;
-  activeColor: string;
-  badgeActiveColor: string;
-}
+const FOCUS_CATEGORY_IDS = new Set<QuickCategory>(['head_reset', 'farm', 'lands']);
 
-const CATEGORY_ITEMS: CategoryItem[] = [
-  {
-    id: 'cement',
-    label: 'ปูนซีเมนต์',
-    icon: <span className="text-base leading-none">🧱</span>,
-    activeColor: 'text-amber-300',
-    badgeActiveColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-  },
-  {
-    id: 'race',
-    label: 'แข่งรถ',
-    icon: <span className="text-base leading-none">🏁</span>,
-    activeColor: 'text-purple-300',
-    badgeActiveColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-  },
-  {
-    id: 'head_reset',
-    label: 'รีหัว (Radar Bar)',
-    icon: <img src="/blips/radar_bar_pink.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
-    activeColor: 'text-pink-300',
-    badgeActiveColor: 'bg-pink-500/20 text-pink-300 border-pink-500/40',
-  },
-  {
-    id: 'farm',
-    label: 'ฟาร์ม (Contraband)',
-    icon: <img src="/blips/radar_contraband.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
-    activeColor: 'text-amber-300',
-    badgeActiveColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-  },
-  {
-    id: 'quest',
-    label: 'เควส (Friend)',
-    icon: <img src="/blips/radar_friend_yellow.png" alt="" className="w-4 h-4 object-contain inline-block pointer-events-none" />,
-    activeColor: 'text-yellow-300',
-    badgeActiveColor: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
-  },
-  {
-    id: 'lands',
-    label: 'จุดแลน (Landmark)',
-    icon: <span className="text-base leading-none">👑</span>,
-    activeColor: 'text-indigo-300',
-    badgeActiveColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
-  },
-  {
-    id: 'fuel',
-    label: 'ปั๊มน้ำมัน',
-    icon: <span className="text-base leading-none">⛽</span>,
-    activeColor: 'text-cyan-300',
-    badgeActiveColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
-  },
-  {
-    id: 'services',
-    label: 'ร้านค้า / บริการ',
-    icon: <span className="text-base leading-none">🛒</span>,
-    activeColor: 'text-emerald-300',
-    badgeActiveColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-  },
-];
+function buildAllCategoriesState(value: boolean): Record<QuickCategory, boolean> {
+  return QUICK_CATEGORY_OPTIONS.reduce(
+    (acc, opt) => {
+      acc[opt.id] = value;
+      return acc;
+    },
+    { ...INITIAL_QUICK_CATEGORIES_STATE }
+  );
+}
 
 export const MapQuickFilters = memo(({
   categoriesState,
@@ -117,22 +66,15 @@ export const MapQuickFilters = memo(({
     };
   }, [isOpen]);
 
+  const totalCount = QUICK_CATEGORY_OPTIONS.length;
+
   const activeCount = useMemo(() => {
-    return Object.values(categoriesState).filter(Boolean).length;
+    return QUICK_CATEGORY_OPTIONS.filter((opt) => Boolean(categoriesState[opt.id])).length;
   }, [categoriesState]);
 
-  const totalCount = CATEGORY_ITEMS.length;
-
   const isOnlyResetFarmLands = useMemo(() => {
-    return (
-      categoriesState.head_reset &&
-      categoriesState.farm &&
-      categoriesState.lands &&
-      !categoriesState.cement &&
-      !categoriesState.race &&
-      !categoriesState.quest &&
-      !categoriesState.fuel &&
-      !categoriesState.services
+    return QUICK_CATEGORY_OPTIONS.every((opt) =>
+      FOCUS_CATEGORY_IDS.has(opt.id) ? Boolean(categoriesState[opt.id]) : !categoriesState[opt.id]
     );
   }, [categoriesState]);
 
@@ -149,58 +91,26 @@ export const MapQuickFilters = memo(({
   const handleSelectAll = () => {
     if (!onSetCategoriesState) return;
     soundEffects.playPinPlaced();
-    onSetCategoriesState({
-      cement: true,
-      race: true,
-      head_reset: true,
-      farm: true,
-      quest: true,
-      lands: true,
-      fuel: true,
-      services: true,
-    });
+    onSetCategoriesState(buildAllCategoriesState(true));
   };
 
   const handleDeselectAll = () => {
     if (!onSetCategoriesState) return;
     soundEffects.playPinPlaced();
-    onSetCategoriesState({
-      cement: false,
-      race: false,
-      head_reset: false,
-      farm: false,
-      quest: false,
-      lands: false,
-      fuel: false,
-      services: false,
-    });
+    onSetCategoriesState(buildAllCategoriesState(false));
   };
 
   const handleToggleFocusPreset = () => {
     if (!onSetCategoriesState) return;
     soundEffects.playPinPlaced();
     if (isOnlyResetFarmLands) {
-      onSetCategoriesState({
-        cement: true,
-        race: true,
-        head_reset: true,
-        farm: true,
-        quest: true,
-        lands: true,
-        fuel: true,
-        services: true,
-      });
+      onSetCategoriesState(buildAllCategoriesState(true));
     } else {
-      onSetCategoriesState({
-        cement: false,
-        race: false,
-        head_reset: true,
-        farm: true,
-        quest: false,
-        lands: true,
-        fuel: false,
-        services: false,
+      const next = buildAllCategoriesState(false);
+      FOCUS_CATEGORY_IDS.forEach((id) => {
+        next[id] = true;
       });
+      onSetCategoriesState(next);
     }
   };
 
@@ -348,13 +258,14 @@ export const MapQuickFilters = memo(({
 
             {/* Category Items List */}
             <div className="space-y-1 max-h-[340px] overflow-y-auto pr-1">
-              {CATEGORY_ITEMS.map((cat) => {
+              {QUICK_CATEGORY_OPTIONS.map((cat) => {
                 const isActive = Boolean(categoriesState[cat.id]);
                 const count = counts[cat.id] || 0;
                 return (
                   <button
                     key={cat.id}
                     type="button"
+                    aria-pressed={isActive}
                     onClick={() => handleCategoryClick(cat.id)}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
                       isActive
@@ -373,7 +284,11 @@ export const MapQuickFilters = memo(({
                         {isActive && <Check className="w-3 h-3 stroke-[3]" />}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        {cat.icon}
+                        <img
+                          src={cat.icon}
+                          alt=""
+                          className="w-4 h-4 object-contain inline-block pointer-events-none"
+                        />
                         <span className={`font-semibold text-xs ${isActive ? 'text-slate-100' : 'text-slate-500 line-through'}`}>
                           {cat.label}
                         </span>
@@ -383,7 +298,7 @@ export const MapQuickFilters = memo(({
                     <span
                       className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border shrink-0 ${
                         isActive
-                          ? cat.badgeActiveColor
+                          ? `${cat.activeBg} ${cat.borderColor}`
                           : 'bg-slate-800/80 border-slate-700/60 text-slate-500'
                       }`}
                     >

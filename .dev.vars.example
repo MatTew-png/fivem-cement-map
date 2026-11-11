@@ -1,0 +1,8 @@
+# Copy this file to .dev.vars for local development with `npm run dev:worker`
+# NEVER commit .dev.vars to git! For production, set via `npx wrangler secret put <KEY>`
+
+MASTER_PIN=change-me-6-digits-or-more
+GANG_SECRET_SEED=change-me-random-32-char-secret-seed
+SESSION_SECRET=change-me-random-hmac-session-secret
+# Optional default Discord webhook URL (can also be configured by Master via UI and stored in KV)
+DISCORD_WEBHOOK_URL=

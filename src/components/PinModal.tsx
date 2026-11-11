@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag, Copy } from 'lucide-react';
+import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag, Copy, FileText, Package } from 'lucide-react';
 import type { CementSpot } from '../types/map';
-import { DEFAULT_SPOTS, isCementSpot } from '../data/defaultSpots';
+import { DEFAULT_SPOTS } from '../data/defaultSpots';
+import { isCementSpot, SPOT_TYPES } from '../utils/spotCategories';
+import {
+  ALL_FLAT_ICONS,
+  ICON_CATEGORIES,
+  PRESET_COLORS,
+  renderSpotIcon,
+} from '../utils/spotIcons';
 import { parseFiveMCoords } from '../utils/crs';
 import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
@@ -15,370 +22,6 @@ interface PinModalProps {
   isMaster?: boolean;
 }
 
-export function resolveAssetUrl(url: string): string {
-  if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-    return url;
-  }
-  const base = import.meta.env.BASE_URL || './';
-  const cleanBase = base.endsWith('/') ? base : `${base}/`;
-  const cleanPath = url.startsWith('/') ? url.slice(1) : url;
-  return `${cleanBase}${cleanPath}`;
-}
-
-export function renderSpotIcon(icon: string, className: string = 'w-5 h-5') {
-  if (!icon) return <span>🧱</span>;
-  if (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png')) {
-    return (
-      <img
-        src={resolveAssetUrl(icon)}
-        alt=""
-        className={`${className} object-contain inline-block pointer-events-none drop-shadow-sm align-middle`}
-      />
-    );
-  }
-  return <span className="inline-block leading-none align-middle">{icon}</span>;
-}
-
-// คลังไอคอน FiveM Blips ทางการ (https://docs.fivem.net/docs/game-references/blips/)
-const ICON_CATEGORIES = [
-  {
-    group: '⭐ ทั้งหมด (FiveM Blips)',
-    icons: [
-      // 469 Weed Pickup / Drug Dealer
-      { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - เขียว (Green)' },
-      { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ขาว (White)' },
-      { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_pickup_weed_red.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - แดง (Red)' },
-      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ม่วง (Purple)' },
-      { emoji: '/blips/radar_pickup_weed_cyan.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_pickup_weed_orange.png', name: '[469] Weed ใบกัญชา / ขายยา Dealer - ส้ม (Orange)' },
-
-      // 439 King
-      { emoji: '/blips/radar_player_king_white.png', name: '[439] King มงกุฎ - ขาว (White)' },
-      { emoji: '/blips/radar_player_king_yellow.png', name: '[439] King มงกุฎ - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_player_king_red.png', name: '[439] King มงกุฎ - แดง (Red)' },
-      { emoji: '/blips/radar_player_king_orange.png', name: '[439] King มงกุฎ - ส้ม (Orange)' },
-      { emoji: '/blips/radar_player_king_green.png', name: '[439] King มงกุฎ - เขียว (Green)' },
-      { emoji: '/blips/radar_player_king_cyan.png', name: '[439] King มงกุฎ - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_player_king_blue.png', name: '[439] King มงกุฎ - น้ำเงิน (Blue)' },
-      { emoji: '/blips/radar_player_king_mint.png', name: '[439] King มงกุฎ - มิ้นต์ (Mint)' },
-      { emoji: '/blips/radar_player_king_purple.png', name: '[439] King มงกุฎ - ม่วง (Purple)' },
-      { emoji: '/blips/radar_player_king_brown.png', name: '[439] King มงกุฎ - น้ำตาล (Brown)' },
-      { emoji: '/blips/radar_player_king_pink.png', name: '[439] King มงกุฎ - ชมพู (Pink)' },
-
-      // 280 Friend
-      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เพื่อน / ทีม / เควส - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_friend_pink.png', name: '[280] Friend เพื่อน / ทีม - ชมพู (Pink)' },
-      { emoji: '/blips/radar_friend_green.png', name: '[280] Friend เพื่อน / ทีม - เขียว (Green)' },
-      { emoji: '/blips/radar_friend_red.png', name: '[280] Friend เพื่อน / ทีม - แดง (Red)' },
-      { emoji: '/blips/radar_friend.png', name: '[280] Friend เพื่อน / ทีม - ขาว (White)' },
-
-      // 478 Contraband
-      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - เทา (Gray)' },
-      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ขาว (White)' },
-      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ชมพู (Pink)' },
-      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - น้ำตาล (Brown)' },
-      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ฟาร์ม / ของเถื่อน - ปกติ' },
-
-      // 93 Bar
-      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar รีหัว / บาร์เหล้า - ชมพู (Pink)' },
-      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar รีหัว / บาร์เหล้า - เขียว (Green)' },
-      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar รีหัว / บาร์เหล้า - ม่วง (Purple)' },
-      { emoji: '/blips/radar_bar.png', name: '[93] Bar รีหัว / บาร์เหล้า - ขาว (White)' },
-
-      // 827 Biker Bar
-      { emoji: '/blips/radar_biker_bar_purple.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ม่วง (Purple)' },
-      { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ / ขวดเหล้า - ขาว (White)' },
-
-      // 315 Race Land
-      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง (Purple)' },
-      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว (White)' },
-
-      // 446 Benny's Motorworks
-      { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - น้ำเงิน (Blue)" },
-      { emoji: '/blips/radar_bennys.png', name: "[446] Benny's อู่แต่งรถ / ไขควงประแจ - ขาว (White)" },
-
-      // 544 Pickup Repair
-      { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - แดง (Red)' },
-      { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair ประแจซ่อม / อู่ซ่อม - ขาว (White)' },
-
-      // 134 Crim Cuff Keys & 186 Handcuff Keys
-      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง (Red)' },
-      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว (White)' },
-      { emoji: '/blips/radar_handcuff_keys_bikers_red.png', name: '[186] Handcuff Keys กุญแจมือไข - แดง (Red)' },
-      { emoji: '/blips/radar_handcuff_keys_bikers.png', name: '[186] Handcuff Keys กุญแจมือไข - ขาว (White)' },
-
-      // 61 Hospital & 60 Police
-      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล / หมอ - เขียว (Green)' },
-      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ปกติ' },
-      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ปกติ' },
-
-      // 361 Jerry Can
-      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
-
-      // 524 Warehouse & 475 Office & 565 Bunker
-      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
-      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
-      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ขาว (White)' },
-      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา (Gray)' },
-      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว (White)' },
-
-      // 318 Garbage
-      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา (Gray)' },
-      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม (Orange)' },
-      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
-
-      // 304 UGC Mission & 362 Mask & 71 Barber & 73 Clothes & 75 Tattoo & Vehicles
-      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว (White)' },
-      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_mask.png', name: '[362] Mask หน้ากาก / ร้านหน้ากาก - ขาว (White)' },
-      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
-      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ปกติ' },
-      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
-      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ปกติ' },
-      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
-      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
-      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
-      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ปกติ' },
-      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
-      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
-
-      // 963 Buyers Request ร้านค้า
-      { emoji: '/blips/radar_buyers_request.png', name: '[963] Buyers Request มาร์คร้านค้า / ร้านค้า / จุดรับซื้อ' },
-
-      // 889 Pizza This ร้านอาหาร / จุดทำอาหารเอง
-      { emoji: '/blips/radar_pizza_this_orange.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ส้ม (Orange)' },
-      { emoji: '/blips/radar_pizza_this.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ขาว (White)' },
-    ],
-  },
-  {
-    group: 'ขายยา & ของเถื่อน',
-    icons: [
-      { emoji: '/blips/radar_pickup_weed_green.png', name: '[469] Weed ใบกัญชา (เขียว) / จุดขายยา Dealer' },
-      { emoji: '/blips/radar_pickup_weed.png', name: '[469] Weed ใบกัญชา (ขาว) / จุดขายยา Dealer' },
-      { emoji: '/blips/radar_pickup_weed_yellow.png', name: '[469] Weed ใบกัญชา (เหลือง)' },
-      { emoji: '/blips/radar_pickup_weed_red.png', name: '[469] Weed ใบกัญชา (แดง)' },
-      { emoji: '/blips/radar_pickup_weed_purple.png', name: '[469] Weed ใบกัญชา (ม่วง Purple Haze)' },
-      { emoji: '/blips/radar_pickup_weed_cyan.png', name: '[469] Weed ใบกัญชา (ฟ้า Cyan)' },
-      { emoji: '/blips/radar_pickup_weed_orange.png', name: '[469] Weed ใบกัญชา (ส้ม)' },
-      { emoji: '/blips/radar_contraband_gray.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เทา' },
-      { emoji: '/blips/radar_contraband_white.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ขาว' },
-      { emoji: '/blips/radar_contraband_yellow.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - เหลือง' },
-      { emoji: '/blips/radar_contraband_pink.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ชมพู' },
-      { emoji: '/blips/radar_contraband_brown.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - น้ำตาล' },
-      { emoji: '/blips/radar_contraband.png', name: '[478] Contraband ของเถื่อน / กล่องดำ - ปกติ' },
-      { emoji: '/blips/radar_crim_cuff_keys_red.png', name: '[134] Cuff Keys กุญแจมือ - แดง' },
-      { emoji: '/blips/radar_crim_cuff_keys.png', name: '[134] Cuff Keys กุญแจมือ - ขาว' },
-      { emoji: '/blips/radar_handcuff_keys_bikers_red.png', name: '[186] Handcuff Keys กุญแจมือไข - แดง' },
-      { emoji: '/blips/radar_handcuff_keys_bikers.png', name: '[186] Handcuff Keys กุญแจมือไข - ขาว' },
-    ],
-  },
-  {
-    group: 'แลนด์มาร์ค & เควส',
-    icons: [
-      { emoji: '/blips/radar_player_king_white.png', name: '[439] King มงกุฎ - ขาว (White)' },
-      { emoji: '/blips/radar_player_king_yellow.png', name: '[439] King มงกุฎ - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_player_king_red.png', name: '[439] King มงกุฎ - แดง (Red)' },
-      { emoji: '/blips/radar_player_king_orange.png', name: '[439] King มงกุฎ - ส้ม (Orange)' },
-      { emoji: '/blips/radar_player_king_green.png', name: '[439] King มงกุฎ - เขียว (Green)' },
-      { emoji: '/blips/radar_player_king_cyan.png', name: '[439] King มงกุฎ - ฟ้า (Cyan)' },
-      { emoji: '/blips/radar_player_king_blue.png', name: '[439] King มงกุฎ - น้ำเงิน (Blue)' },
-      { emoji: '/blips/radar_player_king_mint.png', name: '[439] King มงกุฎ - มิ้นต์ (Mint)' },
-      { emoji: '/blips/radar_player_king_purple.png', name: '[439] King มงกุฎ - ม่วง (Purple)' },
-      { emoji: '/blips/radar_player_king_brown.png', name: '[439] King มงกุฎ - น้ำตาล (Brown)' },
-      { emoji: '/blips/radar_player_king_pink.png', name: '[439] King มงกุฎ - ชมพู (Pink)' },
-      { emoji: '/blips/radar_friend_yellow.png', name: '[280] Friend เควส / เพื่อน - เหลือง (Yellow)' },
-      { emoji: '/blips/radar_friend_pink.png', name: '[280] Friend เควส / เพื่อน - ชมพู (Pink)' },
-      { emoji: '/blips/radar_friend_green.png', name: '[280] Friend เควส / เพื่อน - เขียว (Green)' },
-      { emoji: '/blips/radar_friend_red.png', name: '[280] Friend เควส / เพื่อน - แดง (Red)' },
-      { emoji: '/blips/radar_friend.png', name: '[280] Friend เควส / เพื่อน - ขาว (White)' },
-      { emoji: '/blips/radar_ugc_mission_yellow.png', name: '[304] UGC Mission ภารกิจ / ดาว - เหลือง' },
-      { emoji: '/blips/radar_ugc_mission.png', name: '[304] UGC Mission ภารกิจ / ดาว - ขาว' },
-    ],
-  },
-  {
-    group: 'ยานยนต์ & แข่งรถ',
-    icons: [
-      { emoji: '/blips/radar_race_land_purple.png', name: '[315] Race Land แข่งรถทางบก - ม่วง' },
-      { emoji: '/blips/radar_race_land.png', name: '[315] Race Land แข่งรถทางบก - ขาว' },
-      { emoji: '/blips/radar_bennys_blue.png', name: "[446] Benny's อู่แต่งรถ - น้ำเงิน" },
-      { emoji: '/blips/radar_bennys.png', name: "[446] Benny's อู่แต่งรถ - ขาว" },
-      { emoji: '/blips/radar_pickup_repair_red.png', name: '[544] Pickup Repair อู่ซ่อม - แดง' },
-      { emoji: '/blips/radar_pickup_repair.png', name: '[544] Pickup Repair อู่ซ่อม - ขาว' },
-      { emoji: '/blips/radar_gang_vehicle_yellow.png', name: '[225] Gang Vehicle รถแก๊ง - เหลือง' },
-      { emoji: '/blips/radar_gang_vehicle_red.png', name: '[225] Gang Vehicle รถแก๊ง - แดง' },
-      { emoji: '/blips/radar_gang_vehicle.png', name: '[225] Gang Vehicle รถแก๊ง - ขาว' },
-      { emoji: '/blips/radar_arena_zr380.png', name: '[669] Arena ZR380 รถแต่งอารีน่า' },
-      { emoji: '/blips/radar_security_van.png', name: '[67] Security Van รถขนเงิน / รถเกราะ' },
-      { emoji: '/blips/radar_jerry_can.png', name: '[361] Jerry Can แกลลอนน้ำมัน' },
-    ],
-  },
-  {
-    group: 'รีหัว, บาร์ & บริการ',
-    icons: [
-      { emoji: '/blips/radar_bar_pink.png', name: '[93] Bar รีหัว / บาร์เหล้า - ชมพู' },
-      { emoji: '/blips/radar_bar_green.png', name: '[93] Bar รีหัว / บาร์เหล้า - เขียว' },
-      { emoji: '/blips/radar_bar_purple.png', name: '[93] Bar รีหัว / บาร์เหล้า - ม่วง' },
-      { emoji: '/blips/radar_bar.png', name: '[93] Bar รีหัว / บาร์เหล้า - ขาว' },
-      { emoji: '/blips/radar_biker_bar_purple.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ - ม่วง' },
-      { emoji: '/blips/radar_biker_bar.png', name: '[827] Biker Bar บาร์ไบค์เกอร์ - ขาว' },
-      { emoji: '/blips/radar_hospital_green.png', name: '[61] Hospital โรงพยาบาล - เขียว' },
-      { emoji: '/blips/radar_hospital.png', name: '[61] Hospital โรงพยาบาล - ขาว' },
-      { emoji: '/blips/radar_police_station_cyan.png', name: '[60] Police Station สถานีตำรวจ - ฟ้า' },
-      { emoji: '/blips/radar_police_station.png', name: '[60] Police Station สถานีตำรวจ - ขาว' },
-      { emoji: '/blips/radar_barber_green.png', name: '[71] Barber ร้านตัดผม - เขียว' },
-      { emoji: '/blips/radar_barber.png', name: '[71] Barber ร้านตัดผม - ขาว' },
-      { emoji: '/blips/radar_clothes_store_red.png', name: '[73] Clothes Store ร้านเสื้อผ้า - แดง' },
-      { emoji: '/blips/radar_clothes_store.png', name: '[73] Clothes Store ร้านเสื้อผ้า - ขาว' },
-      { emoji: '/blips/radar_tattoo.png', name: '[75] Tattoo ร้านสักลาย' },
-      { emoji: '/blips/radar_mask_cyan.png', name: '[362] Mask ร้านหน้ากาก - ฟ้า' },
-      { emoji: '/blips/radar_mask.png', name: '[362] Mask ร้านหน้ากาก - ขาว' },
-      { emoji: '/blips/radar_buyers_request.png', name: '[963] Buyers Request มาร์คร้านค้า / ร้านค้า / จุดรับซื้อ' },
-      { emoji: '/blips/radar_pizza_this_orange.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ส้ม' },
-      { emoji: '/blips/radar_pizza_this.png', name: '[889] Pizza This ร้านอาหาร / จุดทำอาหารเอง - ขาว' },
-    ],
-  },
-  {
-    group: 'โกดัง, ออฟฟิศ & บังเกอร์',
-    icons: [
-      { emoji: '/blips/radar_warehouse_vehicle_yellow.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - เหลือง' },
-      { emoji: '/blips/radar_warehouse_vehicle.png', name: '[524] Warehouse Vehicle โกดังเก็บรถ - ปกติ' },
-      { emoji: '/blips/radar_office_cyan.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ฟ้า' },
-      { emoji: '/blips/radar_office.png', name: '[475] Office ออฟฟิศ / สำนักงาน - ขาว' },
-      { emoji: '/blips/radar_adversary_bunker_gray.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - เทา' },
-      { emoji: '/blips/radar_adversary_bunker.png', name: '[565] Bunker บังเกอร์ / หลุมหลบภัย - ขาว' },
-      { emoji: '/blips/radar_garbage_cyan.png', name: '[318] Garbage ถังขยะ / รถขยะ - ฟ้า' },
-      { emoji: '/blips/radar_garbage_gray.png', name: '[318] Garbage ถังขยะ / รถขยะ - เทา' },
-      { emoji: '/blips/radar_garbage_orange.png', name: '[318] Garbage ถังขยะ / รถขยะ - ส้ม' },
-      { emoji: '/blips/radar_garbage_yellow.png', name: '[318] Garbage ถังขยะ / รถขยะ - เหลือง' },
-      { emoji: '/blips/radar_garbage.png', name: '[318] Garbage ถังขยะ / รถขยะ - ปกติ' },
-    ],
-  },
-];
-
-// สีหมุดยอดนิยมสไตล์ FiveM
-const PRESET_COLORS = [
-  { hex: '#f59e0b', name: 'ส้มปูน (Amber)' },
-  { hex: '#ef4444', name: 'แดง (Red)' },
-  { hex: '#3b82f6', name: 'น้ำเงิน (Blue)' },
-  { hex: '#22c55e', name: 'เขียว (Green)' },
-  { hex: '#eab308', name: 'เหลือง (Yellow)' },
-  { hex: '#ec4899', name: 'ชมพู (Pink)' },
-  { hex: '#a855f7', name: 'ม่วง (Purple)' },
-  { hex: '#2dd4bf', name: 'มิ้นท์ (Mint)' },
-  { hex: '#06b6d4', name: 'ฟ้า (Cyan)' },
-  { hex: '#b45309', name: 'น้ำตาล (Brown)' },
-  { hex: '#ffffff', name: 'ขาว (White)' },
-  { hex: '#334155', name: 'เทาเข้ม (Slate)' },
-];
-
-export interface SpotTypeOption {
-  id: string;
-  label: string;
-  icon: string;
-  defaultColor: string;
-  defaultIcon: string;
-  hint: string;
-}
-
-export const SPOT_TYPES: SpotTypeOption[] = [
-  {
-    id: 'cement_mine',
-    label: 'จุดปูน (Cement)',
-    icon: '🧱',
-    defaultColor: '#f59e0b',
-    defaultIcon: '🧱',
-    hint: 'จุดฟาร์ม/ขุดปูน (นับในระบบปูน)',
-  },
-  {
-    id: 'race',
-    label: 'แข่งรถ (Race)',
-    icon: '🏁',
-    defaultColor: '#a855f7',
-    defaultIcon: '/blips/radar_race_land_purple.png',
-    hint: 'จุดแข่งรถ/สนามแข่ง',
-  },
-  {
-    id: 'head_reset',
-    label: 'รีหัว (Head Reset)',
-    icon: '🍸',
-    defaultColor: '#ec4899',
-    defaultIcon: '/blips/radar_bar_pink.png',
-    hint: 'จุดรีหัว/บาร์เหล้า (Blip 93)',
-  },
-  {
-    id: 'farm',
-    label: 'ฟาร์ม (Farm)',
-    icon: '📦',
-    defaultColor: '#f59e0b',
-    defaultIcon: '/blips/radar_contraband.png',
-    hint: 'จุดฟาร์ม/ของเถื่อน (Blip 478)',
-  },
-  {
-    id: 'quest',
-    label: 'เควส (Quest)',
-    icon: '⭐',
-    defaultColor: '#eab308',
-    defaultIcon: '/blips/radar_friend_yellow.png',
-    hint: 'จุดเควส/ภารกิจ (Blip 280)',
-  },
-  {
-    id: 'landmark',
-    label: 'แลนด์มาร์ค (Landmark)',
-    icon: '👑',
-    defaultColor: '#38bdf8',
-    defaultIcon: '/blips/radar_player_king_white.png',
-    hint: 'แลนด์มาร์ค/จุดนัดพบ',
-  },
-  {
-    id: 'dealer',
-    label: 'จุดขายยา (Dealer)',
-    icon: '🌿',
-    defaultColor: '#22c55e',
-    defaultIcon: '/blips/radar_pickup_weed_green.png',
-    hint: 'จุดส่งยา/ขายยา',
-  },
-  {
-    id: 'fuel',
-    label: 'ปั๊มน้ำมัน (Fuel)',
-    icon: '⛽',
-    defaultColor: '#06b6d4',
-    defaultIcon: '/blips/radar_jerry_can.png',
-    hint: 'จุดเติมน้ำมัน',
-  },
-  {
-    id: 'services',
-    label: 'บริการ/ทั่วไป (Services)',
-    icon: '🏥',
-    defaultColor: '#10b981',
-    defaultIcon: '/blips/radar_hospital.png',
-    hint: 'โรงพยาบาล/สถานที่บริการ',
-  },
-  {
-    id: 'shop',
-    label: 'ร้านค้า (Shop)',
-    icon: '🛒',
-    defaultColor: '#22c55e',
-    defaultIcon: '/blips/radar_buyers_request.png',
-    hint: 'มาร์คร้านค้า/จุดรับซื้อ (Blip 963)',
-  },
-  {
-    id: 'restaurant',
-    label: 'ร้านอาหาร (Cooking)',
-    icon: '🍕',
-    defaultColor: '#f97316',
-    defaultIcon: '/blips/radar_pizza_this_orange.png',
-    hint: 'ร้านอาหาร/ทำอาหารเอง (Blip 889)',
-  },
-];
-
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
 
 export const PinModal = ({
@@ -390,53 +33,79 @@ export const PinModal = ({
   isMaster = false,
 }: PinModalProps) => {
   const isOfficial = Boolean(initialSpot?.id && officialSpotIds.has(initialSpot.id));
+  const coordsLocked = isOfficial && !isMaster;
+
   const [category, setCategory] = useState<string>('cement_mine');
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🧱');
   const [color, setColor] = useState('#f59e0b');
   const [activeGroup, setActiveGroup] = useState('ทั้งหมด');
   const [iconSearch, setIconSearch] = useState('');
-  const [x, setX] = useState<number>(0);
-  const [y, setY] = useState<number>(0);
-  const [z, setZ] = useState<number>(30.0);
+  const [xInput, setXInput] = useState<string>('0');
+  const [yInput, setYInput] = useState<string>('0');
+  const [zInput, setZInput] = useState<string>('30.0');
   const [postal, setPostal] = useState('');
   const [cooldownMinutes, setCooldownMinutes] = useState(10);
+  const [yieldDescription, setYieldDescription] = useState('');
+  const [notes, setNotes] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
   const [coordsPasteInput, setCoordsPasteInput] = useState('');
   const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
   const [copiedSpot, setCopiedSpot] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const pasteTimerRef = useRef<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pasteTimerRef.current !== null) window.clearTimeout(pasteTimerRef.current);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const handleSmartPaste = (raw: string) => {
+    if (coordsLocked) return false;
     const parsed = parseFiveMCoords(raw);
     if (parsed) {
-      setX(parsed.x);
-      setY(parsed.y);
-      setZ(parsed.z);
+      setXInput(String(parsed.x));
+      setYInput(String(parsed.y));
+      setZInput(String(parsed.z));
       setCoordsPasteStatus(`✓ พิกัด X: ${parsed.x}, Y: ${parsed.y}, Z: ${parsed.z}`);
-      setTimeout(() => setCoordsPasteStatus(null), 3000);
+      if (pasteTimerRef.current !== null) window.clearTimeout(pasteTimerRef.current);
+      pasteTimerRef.current = window.setTimeout(() => setCoordsPasteStatus(null), 3000);
       return true;
     }
     return false;
   };
 
   const handleCoordsPaste = (raw: string) => {
+    if (coordsLocked) return;
     setCoordsPasteInput(raw);
     handleSmartPaste(raw);
   };
 
   const handleFieldPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    if (coordsLocked) return;
     const text = e.clipboardData.getData('text');
     if (handleSmartPaste(text)) {
       e.preventDefault();
     }
   };
 
-  // Flattened all icons for search
-  const allIcons = useMemo(() => {
-    return ICON_CATEGORIES.flatMap((c) => c.icons.map((i) => ({ ...i, group: c.group })));
-  }, []);
-
   const filteredIcons = useMemo(() => {
-    let list = allIcons;
+    let list = ALL_FLAT_ICONS;
     if (activeGroup !== 'ทั้งหมด') {
       list = list.filter((i) => i.group === activeGroup);
     }
@@ -445,11 +114,12 @@ export const PinModal = ({
       list = list.filter((i) => i.name.toLowerCase().includes(q) || i.emoji.toLowerCase().includes(q));
     }
     return list;
-  }, [allIcons, activeGroup, iconSearch]);
+  }, [activeGroup, iconSearch]);
 
   useEffect(() => {
     setCoordsPasteInput('');
     setCoordsPasteStatus(null);
+    setConfirmDelete(false);
     if (initialSpot) {
       setName(initialSpot.name || '');
       const isCement = isCementSpot(initialSpot as CementSpot);
@@ -488,21 +158,27 @@ export const PinModal = ({
       setCategory(determinedCat);
       setIcon(initialSpot.icon || (determinedCat === 'cement_mine' ? '🧱' : '/blips/radar_player_king_white.png'));
       setColor(initialSpot.color || (determinedCat === 'cement_mine' ? '#f59e0b' : '#38bdf8'));
-      setX(initialSpot.x !== undefined ? initialSpot.x : 0);
-      setY(initialSpot.y !== undefined ? initialSpot.y : 0);
-      setZ(initialSpot.z !== undefined ? initialSpot.z : 30.0);
+      setXInput(initialSpot.x !== undefined ? String(initialSpot.x) : '0');
+      setYInput(initialSpot.y !== undefined ? String(initialSpot.y) : '0');
+      setZInput(initialSpot.z !== undefined ? String(initialSpot.z) : '30.0');
       setPostal(initialSpot.postal || '');
       setCooldownMinutes(initialSpot.cooldownMinutes ?? 10);
+      setYieldDescription(initialSpot.yieldDescription || '');
+      setNotes(initialSpot.notes || '');
+      setTagsInput(Array.isArray(initialSpot.tags) ? initialSpot.tags.join(', ') : '');
     } else {
       setName('');
       setCategory('cement_mine');
       setIcon('🧱');
       setColor('#f59e0b');
-      setX(0);
-      setY(0);
-      setZ(30.0);
+      setXInput('0');
+      setYInput('0');
+      setZInput('30.0');
       setPostal('');
       setCooldownMinutes(10);
+      setYieldDescription('');
+      setNotes('');
+      setTagsInput('');
     }
   }, [initialSpot, isOpen]);
 
@@ -522,15 +198,19 @@ export const PinModal = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const numX = Number(x);
-    const numY = Number(y);
-    const numZ = Number(z);
-    const safeX = Number.isFinite(numX) ? numX : 0;
-    const safeY = Number.isFinite(numY) ? numY : 0;
-    const safeZ = Number.isFinite(numZ) ? numZ : 30.0;
-    const safeCd = Math.max(0, parseInt(String(cooldownMinutes), 10) || 0);
+    const parsedX = Number(xInput.trim());
+    const parsedY = Number(yInput.trim());
+    const parsedZ = Number(zInput.trim());
+    const safeX = coordsLocked && initialSpot?.x !== undefined ? initialSpot.x : Number.isFinite(parsedX) ? parsedX : 0;
+    const safeY = coordsLocked && initialSpot?.y !== undefined ? initialSpot.y : Number.isFinite(parsedY) ? parsedY : 0;
+    const safeZ = coordsLocked && initialSpot?.z !== undefined ? initialSpot.z : Number.isFinite(parsedZ) ? parsedZ : 30.0;
+    const safeCd = Math.min(60, Math.max(0, parseInt(String(cooldownMinutes), 10) || 0));
 
     const trimmedName = name.trim();
+    const parsedTags = tagsInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     const updated: CementSpot = {
       id: initialSpot?.id || `spot-${Date.now()}`,
@@ -543,10 +223,10 @@ export const PinModal = ({
       z: safeZ,
       postal: postal.trim(),
       cooldownMinutes: safeCd,
-      yieldDescription: initialSpot?.yieldDescription || '',
+      yieldDescription: yieldDescription.trim(),
       requiredItems: initialSpot?.requiredItems || [],
-      notes: initialSpot?.notes || '',
-      tags: initialSpot?.tags,
+      notes: notes.trim(),
+      tags: parsedTags.length > 0 ? parsedTags : undefined,
       createdAt: initialSpot?.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
@@ -555,7 +235,7 @@ export const PinModal = ({
     onClose();
   };
 
-  const mountTimeRef = useRef(Date.now());
+  const mountTimeRef = useRef(0);
   useEffect(() => {
     if (isOpen) {
       mountTimeRef.current = Date.now();
@@ -574,6 +254,9 @@ export const PinModal = ({
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pin-modal-title"
         className="relative w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -588,7 +271,7 @@ export const PinModal = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-wide">
+                <h2 id="pin-modal-title" className="text-base font-bold text-white tracking-wide">
                   {initialSpot?.id ? 'แก้ไขหมุดมาร์คเกอร์' : 'สร้างหมุดใหม่บนแผนที่'}
                 </h2>
                 {isOfficial && (
@@ -605,15 +288,17 @@ export const PinModal = ({
                 )}
               </div>
               <p className="text-xs text-slate-400">
-                {isOfficial && !isMaster
+                {coordsLocked
                   ? 'หมุดหลักทางการของแก๊ง พิกัดจะถูกล็อคไว้เพื่อความปลอดภัย'
                   : 'ตั้งชื่อหมุดและเลือกไอคอนตามต้องการได้อย่างอิสระ'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            aria-label="ปิดหน้าต่าง"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -648,10 +333,12 @@ export const PinModal = ({
                         : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
                     }`}
                   >
-                    <span className="text-lg leading-none shrink-0">{type.icon}</span>
+                    <span className="shrink-0 flex items-center justify-center">
+                      {renderSpotIcon(type.defaultIcon, 'w-5 h-5')}
+                    </span>
                     <div className="min-w-0">
                       <div className="text-xs font-bold truncate leading-tight">{type.label}</div>
-                      <div className="text-[10px] text-slate-400 truncate leading-tight">{type.hint}</div>
+                      <div className="text-[10px] text-slate-400 truncate leading-tight">{type.description}</div>
                     </div>
                   </button>
                 );
@@ -857,8 +544,14 @@ export const PinModal = ({
           {/* 5. พิกัด X, Y, Z และ Postal */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
-                5. ตำแหน่งพิกัดในเกม FiveM
+              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <span>5. ตำแหน่งพิกัดในเกม FiveM</span>
+                {coordsLocked && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 normal-case">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>ล็อคพิกัด</span>
+                  </span>
+                )}
               </label>
               {coordsPasteStatus && (
                 <span className="text-[11px] text-emerald-400 font-bold animate-pulse flex items-center gap-1">
@@ -869,20 +562,21 @@ export const PinModal = ({
             </div>
 
             {/* Quick Paste Vector3 / Coords Bar */}
-            <div className="mb-2.5 p-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2">
+            <div className={`mb-2.5 p-2 rounded-xl border flex items-center gap-2 ${coordsLocked ? 'bg-slate-900/40 border-slate-800 opacity-60' : 'bg-slate-900/90 border-slate-700/80'}`}>
               <ClipboardPaste className="w-4 h-4 text-amber-400 shrink-0" />
               <input
                 type="text"
+                disabled={coordsLocked}
                 value={coordsPasteInput}
                 onChange={(e) => handleCoordsPaste(e.target.value)}
-                placeholder="วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(-154.2, -1035.8, 30.5)..."
-                className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none"
+                placeholder={coordsLocked ? 'พิกัดจุดหลักถูกล็อคไว้ (เฉพาะหัวหน้าแก๊งที่แก้ไขพิกัดได้)' : 'วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(-154.2, -1035.8, 30.5)...'}
+                className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none disabled:cursor-not-allowed"
               />
-              {coordsPasteInput && (
+              {coordsPasteInput && !coordsLocked && (
                 <button
                   type="button"
                   onClick={() => setCoordsPasteInput('')}
-                  className="text-slate-400 hover:text-white p-1 text-xs"
+                  className="text-slate-400 hover:text-white p-1 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
@@ -894,13 +588,14 @@ export const PinModal = ({
                   พิกัด X (East/West)
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  value={x}
+                  disabled={coordsLocked}
+                  value={xInput}
                   onPaste={handleFieldPaste}
-                  onChange={(e) => setX(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400"
+                  onChange={(e) => setXInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -908,13 +603,14 @@ export const PinModal = ({
                   พิกัด Y (North/South)
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  value={y}
+                  disabled={coordsLocked}
+                  value={yInput}
                   onPaste={handleFieldPaste}
-                  onChange={(e) => setY(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400"
+                  onChange={(e) => setYInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -922,12 +618,13 @@ export const PinModal = ({
                   พิกัด Z (ความสูง)
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
-                  value={z}
+                  type="text"
+                  inputMode="decimal"
+                  disabled={coordsLocked}
+                  value={zInput}
                   onPaste={handleFieldPaste}
-                  onChange={(e) => setZ(parseFloat(e.target.value) || 30)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 font-mono text-xs focus:outline-none focus:border-amber-400"
+                  onChange={(e) => setZInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -953,12 +650,12 @@ export const PinModal = ({
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                 <span>6. เวลาคูลดาวน์: <strong className="text-amber-300 font-mono">{cooldownMinutes} นาที</strong></span>
               </span>
-              <span className="text-[10px] text-slate-500">ปรับเวลาด่วน (-5, -1, สไลเดอร์, +1, +5)</span>
+              <span className="text-[10px] text-slate-500">ปรับเวลาด่วน (-5, -1, สไลเดอร์, +1, +5 สูงสุด 60น.)</span>
             </label>
             <div className="flex items-center gap-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
               <button
                 type="button"
-                onClick={() => setCooldownMinutes(Math.max(0, cooldownMinutes - 5))}
+                onClick={() => setCooldownMinutes((c) => Math.max(0, c - 5))}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
                 title="ลด 5 นาที"
               >
@@ -966,7 +663,7 @@ export const PinModal = ({
               </button>
               <button
                 type="button"
-                onClick={() => setCooldownMinutes(Math.max(0, cooldownMinutes - 1))}
+                onClick={() => setCooldownMinutes((c) => Math.max(0, c - 1))}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
                 title="ลด 1 นาที"
               >
@@ -978,12 +675,12 @@ export const PinModal = ({
                 max="60"
                 step="1"
                 value={cooldownMinutes}
-                onChange={(e) => setCooldownMinutes(parseInt(e.target.value) || 0)}
+                onChange={(e) => setCooldownMinutes(Math.min(60, Math.max(0, parseInt(e.target.value, 10) || 0)))}
                 className="flex-1 accent-amber-400 cursor-pointer h-2 bg-slate-800 rounded-lg"
               />
               <button
                 type="button"
-                onClick={() => setCooldownMinutes(cooldownMinutes + 1)}
+                onClick={() => setCooldownMinutes((c) => Math.min(60, c + 1))}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
                 title="เพิ่ม 1 นาที"
               >
@@ -991,7 +688,7 @@ export const PinModal = ({
               </button>
               <button
                 type="button"
-                onClick={() => setCooldownMinutes(cooldownMinutes + 5)}
+                onClick={() => setCooldownMinutes((c) => Math.min(60, c + 5))}
                 className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
                 title="เพิ่ม 5 นาที"
               >
@@ -1000,23 +697,90 @@ export const PinModal = ({
             </div>
           </div>
 
+          {/* 7. โน้ต ไอเทมที่ได้ และแท็ก */}
+          <div className="pt-2 border-t border-slate-800 space-y-2.5">
+            <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span>7. รายละเอียดเพิ่มเติม & แท็ก (ไม่บังคับ)</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
+                  <Package className="w-3 h-3 text-emerald-400" />
+                  <span>ไอเทม / ผลผลิตที่ได้</span>
+                </label>
+                <input
+                  type="text"
+                  value={yieldDescription}
+                  onChange={(e) => setYieldDescription(e.target.value)}
+                  placeholder="เช่น ปูน 5-10 ถุง / รอบ"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  แท็กค้นหา (คั่นด้วย ,)
+                </label>
+                <input
+                  type="text"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  placeholder="เช่น ฟาร์ม, ริมหาด, อันตราย"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-amber-200 placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                โน้ตสำหรับสมาชิกแก๊ง
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="เช่น จุดจอดรถหลบหลังโกดัง / มีแก๊งคุม..."
+                className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
+              />
+            </div>
+          </div>
+
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-between pt-3 border-t border-slate-800 gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               {initialSpot?.id && onDelete ? (
-                isOfficial && !isMaster ? (
+                coordsLocked ? (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
                     <Lock className="w-3.5 h-3.5 text-amber-400" />
                     <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
+                  </div>
+                ) : confirmDelete ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                        onDelete(initialSpot.id!);
+                        onClose();
+                      }}
+                      className="px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl transition-colors cursor-pointer"
+                    >
+                      ยืนยันลบหมุด
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="px-2.5 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl cursor-pointer"
+                    >
+                      ยกเลิก
+                    </button>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('คุณต้องการลบหมุดนี้ใช่หรือไม่?')) {
-                        onDelete(initialSpot.id!);
-                        onClose();
-                      }
+                      setConfirmDelete(true);
+                      if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                      deleteTimerRef.current = window.setTimeout(() => setConfirmDelete(false), 3500);
                     }}
                     className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
                   >
@@ -1028,24 +792,33 @@ export const PinModal = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  const currentSpotData = {
+                onClick={async () => {
+                  const parsedX = Number(xInput.trim());
+                  const parsedY = Number(yInput.trim());
+                  const parsedZ = Number(zInput.trim());
+                  const currentSpotData: CementSpot = {
                     ...(initialSpot || {}),
                     id: initialSpot?.id || `spot_${Date.now()}`,
                     name,
                     category,
                     icon,
                     color,
-                    x: Number(x) || 0,
-                    y: Number(y) || 0,
-                    z: Number(z) || 30.0,
+                    x: Number.isFinite(parsedX) ? parsedX : 0,
+                    y: Number.isFinite(parsedY) ? parsedY : 0,
+                    z: Number.isFinite(parsedZ) ? parsedZ : 30.0,
                     postal,
                     cooldownMinutes,
+                    yieldDescription: yieldDescription.trim(),
+                    notes: notes.trim(),
+                    tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
+                    createdAt: initialSpot?.createdAt ?? Date.now(),
+                    updatedAt: Date.now(),
                   };
-                  const jsonStr = JSON.stringify(formatSpotToEuclidObject(currentSpotData as any), null, 2);
-                  copyToClipboard(jsonStr);
+                  const jsonStr = JSON.stringify(formatSpotToEuclidObject(currentSpotData), null, 2);
+                  await copyToClipboard(jsonStr);
                   setCopiedSpot(true);
-                  setTimeout(() => setCopiedSpot(false), 2000);
+                  if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+                  copyTimerRef.current = window.setTimeout(() => setCopiedSpot(false), 2000);
                 }}
                 className={`px-3 py-2 text-xs font-medium rounded-xl transition-all border flex items-center gap-1.5 cursor-pointer ${
                   copiedSpot
@@ -1072,13 +845,13 @@ export const PinModal = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+                className="px-6 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
               >
                 บันทึกหมุด
               </button>

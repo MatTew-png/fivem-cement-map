@@ -14,8 +14,8 @@ export const GangWatermark: React.FC<GangWatermarkProps> = ({ memberName, gangNa
   const stampText = `${memberName.toUpperCase()} • ${gang} • ${dateStr} • CONFIDENTIAL`;
 
   return (
-    <div 
-      className="fixed inset-0 pointer-events-none z-[850] overflow-hidden select-none flex flex-col justify-around opacity-[0.065] mix-blend-screen"
+    <div
+      className="fixed inset-0 pointer-events-none z-[700] overflow-hidden select-none flex flex-col justify-around opacity-[0.065] mix-blend-screen"
       aria-hidden="true"
     >
       {[...Array(6)].map((_, rowIdx) => (

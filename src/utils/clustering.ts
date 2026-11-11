@@ -1,48 +1,10 @@
 import L from 'leaflet';
 import type { CementSpot, ActiveCooldown } from '../types/map';
-import { isCementSpot } from '../data/defaultSpots';
 import { gameCoordsToLatLng } from './crs';
+import { getSpotQuickCategory, type QuickCategory } from './spotCategories';
 
-export type QuickCategory = 'cement' | 'race' | 'head_reset' | 'farm' | 'quest' | 'lands' | 'fuel' | 'services';
-
-export function getSpotQuickCategory(spot: CementSpot): QuickCategory {
-  if (isCementSpot(spot)) return 'cement';
-  if (spot.category === 'race' || spot.name.includes('แข่งรถ') || (spot.icon && spot.icon.includes('race_land'))) return 'race';
-  if (
-    spot.category === 'head_reset' ||
-    spot.name.includes('รีหัว') ||
-    spot.name.includes('ร้านเหล้า') ||
-    spot.name.includes('อู่') ||
-    spot.id === 'spot-1788676937650' ||
-    Boolean(spot.icon && spot.icon.includes('radar_bar')) ||
-    Boolean(spot.icon && spot.icon.includes('biker_bar'))
-  ) return 'head_reset';
-  if (
-    spot.category === 'farm' ||
-    spot.category === 'rebel' ||
-    spot.name.includes('ฟาร์ม') ||
-    spot.name.includes('ฟาม') ||
-    spot.name.includes('เรเบล') ||
-    spot.name.includes('โพล') ||
-    spot.name.includes('แพ็ค') ||
-    spot.name.includes('หมู') ||
-    spot.name.includes('ขายหมู') ||
-    spot.name.includes('ขายไม้') ||
-    spot.name.includes('ขายข้าว') ||
-    spot.name.includes('ขายดอกไม้') ||
-    Boolean(spot.icon && spot.icon.includes('contraband')) ||
-    Boolean(spot.icon && spot.icon.includes('crim_cuff_keys')) ||
-    spot.icon === '🌾'
-  ) return 'farm';
-  if (
-    spot.category === 'quest' ||
-    spot.name.includes('เควส') ||
-    (spot.icon && spot.icon.includes('radar_friend'))
-  ) return 'quest';
-  if (spot.category === 'landmark' || spot.name.startsWith('แลน') || (spot.icon && spot.icon.includes('player_king'))) return 'lands';
-  if (spot.category === 'fuel' || spot.name.includes('น้ำมัน') || (spot.icon && spot.icon.includes('jerry_can'))) return 'fuel';
-  return 'services';
-}
+export type { QuickCategory };
+export { getSpotQuickCategory };
 
 export interface ClusterItem {
   id: string;

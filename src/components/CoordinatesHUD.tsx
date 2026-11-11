@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Volume2, VolumeX } from 'lucide-react';
+import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock } from 'lucide-react';
 import { coordsBus } from '../utils/coordsBus';
 
 interface CoordinatesHUDProps {
@@ -20,8 +20,6 @@ interface CoordinatesHUDProps {
   showCementSpots?: boolean;
   onToggleCementSpots?: () => void;
   cementCount?: number;
-  isSoundMuted?: boolean;
-  onToggleSound?: () => void;
 }
 
 export const CoordinatesHUD = memo(({
@@ -42,8 +40,6 @@ export const CoordinatesHUD = memo(({
   showCementSpots = false,
   onToggleCementSpots,
   cementCount,
-  isSoundMuted = false,
-  onToggleSound,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
   const [liveCoords, setLiveCoords] = useState<{ x: number; y: number } | null>(() => coordsBus.getCoords());
@@ -278,31 +274,6 @@ export const CoordinatesHUD = memo(({
           >
             <span>👻</span>
             <span>{isGhostMode ? 'โปร่งแสง (เปิด)' : 'โปร่งแสง'}</span>
-          </button>
-        )}
-
-        {/* Sound Mute/Unmute Toggle (Streamer Mode) */}
-        {onToggleSound && (
-          <button
-            onClick={onToggleSound}
-            title={isSoundMuted ? 'เปิดเสียงเอฟเฟกต์ (ขณะนี้ปิดเสียงโหมดสตรีม)' : 'ปิดเสียงเอฟเฟกต์ (เหมาะสำหรับเปิดตอนสตรีม)'}
-            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] transition-all cursor-pointer ${
-              isSoundMuted
-                ? 'bg-red-500/20 text-red-300 border-red-500/60 font-bold shadow-sm shadow-red-500/20'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            {isSoundMuted ? (
-              <>
-                <VolumeX className="w-3 h-3 text-red-400" />
-                <span>ปิดเสียง (สตรีม)</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-3 h-3 text-emerald-400" />
-                <span>เปิดเสียง</span>
-              </>
-            )}
           </button>
         )}
       </div>

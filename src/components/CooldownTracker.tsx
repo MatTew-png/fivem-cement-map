@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, memo } from 'react';
+import { useEffect, useState, useMemo, useRef, memo } from 'react';
 import { Clock, CheckCircle2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { ActiveCooldown, CementSpot } from '../types/map';
@@ -17,30 +17,38 @@ export const CooldownTracker = memo(({
   onCancelCooldown,
   onFocusSpot,
 }: CooldownTrackerProps) => {
-  const [now, setNow] = useState(Date.now());
-  const [notifiedSpots, setNotifiedSpots] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
+  const notifiedKeysRef = useRef<Set<string>>(new Set());
   const [isMinimized, setIsMinimized] = useState(false);
 
-  // Sort cooldowns ascending by expiresAt (spots closest to completion / already ready come first)
   const sortedCooldowns = useMemo(() => {
     return [...cooldowns].sort((a, b) => a.expiresAt - b.expiresAt);
   }, [cooldowns]);
 
-  // Update timer every second
   useEffect(() => {
-    const timer = setInterval(() => {
+    if (cooldowns.length === 0) {
+      notifiedKeysRef.current.clear();
+      return;
+    }
+    const timer = window.setInterval(() => {
       setNow(Date.now());
     }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    return () => window.clearInterval(timer);
+  }, [cooldowns.length]);
 
-  // Check for expired cooldowns and sound chime
   useEffect(() => {
+    const activeKeys = new Set(cooldowns.map((cd) => `${cd.spotId}:${cd.expiresAt}`));
+    for (const key of Array.from(notifiedKeysRef.current)) {
+      if (!activeKeys.has(key)) {
+        notifiedKeysRef.current.delete(key);
+      }
+    }
+
     cooldowns.forEach((cd) => {
-      if (cd.expiresAt <= now && !notifiedSpots.has(cd.spotId)) {
-        setNotifiedSpots((prev) => new Set(prev).add(cd.spotId));
+      const key = `${cd.spotId}:${cd.expiresAt}`;
+      if (cd.expiresAt <= now && !notifiedKeysRef.current.has(key)) {
+        notifiedKeysRef.current.add(key);
         soundEffects.playCooldownFinished();
-        // Fire celebration confetti
         try {
           confetti({
             particleCount: 40,
@@ -48,21 +56,21 @@ export const CooldownTracker = memo(({
             origin: { y: 0.8 },
           });
         } catch {
-          // ignore
+          // ignore confetti errors in headless browsers
         }
       }
     });
-  }, [now, cooldowns, notifiedSpots]);
+  }, [now, cooldowns]);
 
   if (cooldowns.length === 0) return null;
 
   if (isMinimized) {
     return (
-      <div className="absolute top-20 right-4 z-[800] flex flex-col gap-2 pointer-events-none">
+      <div className="absolute top-20 right-4 z-[850] flex flex-col gap-2 pointer-events-none">
         <button
           type="button"
           onClick={() => setIsMinimized(false)}
-          className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 backdrop-blur-md border border-amber-500/50 text-amber-300 hover:text-white hover:border-amber-400 font-mono font-bold text-xs shadow-xl transition-all active:scale-95"
+          className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 backdrop-blur-md border border-amber-500/50 text-amber-300 hover:text-white hover:border-amber-400 font-mono font-bold text-xs shadow-xl transition-all active:scale-95 cursor-pointer"
         >
           <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
           <span>คูลดาวน์ ({cooldowns.length})</span>
@@ -73,7 +81,7 @@ export const CooldownTracker = memo(({
   }
 
   return (
-    <div className="absolute top-20 right-4 z-[800] w-72 max-w-[calc(100vw-2rem)] flex flex-col gap-2 pointer-events-none">
+    <div className="absolute top-20 right-4 z-[850] w-72 max-w-[calc(100vw-2rem)] flex flex-col gap-2 pointer-events-none">
       <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl pointer-events-auto">
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
@@ -83,7 +91,8 @@ export const CooldownTracker = memo(({
           <button
             type="button"
             onClick={() => setIsMinimized(true)}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="ย่อแถบติดตามคูลดาวน์"
+            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             title="ย่อแถบนี้"
           >
             <ChevronUp className="w-4 h-4" />
@@ -96,7 +105,7 @@ export const CooldownTracker = memo(({
             const displayName = spot?.name || cd.spotName || 'จุดปูน';
 
             const remainingSeconds = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
-            const totalSeconds = cd.durationSeconds;
+            const totalSeconds = Math.max(1, cd.durationSeconds);
             const progress = Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100));
             const isReady = remainingSeconds === 0;
             const isUrgent = remainingSeconds > 0 && remainingSeconds <= 180;
@@ -116,19 +125,29 @@ export const CooldownTracker = memo(({
                     : 'bg-slate-800/70 border-slate-700/60 text-slate-200'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span
-                    onClick={() => spot && onFocusSpot(spot)}
-                    className={`font-medium truncate ${spot ? 'hover:text-amber-400 cursor-pointer' : ''} flex-1 mr-2 flex items-center gap-1`}
-                    title={displayName}
-                  >
-                    {isUrgent && <span>🔥</span>}
-                    <span>{displayName}</span>
-                  </span>
+                <div className="flex items-center justify-between mb-1.5 gap-1">
+                  {spot ? (
+                    <button
+                      type="button"
+                      onClick={() => onFocusSpot(spot)}
+                      className="font-medium truncate hover:text-amber-400 cursor-pointer flex-1 text-left flex items-center gap-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-400 rounded"
+                      title={displayName}
+                    >
+                      {isUrgent && <span aria-hidden="true">🔥</span>}
+                      <span className="truncate">{displayName}</span>
+                    </button>
+                  ) : (
+                    <span className="font-medium truncate flex-1 flex items-center gap-1" title={displayName}>
+                      {isUrgent && <span aria-hidden="true">🔥</span>}
+                      <span className="truncate">{displayName}</span>
+                    </span>
+                  )}
                   <button
+                    type="button"
                     onClick={() => onCancelCooldown(cd.spotId)}
                     title="ยกเลิกการจับเวลา"
-                    className="text-slate-400 hover:text-red-400 p-0.5 rounded transition-colors"
+                    aria-label={`ยกเลิกการจับเวลา ${displayName}`}
+                    className="text-slate-400 hover:text-red-400 p-0.5 rounded transition-colors cursor-pointer shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -142,8 +161,9 @@ export const CooldownTracker = memo(({
                     </span>
                     {spot && (
                       <button
+                        type="button"
                         onClick={() => onFocusSpot(spot)}
-                        className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] hover:bg-emerald-400 transition-colors"
+                        className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] hover:bg-emerald-400 transition-colors cursor-pointer"
                       >
                         ดูจุดนี้
                       </button>
