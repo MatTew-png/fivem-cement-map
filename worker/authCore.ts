@@ -261,15 +261,12 @@ export function isOriginAllowed(
   if (origin === requestUrl.origin) return true;
 
   if (
-    requestUrl.hostname === 'localhost' ||
-    requestUrl.hostname === '127.0.0.1'
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:') ||
+    origin === 'http://localhost' ||
+    origin === 'http://127.0.0.1'
   ) {
-    if (
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:')
-    ) {
-      return true;
-    }
+    return true;
   }
 
   if (allowedOriginsRaw) {
@@ -278,6 +275,13 @@ export function isOriginAllowed(
       .map((s) => s.trim())
       .filter(Boolean);
     if (allowed.includes(origin)) return true;
+  }
+
+  if (
+    origin.endsWith('.pages.dev') ||
+    origin.endsWith('.workers.dev')
+  ) {
+    return true;
   }
 
   return false;

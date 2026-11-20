@@ -1,4 +1,5 @@
 import type { GangSession } from './gangAuth';
+import { getApiEndpoint } from './gangAuth';
 
 export interface IpLogEntry {
   id: string;
@@ -49,7 +50,7 @@ function mapEventToAction(event: string): IpLogEntry['action'] {
 
 export async function detectClientIp(): Promise<IpInfo> {
   try {
-    const res = await fetch('/api/my-ip', { cache: 'no-store' });
+    const res = await fetch(getApiEndpoint('/api/my-ip'), { cache: 'no-store' });
     if (!res.ok) return { ip: 'unknown' };
     const data = (await res.json()) as IpInfo;
     return {
@@ -69,7 +70,7 @@ export async function reportVisitToServer(
   branchId = 'unauthenticated'
 ): Promise<{ banned: boolean; banReason?: string | null; ip: string; city?: string; country?: string }> {
   try {
-    const res = await fetch('/api/security/visit', {
+    const res = await fetch(getApiEndpoint('/api/security/visit'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberName, branchId }),
@@ -98,7 +99,7 @@ export async function fetchSecuritySnapshot(session: GangSession): Promise<Secur
     throw new Error('Forbidden');
   }
 
-  const res = await fetch('/api/security/logs', {
+  const res = await fetch(getApiEndpoint('/api/security/logs'), {
     headers: { Authorization: `Bearer ${session.token}` },
     cache: 'no-store',
   });
@@ -151,7 +152,7 @@ export async function banIpOnServer(
   if (!session.isMaster || !session.token) {
     throw new Error('Forbidden');
   }
-  const res = await fetch('/api/security/ban', {
+  const res = await fetch(getApiEndpoint('/api/security/ban'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -170,7 +171,7 @@ export async function unbanIpOnServer(session: GangSession, ip: string): Promise
   if (!session.isMaster || !session.token) {
     throw new Error('Forbidden');
   }
-  const res = await fetch('/api/security/unban', {
+  const res = await fetch(getApiEndpoint('/api/security/unban'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -192,7 +193,7 @@ export async function saveDiscordWebhookOnServer(
   if (!session.isMaster || !session.token) {
     throw new Error('Forbidden');
   }
-  const res = await fetch('/api/security/webhook', {
+  const res = await fetch(getApiEndpoint('/api/security/webhook'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

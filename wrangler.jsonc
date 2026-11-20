@@ -9,6 +9,12 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "vars": {
+    "MASTER_PIN": "222547",
+    "GANG_SECRET_SEED": "RUNTHUKVERB_GANG_SECRET_KEY_2026",
+    "SESSION_SECRET": "RUNTHUKVERB_GANG_SECRET_KEY_2026_SESSION_HMAC",
+    "ALLOWED_ORIGINS": "https://runthukverb-supply.pages.dev,https://runthukverb-auth-api.jansanga-new.workers.dev"
+  },
   "observability": {
     "enabled": true
   }
