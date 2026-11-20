@@ -42,6 +42,7 @@ interface SidebarProps {
   gangName?: string;
   onCopyGangLink?: () => void;
   isMaster?: boolean;
+  onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
 type FilterTab = 'all' | 'dealers' | 'cement' | 'race' | 'head_reset' | 'farm' | 'quest' | 'fuel' | 'urgent' | 'landmarks';
@@ -69,6 +70,7 @@ export const Sidebar = memo(({
   gangName = 'สาขา 1',
   onCopyGangLink,
   isMaster = false,
+  onStartMoveSpot,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<FilterTab>('all');
@@ -301,6 +303,7 @@ export const Sidebar = memo(({
         }}
         onChangeCustomMinutes={setCustomMinutesInput}
         onSearchTag={(tag) => setSearchQuery(tag)}
+        onStartMoveSpot={onStartMoveSpot}
       />
     );
   };

@@ -9,6 +9,7 @@ import {
   X,
   Copy,
   Check,
+  Compass,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { isCementSpot } from '../utils/spotCategories';
@@ -31,6 +32,7 @@ interface MagicSpotCardProps {
   onToggleCooldownPicker: (spotId: string) => void;
   onChangeCustomMinutes: (val: string) => void;
   onSearchTag: (tag: string) => void;
+  onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
 export const MagicSpotCard = memo(({
@@ -49,6 +51,7 @@ export const MagicSpotCard = memo(({
   onToggleCooldownPicker,
   onChangeCustomMinutes,
   onSearchTag,
+  onStartMoveSpot,
 }: MagicSpotCardProps) => {
   const [mousePos, setMousePos] = useState({ x: -999, y: -999 });
   const [isHovered, setIsHovered] = useState(false);
@@ -245,6 +248,21 @@ export const MagicSpotCard = memo(({
           >
             <Clock className="w-3 h-3" />
           </button>
+
+          {/* Quick Move Trigger when Selected */}
+          {isSelected && onStartMoveSpot && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartMoveSpot(spot);
+              }}
+              className="p-1 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/20"
+              title="ย้ายตำแหน่งหมุดนี้"
+            >
+              <Compass className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -457,6 +475,22 @@ export const MagicSpotCard = memo(({
               <Copy className="w-3.5 h-3.5" />
             )}
           </button>
+
+          {/* Move Spot Button */}
+          {onStartMoveSpot && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartMoveSpot(spot);
+              }}
+              title="ย้ายตำแหน่งหมุดนี้ (คลิกบนแผนที่หรือลากตัวหมุด)"
+              aria-label={`ย้ายตำแหน่ง ${spot.name}`}
+              className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer"
+            >
+              <Compass className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {/* Edit Button */}
           <button

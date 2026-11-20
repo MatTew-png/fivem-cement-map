@@ -1,6 +1,7 @@
 import { useState, useEffect, memo } from 'react';
-import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock } from 'lucide-react';
+import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Compass } from 'lucide-react';
 import { coordsBus } from '../utils/coordsBus';
+import type { CementSpot } from '../types/map';
 
 interface CoordinatesHUDProps {
   cursorCoords?: { x: number; y: number } | null;
@@ -20,6 +21,9 @@ interface CoordinatesHUDProps {
   showCementSpots?: boolean;
   onToggleCementSpots?: () => void;
   cementCount?: number;
+  selectedSpot?: CementSpot | null;
+  movingSpot?: CementSpot | null;
+  onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
 export const CoordinatesHUD = memo(({
@@ -40,6 +44,9 @@ export const CoordinatesHUD = memo(({
   showCementSpots = false,
   onToggleCementSpots,
   cementCount,
+  selectedSpot,
+  movingSpot,
+  onStartMoveSpot,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
   const [liveCoords, setLiveCoords] = useState<{ x: number; y: number } | null>(() => coordsBus.getCoords());
@@ -162,6 +169,18 @@ export const CoordinatesHUD = memo(({
 
       {/* 3. Action Buttons (Rock-solid position, zero jitter) */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {/* Move Selected Spot Button */}
+        {selectedSpot && !movingSpot && onStartMoveSpot && (
+          <button
+            onClick={() => onStartMoveSpot(selectedSpot)}
+            title={`ย้ายตำแหน่งหมุด "${selectedSpot.name}" บนแผนที่`}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold transition-all shadow-md shadow-amber-500/20 cursor-pointer animate-in fade-in"
+          >
+            <Compass className="w-3 h-3 text-amber-400" />
+            <span>ย้ายตำแหน่งหมุด</span>
+          </button>
+        )}
+
         {/* Lock Coordinates Toggle (Space Shortcut) */}
         {onToggleLockCoords && (
           <button

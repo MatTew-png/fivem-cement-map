@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Crown, Tag, Copy, FileText, Package } from 'lucide-react';
+import { X, Clock, Hash, Sparkles, ClipboardPaste, Check, Lock, Unlock, Crown, Tag, Copy, FileText, Package, Compass } from 'lucide-react';
 import type { CementSpot } from '../types/map';
 import { DEFAULT_SPOTS } from '../data/defaultSpots';
 import { isCementSpot, SPOT_TYPES } from '../utils/spotCategories';
@@ -20,6 +20,7 @@ interface PinModalProps {
   initialSpot?: Partial<CementSpot> | null;
   onDelete?: (id: string) => void;
   isMaster?: boolean;
+  onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
 const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
@@ -31,9 +32,11 @@ export const PinModal = ({
   initialSpot,
   onDelete,
   isMaster = false,
+  onStartMoveSpot,
 }: PinModalProps) => {
   const isOfficial = Boolean(initialSpot?.id && officialSpotIds.has(initialSpot.id));
-  const coordsLocked = isOfficial && !isMaster;
+  const [isCoordsOverrideUnlocked, setIsCoordsOverrideUnlocked] = useState(false);
+  const coordsLocked = isOfficial && !isMaster && !isCoordsOverrideUnlocked;
 
   const [category, setCategory] = useState<string>('cement_mine');
   const [name, setName] = useState('');
@@ -274,11 +277,16 @@ export const PinModal = ({
                 <h2 id="pin-modal-title" className="text-base font-bold text-white tracking-wide">
                   {initialSpot?.id ? 'แก้ไขหมุดมาร์คเกอร์' : 'สร้างหมุดใหม่บนแผนที่'}
                 </h2>
-                {isOfficial && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-semibold">
-                    <Lock className="w-3 h-3 text-amber-400" />
-                    <span>จุดหลักของแก๊ง</span>
-                  </span>
+                {isOfficial && !isMaster && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCoordsOverrideUnlocked((prev) => !prev)}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+                    title="คลิกเพื่อปลดล็อคให้สามารถแก้ไขพิกัดหมุดทางการได้"
+                  >
+                    {coordsLocked ? <Lock className="w-3 h-3 text-amber-400" /> : <Unlock className="w-3 h-3 text-emerald-400" />}
+                    <span>{coordsLocked ? 'จุดหลัก (คลิกปลดล็อคพิกัด)' : 'ปลดล็อคพิกัดแล้ว'}</span>
+                  </button>
                 )}
                 {isOfficial && isMaster && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1 font-bold">
@@ -289,7 +297,7 @@ export const PinModal = ({
               </div>
               <p className="text-xs text-slate-400">
                 {coordsLocked
-                  ? 'หมุดหลักทางการของแก๊ง พิกัดจะถูกล็อคไว้เพื่อความปลอดภัย'
+                  ? 'หมุดหลักทางการของแก๊ง (คลิกปุ่มด้านบนเพื่อปลดล็อคพิกัด)'
                   : 'ตั้งชื่อหมุดและเลือกไอคอนตามต้องการได้อย่างอิสระ'}
               </p>
             </div>
@@ -839,6 +847,28 @@ export const PinModal = ({
                   </>
                 )}
               </button>
+
+              {initialSpot?.id && onStartMoveSpot && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentSpotData = {
+                      ...(initialSpot as CementSpot),
+                      name: name.trim() || initialSpot.name || 'หมุดไม่มีชื่อ',
+                      category,
+                      icon,
+                      color,
+                    };
+                    onClose();
+                    onStartMoveSpot(currentSpotData);
+                  }}
+                  className="px-3 py-2 text-xs font-semibold rounded-xl transition-all border flex items-center gap-1.5 cursor-pointer bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-sm"
+                  title="ปิดหน้าต่างนี้และย้ายตำแหน่งบนแผนที่ด้วยการคลิกหรือลาก"
+                >
+                  <Compass className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ย้ายตำแหน่งบนแผนที่</span>
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

@@ -6,7 +6,7 @@ import { GtaCrosshair } from './components/GtaCrosshair';
 import { DistanceTool, type RouteSegment } from './components/DistanceTool';
 import { MapQuickFilters } from './components/MapQuickFilters';
 import { ConfirmModal } from './components/ConfirmModal';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, Check, X, Crosshair } from 'lucide-react';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from './types/map';
 import { gtaRoadRouter } from './utils/gtaRouter';
 import { DEFAULT_SPOTS, MAP_LAYERS } from './data/defaultSpots';
@@ -214,6 +214,7 @@ export function App() {
   const [isExportImportOpen, setIsExportImportOpen] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(null);
+  const [movingSpot, setMovingSpot] = useState<CementSpot | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('fivem_map_sidebar_collapsed') === 'true';
@@ -752,6 +753,7 @@ export function App() {
     setSpots(nextSpots);
     setActiveCooldowns((prev) => prev.filter((c) => c.spotId !== id));
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
+    setMovingSpot((prev) => (prev?.id === id ? null : prev));
     gangPresence.broadcastSpotChange('delete', undefined, id);
 
     // อัปเดตชุดหมุดบน HiveMQ Retained Topic ทันที
@@ -775,11 +777,35 @@ export function App() {
     spotsRef.current = nextSpots;
     setSpots(nextSpots);
     setSelectedSpot((prev) => (prev?.id === spotId ? movedSpot! : prev));
+    setMovingSpot((prev) => (prev?.id === spotId ? movedSpot! : prev));
     gangPresence.broadcastSpotChange('move', movedSpot);
     const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
     const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
     gangPresence.broadcastSpotManifest(customSpots);
   }, []);
+
+  const handleStartMoveSpot = useCallback((spot: CementSpot) => {
+    setMovingSpot(spot);
+    setSelectedSpot(spot);
+    soundEffects.playPinPlaced();
+  }, []);
+
+  const handleFinishMovingSpot = useCallback(() => {
+    if (movingSpot) {
+      soundEffects.playPinPlaced();
+    }
+    setMovingSpot(null);
+  }, [movingSpot]);
+
+  const handleCancelMovingSpot = useCallback(() => {
+    setMovingSpot(null);
+  }, []);
+
+  const handleMoveSpotToCrosshair = useCallback(() => {
+    if (!movingSpot) return;
+    handleSpotMoved(movingSpot.id, mapCenterCoords);
+    soundEffects.playPinPlaced();
+  }, [movingSpot, mapCenterCoords, handleSpotMoved]);
 
   const handlePinAtCrosshair = useCallback(() => {
     handleMapClickToCreatePin(mapCenterCoords);
@@ -807,9 +833,13 @@ export function App() {
     }
   }, [lockedCoords, handleMapClickToCreatePin]);
 
-  // Spacebar hotkey to toggle coordinate lock
+  // Spacebar hotkey to toggle coordinate lock & Escape to cancel moving
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && movingSpot) {
+        setMovingSpot(null);
+        return;
+      }
       if (e.code === 'Space') {
         const activeEl = document.activeElement;
         const tag = activeEl?.tagName;
@@ -822,7 +852,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleLockCoords, isPinModalOpen, isExportImportOpen]);
+  }, [handleToggleLockCoords, isPinModalOpen, isExportImportOpen, movingSpot]);
 
   // Cooldown handlers
   const handleStartCooldown = useCallback((spot: CementSpot, customMinutes?: number) => {
@@ -1039,6 +1069,7 @@ export function App() {
           gangName={gangSession.gangName || 'สาขา 1'}
           onCopyGangLink={handleCopyGangLink}
           isMaster={gangSession.isMaster}
+          onStartMoveSpot={handleStartMoveSpot}
         />
       </Suspense>
 
@@ -1058,6 +1089,56 @@ export function App() {
           counts={categoryCounts}
           sidebarCollapsed={sidebarCollapsed}
         />
+
+        {/* Floating Moving Spot HUD Banner */}
+        {movingSpot && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-slate-900/95 border border-amber-500/80 shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-4 select-none">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+              </span>
+              <span className="text-xs font-bold text-amber-300">
+                โหมดย้ายตำแหน่งหมุด: <strong className="text-white font-extrabold">{movingSpot.name}</strong>
+              </span>
+            </div>
+
+            <span className="text-[11px] text-slate-300 hidden md:inline shrink-0">
+              👉 คลิกบนแผนที่ หรือลากหมุด
+            </span>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {showCrosshair && (
+                <button
+                  type="button"
+                  onClick={handleMoveSpotToCrosshair}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1 transition-all shadow-md cursor-pointer"
+                  title="ย้ายหมุดมาที่จุดตัดเป้าเล็งกลางจอทันที"
+                >
+                  <Crosshair className="w-3.5 h-3.5" />
+                  <span>วางตรงเป้า</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleFinishMovingSpot}
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-md cursor-pointer"
+                title="เสร็จสิ้นการย้ายตำแหน่ง"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>เสร็จสิ้น</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelMovingSpot}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition-all cursor-pointer"
+                title="ยกเลิกการย้ายตำแหน่ง (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Leaflet Map Engine (Lazy Loaded after Auth) */}
         <Suspense
@@ -1080,6 +1161,8 @@ export function App() {
             onCancelCooldown={handleCancelCooldown}
             onSpotMoved={handleSpotMoved}
             selectedSpot={selectedSpot}
+            movingSpot={movingSpot}
+            onStartMoveSpot={handleStartMoveSpot}
             sidebarCollapsed={sidebarCollapsed}
             isCompactMode={isCompactMode}
             isGhostMode={isGhostMode}
@@ -1178,6 +1261,9 @@ export function App() {
           showCementSpots={showCementSpots}
           onToggleCementSpots={handleToggleCementSpots}
           cementCount={cementCount}
+          selectedSpot={selectedSpot}
+          movingSpot={movingSpot}
+          onStartMoveSpot={handleStartMoveSpot}
         />
       </main>
 
@@ -1194,6 +1280,7 @@ export function App() {
             initialSpot={editingSpot}
             onDelete={handleDeleteSpot}
             isMaster={gangSession.isMaster}
+            onStartMoveSpot={handleStartMoveSpot}
           />
         </Suspense>
       )}

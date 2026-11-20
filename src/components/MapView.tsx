@@ -9,7 +9,7 @@ import {
   MAP_MAX_BOUNDS,
 } from '../utils/crs';
 import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from '../types/map';
-import { MAP_LAYERS, DEFAULT_SPOTS } from '../data/defaultSpots';
+import { MAP_LAYERS } from '../data/defaultSpots';
 import { soundEffects } from '../utils/sound';
 import { coordsBus } from '../utils/coordsBus';
 import { escapeHtml } from '../utils/html';
@@ -17,9 +17,6 @@ import { getSpotCategoryInfo } from '../utils/spotCategories';
 import { renderSpotIconHtml } from '../utils/spotIcons';
 import { computeClusters, createClusterDivIcon, type ClusterItem } from '../utils/clustering';
 import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
-
-const officialSpotIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-const isOfficialSpot = (spot: CementSpot) => officialSpotIds.has(spot.id);
 
 interface MapViewProps {
   spots: CementSpot[];
@@ -54,6 +51,8 @@ interface MapViewProps {
   isClusteringEnabled?: boolean;
   onFocusSpot?: (spot: CementSpot) => void;
   onClearSelection?: () => void;
+  movingSpot?: CementSpot | null;
+  onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
 // Helper to generate marker icon with cooldown badge
@@ -62,7 +61,8 @@ function getMarkerIcon(
   isCurrentSelected: boolean,
   isCompactMode: boolean,
   isGhostMode: boolean,
-  activeCd?: ActiveCooldown
+  activeCd?: ActiveCooldown,
+  isMovingThisSpot: boolean = false
 ): L.DivIcon {
   const cat = getSpotCategoryInfo(spot);
   const now = Date.now();
@@ -92,8 +92,10 @@ function getMarkerIcon(
     iconSize = [28, 28];
     iconAnchor = [14, 14];
     markerHtml = `
-      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 28px; height: 28px;">
-        ${isUrgent ? `
+      <div class="custom-compact-marker relative cursor-pointer flex items-center justify-center ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 28px; height: 28px; cursor: ${isMovingThisSpot ? 'grab' : 'pointer'};">
+        ${isMovingThisSpot ? `
+          <div class="marker-urgent-pulse-ring pointer-events-none" style="border: 2px dashed #f59e0b; width: 36px; height: 36px; margin-top: -18px; margin-left: -18px;"></div>
+        ` : isUrgent ? `
           <div class="marker-urgent-pulse-ring pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
           <div class="marker-urgent-pulse-ring-delayed pointer-events-none" style="width: 34px; height: 34px; margin-top: -17px; margin-left: -17px;"></div>
         ` : isReady ? `
@@ -104,15 +106,19 @@ function getMarkerIcon(
         <div 
           class="blip-sprite-inner flex items-center justify-center transition-transform duration-150 hover:scale-125 pointer-events-auto select-none"
           style="
-            transform: ${isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
-            filter: ${isCurrentSelected ? 'drop-shadow(0 0 6px #ffffff) drop-shadow(0 2px 5px rgba(0,0,0,0.95))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.85))'};
+            transform: ${isMovingThisSpot ? 'scale(1.4)' : isCurrentSelected ? 'scale(1.35)' : 'scale(1)'};
+            filter: ${isMovingThisSpot ? 'drop-shadow(0 0 8px #f59e0b) drop-shadow(0 2px 5px rgba(0,0,0,0.95))' : isCurrentSelected ? 'drop-shadow(0 0 6px #ffffff) drop-shadow(0 2px 5px rgba(0,0,0,0.95))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.85))'};
             line-height: 1;
           "
           title="[${safeCatName}] ${safeSpotName} (${spot.x}, ${spot.y})"
         >
           ${renderSpotIconHtml(spotIcon, 'w-[24px] h-[24px]')}
         </div>
-        ${isUrgent ? `
+        ${isMovingThisSpot ? `
+          <div class="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-40 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black font-sans text-[10px] shadow-lg shadow-amber-500/80 border border-yellow-200 animate-bounce">
+            <span>🧭 ย้ายพิกัด</span>
+          </div>
+        ` : isUrgent ? `
           <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-mono font-black text-[10px] shadow-lg shadow-red-600/70 border border-yellow-200 animate-pulse">
             <span>🔥</span>
             <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
@@ -131,8 +137,10 @@ function getMarkerIcon(
     `;
   } else {
     markerHtml = `
-      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 42px; height: 48px;">
-        ${isUrgent ? `
+      <div class="custom-pin-marker relative cursor-pointer ${isUrgent ? 'urgent-pin-highlight' : ''} ${ghostClass}" data-spot-id="${safeSpotId}" style="width: 42px; height: 48px; cursor: ${isMovingThisSpot ? 'grab' : 'pointer'};">
+        ${isMovingThisSpot ? `
+          <div class="marker-urgent-pulse-ring pointer-events-none" style="border: 2px dashed #f59e0b; width: 44px; height: 44px; margin-top: -22px; margin-left: -22px;"></div>
+        ` : isUrgent ? `
           <div class="marker-urgent-pulse-ring pointer-events-none"></div>
           <div class="marker-urgent-pulse-ring-delayed pointer-events-none"></div>
         ` : isReady ? `
@@ -141,7 +149,11 @@ function getMarkerIcon(
           <div class="marker-pulse-ring pointer-events-none" style="border: 2px solid ${safeSpotColor};"></div>
         ` : ''}
 
-        ${isUrgent ? `
+        ${isMovingThisSpot ? `
+          <div class="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap z-40 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black font-sans text-[10px] shadow-lg shadow-amber-500/80 border border-yellow-200 animate-bounce">
+            <span>🧭 ย้ายพิกัด</span>
+          </div>
+        ` : isUrgent ? `
           <div id="marker-cd-badge-${safeSpotId}" class="marker-cd-badge pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-30 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 text-white font-black font-mono text-[10px] shadow-lg shadow-red-600/80 border border-yellow-200 animate-pulse">
             <span>🔥</span>
             <span id="marker-cd-text-${safeSpotId}">${cdTimeStr}</span>
@@ -162,9 +174,9 @@ function getMarkerIcon(
             class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-xl border-2 transition-transform duration-200"
             style="
               background-color: ${isUrgent ? '#ef4444' : safeSpotColor};
-              border-color: ${isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
-              transform: ${isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
-              box-shadow: ${isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
+              border-color: ${isMovingThisSpot ? '#f59e0b' : isUrgent ? '#fde047' : isCurrentSelected ? '#ffffff' : '#0f172a'};
+              transform: ${isMovingThisSpot ? 'scale(1.3)' : isCurrentSelected || isUrgent ? 'scale(1.2)' : 'scale(1)'};
+              box-shadow: ${isMovingThisSpot ? '0 0 16px rgba(245, 158, 11, 0.9)' : isUrgent ? '0 0 16px rgba(239, 68, 68, 0.9)' : '0 4px 12px rgba(0,0,0,0.5)'};
               font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
               line-height: 1;
             "
@@ -202,6 +214,7 @@ function createPopupNode(
     isDistanceMode?: boolean;
     distancePoints?: DistancePoint[];
     onClearSelection?: () => void;
+    onStartMoveSpot?: (spot: CementSpot) => void;
   }>,
   marker: L.Marker
 ): HTMLElement {
@@ -306,6 +319,15 @@ function createPopupNode(
             <span>📋</span>
             <span>คัดลอกหมุด</span>
           </button>
+          <button 
+            type="button"
+            data-popup-action="move-pin"
+            class="py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/35 flex items-center gap-1 cursor-pointer"
+            title="ย้ายตำแหน่งหมุดนี้ไปยังจุดใหม่ (คลิกบนแผนที่หรือลากหมุด)"
+          >
+            <span>🧭</span>
+            <span>ย้ายตำแหน่ง</span>
+          </button>
         </div>
         <button 
           type="button"
@@ -406,6 +428,15 @@ function createPopupNode(
           >
             <span>📋</span>
             <span>คัดลอกหมุด</span>
+          </button>
+          <button 
+            type="button"
+            data-popup-action="move-pin"
+            class="py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/35 flex items-center gap-1 cursor-pointer"
+            title="ย้ายตำแหน่งหมุดนี้ไปยังจุดใหม่ (คลิกบนแผนที่หรือลากหมุด)"
+          >
+            <span>🧭</span>
+            <span>ย้ายตำแหน่ง</span>
           </button>
           ${callbacksRef.current.isDistanceMode && callbacksRef.current.distancePoints && callbacksRef.current.distancePoints.length >= 1 && callbacksRef.current.distancePoints[0].spotId !== spot.id ? `
             <button 
@@ -547,6 +578,10 @@ function createPopupNode(
   bindAction('edit', () => {
     callbacksRef.current.onEditSpot(spot);
     marker.closePopup();
+  });
+  bindAction('move-pin', () => {
+    marker.closePopup();
+    callbacksRef.current.onStartMoveSpot?.(spot);
   });
 
   popupNode.tabIndex = 0;
@@ -693,6 +728,8 @@ export const MapView = memo(({
   isClusteringEnabled = true,
   onFocusSpot,
   onClearSelection,
+  movingSpot,
+  onStartMoveSpot,
 }: MapViewProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -733,6 +770,8 @@ export const MapView = memo(({
     onStartMeasureFromSpot,
     onFocusSpot,
     onClearSelection,
+    movingSpot,
+    onStartMoveSpot,
     activeCooldowns,
     spotsById: new Map<string, CementSpot>(),
   });
@@ -761,6 +800,8 @@ export const MapView = memo(({
       onStartMeasureFromSpot,
       onFocusSpot,
       onClearSelection,
+      movingSpot,
+      onStartMoveSpot,
       activeCooldowns,
       spotsById: spotsMap,
     };
@@ -988,6 +1029,13 @@ export const MapView = memo(({
         return;
       }
 
+      if (callbacksRef.current.movingSpot) {
+        const coords = latLngToGameCoords(e.latlng);
+        callbacksRef.current.onSpotMoved?.(callbacksRef.current.movingSpot.id, coords);
+        soundEffects.playPinPlaced();
+        return;
+      }
+
       map.closePopup();
       callbacksRef.current.onClearSelection?.();
 
@@ -1048,6 +1096,7 @@ export const MapView = memo(({
   }, [mapReady, isGhostMode]);
 
   const selectedSpotId = selectedSpot?.id ?? null;
+  const movingSpotId = movingSpot?.id ?? null;
 
   // Synchronize Markers & Clusters on Map (only when spots, clusters, mode, or selection changes)
   useEffect(() => {
@@ -1095,9 +1144,11 @@ export const MapView = memo(({
         const spotId = spot.id;
         const latlng = item.latlng;
         const isCurrentSelected = selectedSpotId === spotId;
+        const isMovingThisSpot = movingSpotId === spotId;
         const activeCd = activeCooldowns.find((c) => c.spotId === spotId);
-        const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd);
-        const zIndexOffset = isCurrentSelected ? 2000 : activeCd ? 300 : 0;
+        const icon = getMarkerIcon(spot, isCurrentSelected, isCompactMode, isGhostMode, activeCd, isMovingThisSpot);
+        const zIndexOffset = isMovingThisSpot ? 5000 : isCurrentSelected ? 2000 : activeCd ? 300 : 0;
+        const canDrag = isMovingThisSpot || isCurrentSelected;
 
         const existing = markersMapRef.current.get(spotId);
         if (existing) {
@@ -1108,18 +1159,18 @@ export const MapView = memo(({
           existing.setIcon(icon);
           existing.setZIndexOffset(existing.isPopupOpen() ? 3500 : zIndexOffset);
 
-          if (existing.isPopupOpen()) {
+          if (isMovingThisSpot && existing.isPopupOpen()) {
+            existing.closePopup();
+          } else if (existing.isPopupOpen()) {
             existing.setPopupContent(createPopupNode(spot, activeCd, callbacksRef, existing));
           }
 
-          const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
           if (canDrag) {
             if (!existing.dragging?.enabled()) existing.dragging?.enable();
           } else {
             if (existing.dragging?.enabled()) existing.dragging?.disable();
           }
         } else {
-          const canDrag = isCurrentSelected && (!isOfficialSpot(spot) || isMaster);
           const marker = L.marker(latlng, {
             icon,
             draggable: canDrag,
@@ -1178,10 +1229,15 @@ export const MapView = memo(({
           marker.on('popupclose', () => {
             const currentCd = activeCooldownsRef.current.find((c) => c.spotId === spotId);
             const isSelected = selectedSpotRef.current?.id === spotId;
-            marker.setZIndexOffset(isSelected ? 2000 : currentCd ? 300 : 0);
-            if (isSelected) {
+            const isMoving = callbacksRef.current.movingSpot?.id === spotId;
+            marker.setZIndexOffset(isMoving ? 5000 : isSelected ? 2000 : currentCd ? 300 : 0);
+            if (isSelected && !isMoving) {
               callbacksRef.current.onClearSelection?.();
             }
+          });
+
+          marker.on('dragstart', () => {
+            if (marker.isPopupOpen()) marker.closePopup();
           });
 
           marker.on('dragend', () => {
@@ -1268,6 +1324,7 @@ export const MapView = memo(({
     mapReady,
     spots,
     selectedSpotId,
+    movingSpotId,
     isCompactMode,
     isGhostMode,
     isMaster,
