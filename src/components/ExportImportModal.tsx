@@ -192,7 +192,7 @@ export const ExportImportModal = ({
               <h2 id="export-import-modal-title" className="text-base font-bold text-white">
                 จัดการและแชร์ข้อมูลหมุด
               </h2>
-              <p className="text-xs text-slate-400">นำเข้า JSON{isMaster ? ' / ส่งออกข้อมูล / แปลง FiveM Lua' : ' เพิ่มจุดสำหรับสาขา'}</p>
+              <p className="text-xs text-slate-400">นำเข้า JSON{isMaster ? ' / ส่งออกข้อมูล / แปลง FiveM Lua' : ' เพิ่มจุดสำหรับกลุ่ม'}</p>
             </div>
           </div>
           <button
@@ -576,7 +576,7 @@ export const ExportImportModal = ({
               {backups.length === 0 ? (
                 <div className="py-10 text-center text-slate-500 text-xs">
                   <History className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p>ยังไม่มีประวัติสำรองข้อมูลสำหรับสาขานี้</p>
+                  <p>ยังไม่มีประวัติสำรองข้อมูลสำหรับกลุ่มนี้</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">

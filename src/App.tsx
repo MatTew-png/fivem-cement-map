@@ -33,7 +33,7 @@ import { gangPresence, type OnlineMember, type GangNotification } from './utils/
 import {
   getGangSession,
   logoutGang,
-  parseBranch,
+  switchMasterBranchSession,
   verifySessionWithServer,
   type GangSession,
   type ActivityLog,
@@ -290,20 +290,32 @@ export function App() {
   }, [gangSession?.gangId]);
 
   const handleCopyGangLink = useCallback(() => {
-    const branch = parseBranch(gangSession?.gangId || gangSession?.gangName);
     const origin =
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin
-        : 'https://runthukverb-auth-api.workers.dev';
-    const link = `${origin}/?branch=${branch.num}`;
-    navigator.clipboard.writeText(link).catch(() => {});
+        : 'https://runthukverb-cement-cooldown.pages.dev';
+    navigator.clipboard.writeText(origin).catch(() => {});
     gangPresence.triggerNotification({
       type: 'spot_add',
-      title: 'คัดลอกลิงก์สาขาแล้ว!',
-      subtitle: `ส่งลิงก์ ${branch.name} (${link}) ให้เพื่อนเข้าได้ทันที`,
+      title: 'คัดลอกลิงก์แผนที่แล้ว!',
+      subtitle: `ส่งลิงก์ (${origin}) ให้สมาชิกกลุ่มเข้าใช้งานด้วยรหัสประจำวันได้ทันที`,
       icon: '🔗',
     });
-  }, [gangSession?.gangId, gangSession?.gangName]);
+  }, []);
+
+  const handleSwitchMasterBranch = useCallback((branchId: string) => {
+    setGangSession((prev) => {
+      if (!prev || !prev.isMaster) return prev;
+      const next = switchMasterBranchSession(prev, branchId);
+      const branchSpots = loadSpotsFromStorage(next.gangId);
+      const resolvedSpots = branchSpots && branchSpots.length > 0 ? branchSpots : DEFAULT_SPOTS;
+      spotsRef.current = resolvedSpots;
+      setSpots(resolvedSpots);
+      setActiveCooldowns(loadCooldownsFromStorage(next.gangId));
+      setSelectedSpot(null);
+      return next;
+    });
+  }, []);
 
   // State: IP Security & Ban Detection
   const [isBannedClient, setIsBannedClient] = useState(false);
@@ -1164,7 +1176,7 @@ export function App() {
       {/* Subtle Dynamic Watermark Overlay (Anti-Screenshot/Leak) */}
       <GangWatermark
         memberName={gangSession.memberName}
-        gangName={gangSession.gangName}
+        gangName={gangSession.isMaster ? gangSession.gangName : 'COOLDOWN MAP'}
         authDate={gangSession.authDate}
       />
 
@@ -1196,9 +1208,11 @@ export function App() {
           onOpenPresence={() => setIsPresenceModalOpen(true)}
           onOpenBento={() => setIsBentoModalOpen(true)}
           memberName={gangSession.memberName}
-          gangName={gangSession.gangName || 'สาขา 1'}
+          gangId={gangSession.gangId}
+          gangName={gangSession.isMaster ? (gangSession.gangName || 'กลุ่ม 1 (Master)') : 'สมาชิกกลุ่ม'}
           onCopyGangLink={handleCopyGangLink}
           isMaster={gangSession.isMaster}
+          onSwitchMasterBranch={gangSession.isMaster ? handleSwitchMasterBranch : undefined}
           onStartMoveSpot={handleStartMoveSpot}
         />
       </Suspense>
@@ -1465,6 +1479,7 @@ export function App() {
             onlineMembers={onlineMembers}
             activityLogs={activityLogs}
             currentSession={gangSession}
+            onSwitchMasterBranch={gangSession.isMaster ? handleSwitchMasterBranch : undefined}
             onLogout={() => {
               logoutGang(gangSession.gangId);
               gangPresence.stop();

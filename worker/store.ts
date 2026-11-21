@@ -267,7 +267,7 @@ export async function sendDiscordSecurityAlert(
         color: isDanger ? 0xef4444 : log.event === 'login' ? 0x10b981 : 0x3b82f6,
         fields: [
           { name: 'สมาชิก / ชื่อ', value: log.memberName || 'ไม่ระบุ', inline: true },
-          { name: 'สาขา', value: log.branchId || 'ไม่ระบุ', inline: true },
+          { name: 'กลุ่ม', value: log.branchId || 'ไม่ระบุ', inline: true },
           { name: 'IP Address', value: `\`${log.ip}\``, inline: true },
           {
             name: 'พิกัดคร่าวๆ',

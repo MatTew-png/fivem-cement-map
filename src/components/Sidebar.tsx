@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { getSpotQuickCategory } from '../utils/spotCategories';
+import { AVAILABLE_BRANCHES, parseBranch } from '../utils/gangAuth';
 import { MagicSpotCard } from './MagicSpotCard';
 
 interface SidebarProps {
@@ -39,9 +40,11 @@ interface SidebarProps {
   onOpenPresence?: () => void;
   onOpenBento?: () => void;
   memberName?: string;
+  gangId?: string;
   gangName?: string;
   onCopyGangLink?: () => void;
   isMaster?: boolean;
+  onSwitchMasterBranch?: (branchId: string) => void;
   onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
@@ -67,9 +70,11 @@ export const Sidebar = memo(({
   onOpenPresence,
   onOpenBento,
   memberName,
-  gangName = 'สาขา 1',
+  gangId = 'branch_1',
+  gangName = 'สมาชิกกลุ่ม',
   onCopyGangLink,
   isMaster = false,
+  onSwitchMasterBranch,
   onStartMoveSpot,
 }: SidebarProps) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -394,6 +399,32 @@ export const Sidebar = memo(({
               </button>
             </div>
           </div>
+
+          {isMaster && onSwitchMasterBranch && (
+            <div className="flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-xl bg-amber-950/30 border border-amber-500/30">
+              <span className="text-[10px] font-bold text-amber-300 shrink-0">👑 สลับกลุ่ม:</span>
+              <div className="flex items-center gap-1">
+                {AVAILABLE_BRANCHES.map((branch) => {
+                  const isCurrent = parseBranch(gangId).id === branch.id;
+                  return (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      onClick={() => onSwitchMasterBranch(branch.id)}
+                      title={`สลับดูแผนที่ ${branch.name}`}
+                      className={`w-6 h-6 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'bg-amber-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-900/80 text-slate-400 hover:text-amber-300 hover:bg-slate-800 border border-slate-700/80'
+                      }`}
+                    >
+                      {branch.num}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Action Row: Magic Shimmer Button + Export + Bento */}
           <div className="grid grid-cols-12 gap-1.5 items-center">

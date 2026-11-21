@@ -66,11 +66,11 @@ export interface BranchInfo {
 }
 
 export const AVAILABLE_BRANCHES: BranchInfo[] = [
-  { id: 'branch_1', num: 1, name: 'สาขา 1' },
-  { id: 'branch_2', num: 2, name: 'สาขา 2' },
-  { id: 'branch_3', num: 3, name: 'สาขา 3' },
-  { id: 'branch_4', num: 4, name: 'สาขา 4' },
-  { id: 'branch_5', num: 5, name: 'สาขา 5' },
+  { id: 'branch_1', num: 1, name: 'กลุ่ม 1' },
+  { id: 'branch_2', num: 2, name: 'กลุ่ม 2' },
+  { id: 'branch_3', num: 3, name: 'กลุ่ม 3' },
+  { id: 'branch_4', num: 4, name: 'กลุ่ม 4' },
+  { id: 'branch_5', num: 5, name: 'กลุ่ม 5' },
 ];
 
 export function parseBranch(input?: string | null): BranchInfo {
@@ -90,6 +90,9 @@ export function parseBranch(input?: string | null): BranchInfo {
       str === `gang_${b.num}` ||
       str === `gang ${b.num}` ||
       str === b.name.toLowerCase() ||
+      str === `กลุ่ม${b.num}` ||
+      str === `กลุ่ม-${b.num}` ||
+      str === `กลุ่ม ${b.num}` ||
       str === `สาขา${b.num}` ||
       str === `สาขา-${b.num}` ||
       str === `สาขา ${b.num}` ||
@@ -98,6 +101,7 @@ export function parseBranch(input?: string | null): BranchInfo {
       str.includes(`gang${b.num}`) ||
       str.includes(`branch${b.num}`) ||
       str.includes(b.name.toLowerCase()) ||
+      str.includes(`กลุ่ม${b.num}`) ||
       str.includes(`สาขา${b.num}`)
     ) {
       return b;
@@ -147,11 +151,11 @@ export interface VerifyPinResult {
 export async function verifyPIN(
   inputPin: string,
   memberName: string,
-  branchInput: string = 'สาขา 1'
+  branchInput?: string
 ): Promise<VerifyPinResult> {
   const cleanPin = inputPin.trim();
   const cleanName = memberName.trim();
-  const branch = parseBranch(branchInput);
+  const explicitBranch = branchInput?.trim() ? parseBranch(branchInput) : null;
 
   if (!cleanName) {
     return { success: false, isMaster: false, error: 'กรุณากรอกชื่อเล่น' };
@@ -167,7 +171,7 @@ export async function verifyPIN(
       body: JSON.stringify({
         pin: cleanPin,
         memberName: cleanName,
-        branchId: branch.id,
+        ...(explicitBranch ? { branchId: explicitBranch.id } : {}),
       }),
     });
 
@@ -184,10 +188,16 @@ export async function verifyPIN(
     };
 
     if (res.ok && data.success && data.session && data.token) {
+      const savedMasterBranch =
+        typeof window !== 'undefined' ? localStorage.getItem('runthukverb_last_branch') : null;
+      const targetBranch = data.session.isMaster
+        ? parseBranch(explicitBranch?.id || savedMasterBranch || 'branch_1')
+        : parseBranch(data.session.gangId);
+
       const session: GangSession = {
         ...data.session,
-        gangId: data.session.isMaster ? branch.id : normalizeGangId(data.session.gangId),
-        gangName: data.session.isMaster ? `${branch.name} (Master Boss)` : branch.name,
+        gangId: targetBranch.id,
+        gangName: data.session.isMaster ? `${targetBranch.name} (Master Boss)` : 'สมาชิกกลุ่ม',
         token: data.token,
         channelKey: data.channelKey,
       };
@@ -197,8 +207,8 @@ export async function verifyPIN(
         cleanName,
         'login',
         session.isMaster
-          ? `เข้าสู่ระบบด้วย Master PIN (${branch.name})`
-          : `เข้าสู่ระบบด้วยรหัสผ่านประจำวัน (${branch.name})`,
+          ? `เข้าสู่ระบบด้วย Master PIN (${targetBranch.name})`
+          : 'เข้าสู่ระบบด้วยรหัสผ่านประจำวัน',
         session.gangId
       );
 
@@ -217,14 +227,14 @@ export async function verifyPIN(
         banned: data.banned,
         retryAfterSec: data.retryAfterSec,
         remainingAttempts: data.remainingAttempts,
-        error: data.error || `รหัสผ่านของ ${branch.name} ไม่ถูกต้อง`,
+        error: data.error || 'รหัสผ่านประจำวันไม่ถูกต้อง',
       };
     }
 
     return {
       success: false,
       isMaster: false,
-      error: data.error || `รหัสผ่านของ ${branch.name} ไม่ถูกต้อง`,
+      error: data.error || 'รหัสผ่านประจำวันไม่ถูกต้อง',
     };
   } catch {
     return {
@@ -330,7 +340,7 @@ export function formatPINsForDiscord(
       : 'https://runthukverb-cement-cooldown.pages.dev';
 
   let text = `👑 **[${branch.name} - แผนที่ COOLDOWN] - ตารางรหัสผ่านประจำวัน** 🔒\n`;
-  text += `> ⚠️ ห้ามส่งต่อให้คนนอกสาขาเด็ดขาด รหัสจะเปลี่ยนอัตโนมัติทุก 00:00 น.\n\n`;
+  text += `> ⚠️ ห้ามส่งต่อให้คนนอกกลุ่มเด็ดขาด รหัสจะเปลี่ยนอัตโนมัติทุก 00:00 น.\n\n`;
 
   upcomingDays.forEach((item) => {
     const pin = item.pins[branch.id] || '------';
@@ -341,7 +351,7 @@ export function formatPINsForDiscord(
     }
   });
 
-  text += `\n🌐 ลิงก์แผนที่เฉพาะสาขา: ${origin}/?branch=${branch.num}`;
+  text += `\n🌐 ลิงก์เข้าใช้งานแผนที่: ${origin}`;
   return text;
 }
 
@@ -433,7 +443,7 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
             return {
               ...bSession,
               gangId: targetBranch.id,
-              gangName: targetBranch.name,
+              gangName: 'สมาชิกกลุ่ม',
             };
           }
         } catch {
@@ -451,7 +461,7 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
               return {
                 ...mainSession,
                 gangId: targetBranch.id,
-                gangName: targetBranch.name,
+                gangName: 'สมาชิกกลุ่ม',
               };
             }
           }
@@ -475,11 +485,32 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
     return {
       ...session,
       gangId: branch.id,
-      gangName: session.isMaster ? `${branch.name} (Master Boss)` : branch.name,
+      gangName: session.isMaster ? `${branch.name} (Master Boss)` : 'สมาชิกกลุ่ม',
     };
   } catch {
     return null;
   }
+}
+
+export function switchMasterBranchSession(
+  currentSession: GangSession,
+  branchInput: string
+): GangSession {
+  if (!currentSession.isMaster) return currentSession;
+  const target = parseBranch(branchInput);
+  const updated: GangSession = {
+    ...currentSession,
+    gangId: target.id,
+    gangName: `${target.name} (Master Boss)`,
+  };
+  saveGangSession(updated);
+  try {
+    localStorage.setItem('runthukverb_last_branch', target.id);
+    localStorage.setItem('runthukverb_last_gang_name', target.name);
+  } catch {
+    // Ignore storage error
+  }
+  return updated;
 }
 
 export function isSessionValidToday(): boolean {

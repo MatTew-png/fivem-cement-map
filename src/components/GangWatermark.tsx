@@ -10,7 +10,7 @@ export const GangWatermark: React.FC<GangWatermarkProps> = ({ memberName, gangNa
   if (!memberName) return null;
 
   const dateStr = authDate || new Date().toISOString().slice(0, 10);
-  const gang = (gangName || 'สาขา 1').toUpperCase();
+  const gang = (gangName || 'COOLDOWN MAP').toUpperCase();
   const stampText = `${memberName.toUpperCase()} • ${gang} • ${dateStr} • CONFIDENTIAL`;
 
   return (

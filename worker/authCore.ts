@@ -11,11 +11,11 @@ export type BranchId = (typeof BRANCH_IDS)[number];
 export const MASTER_GANG_ID = 'master_boss';
 
 export const BRANCH_NAMES: Record<string, string> = {
-  branch_1: 'สาขา 1 (Main Branch)',
-  branch_2: 'สาขา 2 (East Side)',
-  branch_3: 'สาขา 3 (West Coast)',
-  branch_4: 'สาขา 4 (North Valley)',
-  branch_5: 'สาขา 5 (South Port)',
+  branch_1: 'กลุ่ม 1',
+  branch_2: 'กลุ่ม 2',
+  branch_3: 'กลุ่ม 3',
+  branch_4: 'กลุ่ม 4',
+  branch_5: 'กลุ่ม 5',
   master_boss: 'ผู้ดูแลระบบสูงสุด (Master Boss)',
 };
 
@@ -110,15 +110,14 @@ export function isValidBranchId(branchId: string): boolean {
   return (BRANCH_IDS as readonly string[]).includes(branchId);
 }
 
-/**
- * Derives a deterministic 6-digit daily PIN using HMAC-SHA256.
- */
-export async function deriveDailyPin(
+async function deriveCandidatePin(
   secretSeed: string,
   branchId: string,
-  dateStr: string
+  dateStr: string,
+  attempt: number
 ): Promise<string> {
-  const digest = await hmacSha256(secretSeed, `pin:v2:${branchId}:${dateStr}`);
+  const input = attempt === 0 ? `pin:v2:${branchId}:${dateStr}` : `pin:v2:${branchId}:${dateStr}:${attempt}`;
+  const digest = await hmacSha256(secretSeed, input);
   const value =
     (((digest[0] & 0x7f) << 24) |
       (digest[1] << 16) |
@@ -126,6 +125,63 @@ export async function deriveDailyPin(
       digest[3]) %
     1_000_000;
   return String(value).padStart(6, '0');
+}
+
+/**
+ * Derives collision-free 6-digit daily PINs for all branches on a given date.
+ */
+export async function deriveAllBranchDailyPins(
+  secretSeed: string,
+  dateStr: string
+): Promise<Record<BranchId, string>> {
+  const result = {} as Record<BranchId, string>;
+  const usedPins = new Set<string>();
+
+  for (const branchId of BRANCH_IDS) {
+    let attempt = 0;
+    let pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt);
+    while (usedPins.has(pin)) {
+      attempt += 1;
+      pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt);
+    }
+    usedPins.add(pin);
+    result[branchId] = pin;
+  }
+
+  return result;
+}
+
+/**
+ * Derives a deterministic, collision-free 6-digit daily PIN using HMAC-SHA256.
+ */
+export async function deriveDailyPin(
+  secretSeed: string,
+  branchId: string,
+  dateStr: string
+): Promise<string> {
+  if (isValidBranchId(branchId)) {
+    const pins = await deriveAllBranchDailyPins(secretSeed, dateStr);
+    return pins[branchId as BranchId];
+  }
+  return deriveCandidatePin(secretSeed, branchId, dateStr, 0);
+}
+
+/**
+ * Resolves which branch owns the provided daily PIN in constant-time comparisons.
+ */
+export async function resolveBranchByPin(
+  secretSeed: string,
+  inputPin: string,
+  dateStr: string
+): Promise<BranchId | null> {
+  const pins = await deriveAllBranchDailyPins(secretSeed, dateStr);
+  let matchedBranch: BranchId | null = null;
+  for (const branchId of BRANCH_IDS) {
+    if (await timingSafeEqual(inputPin, pins[branchId])) {
+      matchedBranch = branchId;
+    }
+  }
+  return matchedBranch;
 }
 
 /**

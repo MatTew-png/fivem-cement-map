@@ -276,7 +276,7 @@ class GangPresenceManager {
     return () => this.pingListeners.delete(callback);
   }
 
-  // ส่งสัญญาณ Ping เรียกเพื่อนในสาขามาดูจุดบนแผนที่แบบ Real-time
+  // ส่งสัญญาณ Ping เรียกสมาชิกกลุ่มมาดูจุดบนแผนที่แบบ Real-time
   public broadcastTacticalPing(coords: { x: number; y: number }, label: string, spotId?: string) {
     if (!this.session) return;
     const ping: TacticalPing = {

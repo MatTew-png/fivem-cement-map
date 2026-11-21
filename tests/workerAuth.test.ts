@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import worker from '../worker/index.ts';
 import {
   BRANCH_IDS,
+  deriveAllBranchDailyPins,
   deriveDailyChannelKey,
   deriveDailyPin,
   getBangkokDateString,
@@ -53,6 +54,11 @@ test('deriveDailyPin returns deterministic 6-digit branch PINs per date', async 
   assert.notEqual(pinA1, pinB1);
   assert.notEqual(pinA1, pinNextDay);
   assert.equal(BRANCH_IDS.length, 5);
+
+  const allPins = await deriveAllBranchDailyPins('seed-123', '2026-10-06');
+  assert.equal(new Set(Object.values(allPins)).size, BRANCH_IDS.length);
+  assert.equal(allPins.branch_1, pinA1);
+  assert.equal(allPins.branch_2, pinB1);
 });
 
 test('deriveDailyChannelKey creates non-secret deterministic channel IDs', async () => {
@@ -199,6 +205,28 @@ test('Worker API handles health, lockout, branch vs master auth, pins, bans, and
   };
   assert.equal(branchData.session.gangId, 'branch_2');
   assert.equal(branchData.session.isMaster, false);
+
+  // 3b. PIN-only login without branchId auto-routes to the matching branch
+  const branch4Pin = await deriveDailyPin(env.GANG_SECRET_SEED!, 'branch_4', today);
+  const autoRouteRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'cf-connecting-ip': '203.0.113.24',
+      },
+      body: JSON.stringify({ memberName: 'MemberB4', pin: branch4Pin }),
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(autoRouteRes.status, 200);
+  const autoRouteData = (await autoRouteRes.json()) as {
+    session: { gangId: string; gangName: string; isMaster: boolean };
+  };
+  assert.equal(autoRouteData.session.gangId, 'branch_4');
+  assert.equal(autoRouteData.session.gangName, 'สมาชิกกลุ่ม');
+  assert.equal(autoRouteData.session.isMaster, false);
 
   const deniedUpcoming = await worker.fetch(
     new Request('https://example.workers.dev/api/pins/upcoming', {

@@ -275,7 +275,7 @@ function createPopupNode(
           type="button"
           data-popup-action="ping-gang"
           class="flex-1 py-1 px-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[10px] font-semibold transition-colors border border-cyan-500/35 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
-          title="ปิงเรียกเพื่อนในสาขาให้มาดูจุดนี้"
+          title="ปิงเรียกสมาชิกกลุ่มให้มาดูจุดนี้"
         >
           <span>📣</span>
           <span>ปิง</span>

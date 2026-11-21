@@ -19,9 +19,11 @@ import {
 import { gangPresence, type OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession, UpcomingPinDay } from '../utils/gangAuth';
 import {
+  AVAILABLE_BRANCHES,
   fetchUpcomingPINs,
   formatPINsForDiscord,
   logoutGang,
+  parseBranch,
   triggerServerForceLogout,
 } from '../utils/gangAuth';
 import { copyToClipboard } from '../utils/spotExport';
@@ -41,6 +43,7 @@ interface GangPresenceModalProps {
   activityLogs: ActivityLog[];
   currentSession: GangSession | null;
   onLogout: () => void;
+  onSwitchMasterBranch?: (branchId: string) => void;
 }
 
 export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
@@ -50,14 +53,17 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   activityLogs,
   currentSession,
   onLogout,
+  onSwitchMasterBranch,
 }) => {
   const isMaster = Boolean(currentSession?.isMaster);
   const gangId = currentSession?.gangId || 'branch_1';
-  const gangName = currentSession?.gangName || 'สาขา 1';
+  const activeBranch = useMemo(() => parseBranch(gangId), [gangId]);
 
   const [activeTab, setActiveTab] = useState<'online' | 'logs' | 'boss' | 'ip_logs'>('online');
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
+  const [copiedPinBranch, setCopiedPinBranch] = useState<string | null>(null);
+  const [pinPreviewBranchId, setPinPreviewBranchId] = useState<string>(gangId);
 
   const [upcomingPins, setUpcomingPins] = useState<UpcomingPinDay[]>([]);
   const [pinsLoading, setPinsLoading] = useState(false);
@@ -99,6 +105,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     if (!isOpen) return;
     setNow(Date.now());
     setConfirmForceLogout(false);
+    setPinPreviewBranchId(gangId);
     if (!isMaster && (activeTab === 'boss' || activeTab === 'ip_logs')) {
       setActiveTab('online');
     }
@@ -114,7 +121,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       window.clearInterval(timer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, isMaster, activeTab, onClose]);
+  }, [isOpen, isMaster, gangId, activeTab, onClose]);
 
   useEffect(() => {
     if (!isOpen || !isMaster || !currentSession) return;
@@ -153,6 +160,12 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     });
   }, [ipLogs, searchIpText]);
 
+  const previewBranch = useMemo(() => parseBranch(pinPreviewBranchId), [pinPreviewBranchId]);
+  const todayPinEntry = useMemo(
+    () => upcomingPins.find((item) => item.isToday) ?? upcomingPins[0] ?? null,
+    [upcomingPins]
+  );
+
   if (!isOpen) return null;
 
   const scheduleFeedbackReset = (setter: (v: boolean) => void) => {
@@ -163,9 +176,18 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
 
   const handleCopyDiscord = async () => {
     if (upcomingPins.length === 0) return;
-    const text = formatPINsForDiscord(gangId, upcomingPins);
+    const text = formatPINsForDiscord(previewBranch.id, upcomingPins);
     await copyToClipboard(text);
     scheduleFeedbackReset(setCopied);
+  };
+
+  const handleCopySinglePin = async (branchId: string, pinValue: string) => {
+    if (!pinValue || pinValue === '------') return;
+    await copyToClipboard(pinValue);
+    setCopiedPinBranch(branchId);
+    window.setTimeout(() => {
+      setCopiedPinBranch((prev) => (prev === branchId ? null : prev));
+    }, 2000);
   };
 
   const handleForceLogoutAll = async () => {
@@ -233,7 +255,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
 
   const handleExportCsv = () => {
     if (ipLogs.length === 0) return;
-    const headers = ['เวลา', 'IP Address', 'เมือง/ประเทศ', 'อุปกรณ์', 'การกระทำ', 'ชื่อเล่น', 'สาขา'];
+    const headers = ['เวลา', 'IP Address', 'เมือง/ประเทศ', 'อุปกรณ์', 'การกระทำ', 'ชื่อเล่น', 'กลุ่ม'];
     const rows = ipLogs.map((l) => [
       new Date(l.timestamp).toLocaleString('th-TH'),
       l.ip,
@@ -285,7 +307,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 id="presence-modal-title" className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>กลุ่ม {gangName}</span>
+                  <span>{isMaster ? `กลุ่ม ${activeBranch.num}` : 'สมาชิกกลุ่ม'}</span>
                 </h3>
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
                   <span className="relative flex h-2 w-2">
@@ -297,7 +319,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               </div>
               <p className="text-[11px] text-slate-400">
                 คุณล็อกอินในชื่อ: <span className="font-bold text-amber-400">{currentSession?.memberName || 'สมาชิก'}</span>
-                {isMaster && ' (👑 หัวหน้าสาขา)'} • <span className="font-bold text-slate-200">{gangName}</span>
+                {isMaster ? ' (👑 หัวหน้าสูงสุด)' : 'สมาชิกกำลังออนไลน์'}
               </p>
             </div>
           </div>
@@ -374,7 +396,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                 }`}
               >
                 <Crown className="w-3.5 h-3.5" />
-                <span>รหัสสาขา 7 วัน</span>
+                <span>รหัส 5 กลุ่ม (7 วัน)</span>
               </button>
             )}
 
@@ -572,23 +594,84 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                   <div className="flex items-center gap-2">
                     <Crown className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      ตารางรหัสผ่านประจำวัน ({gangName} • ล่วงหน้า 7 วัน)
+                      รหัสวันนี้ทั้ง 5 กลุ่ม & ตาราง 7 วัน ({previewBranch.name})
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={upcomingPins.length === 0}
-                    onClick={handleCopyDiscord}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 active:scale-95 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอกไปลง Discord'}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {onSwitchMasterBranch && previewBranch.id !== gangId && (
+                      <button
+                        type="button"
+                        onClick={() => onSwitchMasterBranch(previewBranch.id)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-[11px] transition-all cursor-pointer"
+                      >
+                        สลับดูแผนที่ {previewBranch.name}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={upcomingPins.length === 0}
+                      onClick={handleCopyDiscord}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 active:scale-95 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copied ? 'คัดลอกแล้ว!' : `คัดลอก ${previewBranch.name} ลง Discord`}</span>
+                    </button>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  คำนวณแบบ Realtime จาก Cloudflare Worker Secret (HMAC-SHA256) เปลี่ยนอัตโนมัติทุกวัน 00:00 น. (UTC+7)
+                  สมาชิกใส่แค่ชื่อ + PIN 6 หลัก ระบบจะส่งเข้ากลุ่มให้ตรงอัตโนมัติ (เปลี่ยนทุก 00:00 น. UTC+7)
                 </p>
+
+                {/* All 5 Groups Quick Selector + Today PINs */}
+                {todayPinEntry && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+                    {AVAILABLE_BRANCHES.map((branch) => {
+                      const todayPin = todayPinEntry.pins[branch.id] || '------';
+                      const isSelected = previewBranch.id === branch.id;
+                      const isCopiedPin = copiedPinBranch === branch.id;
+                      return (
+                        <div
+                          key={branch.id}
+                          onClick={() => setPinPreviewBranchId(branch.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setPinPreviewBranchId(branch.id);
+                            }
+                          }}
+                          className={`p-2 rounded-xl border text-left transition-all cursor-pointer select-none ${
+                            isSelected
+                              ? 'bg-amber-500/20 border-amber-400 shadow-sm'
+                              : 'bg-slate-900/70 border-slate-700/80 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`text-[10px] font-bold ${isSelected ? 'text-amber-300' : 'text-slate-300'}`}>
+                              {branch.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleCopySinglePin(branch.id, todayPin);
+                              }}
+                              title={`คัดลอกรหัสวันนี้ของ ${branch.name}`}
+                              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
+                            >
+                              {isCopiedPin ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                            </button>
+                          </div>
+                          <div className="mt-1 font-mono text-xs font-black tracking-widest text-white">
+                            {todayPin}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Panic Force Logout */}
                 <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
@@ -636,7 +719,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               ) : (
                 <div className="space-y-1.5">
                   {upcomingPins.map((item) => {
-                    const pin = item.pins[gangId] || '------';
+                    const pin = item.pins[previewBranch.id] || '------';
                     return (
                       <div
                         key={item.dateStr}

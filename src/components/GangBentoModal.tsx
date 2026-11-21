@@ -109,11 +109,11 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   Tactical Intel Dashboard
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-bold">
-                  {currentSession?.gangName || 'สาขา 1'}
+                  {currentSession?.isMaster ? (currentSession.gangName || 'กลุ่ม 1 (Master)') : 'สมาชิกกลุ่ม'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่าย {currentSession?.gangName || 'สาขา 1'}
+                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่าย {currentSession?.isMaster ? (currentSession.gangName || 'กลุ่ม 1') : 'สมาชิกกลุ่ม'}
               </p>
             </div>
           </div>

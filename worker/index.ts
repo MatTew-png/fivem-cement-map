@@ -1,10 +1,9 @@
 import {
-  BRANCH_IDS,
   BRANCH_NAMES,
   MASTER_GANG_ID,
   buildApiHeaders,
+  deriveAllBranchDailyPins,
   deriveDailyChannelKey,
-  deriveDailyPin,
   extractClientIp,
   getBangkokDateString,
   getUpcomingBangkokDates,
@@ -12,10 +11,12 @@ import {
   isOriginAllowed,
   isValidBranchId,
   isValidDiscordWebhookUrl,
+  resolveBranchByPin,
   sanitizeText,
   signSessionToken,
   timingSafeEqual,
   verifySessionToken,
+  type BranchId,
   type SessionTokenPayload,
 } from './authCore.ts';
 import {
@@ -224,7 +225,7 @@ export async function handleApiRequest(
 
     const memberName = sanitizeText(body.memberName, 32);
     const pin = sanitizeText(body.pin, 32);
-    const requestedBranch = sanitizeText(body.branchId, 24) || 'branch_1';
+    const requestedBranch = sanitizeText(body.branchId, 24);
 
     if (!memberName) {
       return jsonResponse({ success: false, error: 'กรุณาระบุชื่อเล่นในกลุ่ม' }, 400, headers);
@@ -235,18 +236,28 @@ export async function handleApiRequest(
 
     const todayStr = getBangkokDateString();
     const isMaster = await timingSafeEqual(pin, masterPin);
+    let matchedBranch: BranchId | null = null;
     let isValidBranchPin = false;
 
     if (!isMaster) {
-      if (!isValidBranchId(requestedBranch)) {
-        return jsonResponse(
-          { success: false, error: 'ไม่พบสาขาที่เลือก' },
-          400,
-          headers
-        );
+      if (requestedBranch) {
+        if (!isValidBranchId(requestedBranch)) {
+          return jsonResponse(
+            { success: false, error: 'รหัสผ่านหรือกลุ่มไม่ถูกต้อง' },
+            400,
+            headers
+          );
+        }
+        const allPins = await deriveAllBranchDailyPins(secretSeed, todayStr);
+        const expectedPin = allPins[requestedBranch as BranchId];
+        isValidBranchPin = await timingSafeEqual(pin, expectedPin);
+        if (isValidBranchPin) {
+          matchedBranch = requestedBranch as BranchId;
+        }
+      } else {
+        matchedBranch = await resolveBranchByPin(secretSeed, pin, todayStr);
+        isValidBranchPin = matchedBranch !== null;
       }
-      const expectedPin = await deriveDailyPin(secretSeed, requestedBranch, todayStr);
-      isValidBranchPin = await timingSafeEqual(pin, expectedPin);
     }
 
     if (!isMaster && !isValidBranchPin) {
@@ -255,7 +266,7 @@ export async function handleApiRequest(
         {
           ip: clientIp,
           memberName,
-          branchId: requestedBranch,
+          branchId: requestedBranch || 'auto',
           event: 'failed_pin',
           country,
           city,
@@ -294,8 +305,8 @@ export async function handleApiRequest(
 
     await clearRateLimit(clientIp, kv);
 
-    const gangId = isMaster ? MASTER_GANG_ID : requestedBranch;
-    const gangName = BRANCH_NAMES[gangId] ?? requestedBranch;
+    const gangId = isMaster ? MASTER_GANG_ID : (matchedBranch ?? requestedBranch ?? 'branch_1');
+    const gangName = isMaster ? (BRANCH_NAMES[MASTER_GANG_ID] ?? 'Master Boss') : 'สมาชิกกลุ่ม';
     const nowMs = Date.now();
     const sessionSecret = getSessionSecret(env);
     const ipHash = await hashIdentifier(sessionSecret, clientIp);
@@ -407,13 +418,10 @@ export async function handleApiRequest(
 
     const dates = getUpcomingBangkokDates(7);
     const schedule = await Promise.all(
-      dates.map(async (date) => {
-        const pins: Record<string, string> = {};
-        for (const branchId of BRANCH_IDS) {
-          pins[branchId] = await deriveDailyPin(secretSeed, branchId, date);
-        }
-        return { date, pins };
-      })
+      dates.map(async (date) => ({
+        date,
+        pins: await deriveAllBranchDailyPins(secretSeed, date),
+      }))
     );
 
     return jsonResponse({ schedule }, 200, headers);

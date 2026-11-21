@@ -1,30 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles, ShieldAlert, Timer, Building2, Eye, EyeOff } from 'lucide-react';
-import { verifyPIN, AVAILABLE_BRANCHES, parseBranch, type BranchInfo, type GangSession } from '../utils/gangAuth';
+import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles, ShieldAlert, Timer, Eye, EyeOff } from 'lucide-react';
+import { verifyPIN, type GangSession } from '../utils/gangAuth';
 
 interface GangAuthModalProps {
   onSuccess: (session: GangSession) => void;
 }
 
 export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
-  const [urlLockedBranch] = useState<BranchInfo | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const param = params.get('branch') || params.get('gang');
-    return param && param.trim() ? parseBranch(param.trim()) : null;
-  });
-
-  const [selectedBranch, setSelectedBranch] = useState<BranchInfo>(() => {
-    if (urlLockedBranch) return urlLockedBranch;
-    if (typeof window !== 'undefined') {
-      const saved =
-        localStorage.getItem('runthukverb_last_branch') ||
-        localStorage.getItem('runthukverb_last_gang_name');
-      if (saved?.trim()) return parseBranch(saved.trim());
-    }
-    return AVAILABLE_BRANCHES[0];
-  });
-
   const [name, setName] = useState(() => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('runthukverb_last_member_name') || '';
@@ -71,14 +53,15 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
     }
 
     setIsSubmitting(true);
-    const result = await verifyPIN(pin, name, selectedBranch.id);
+    const result = await verifyPIN(pin, name);
     setIsSubmitting(false);
 
     if (result.success && result.session) {
       setRemainingSec(0);
       localStorage.setItem('runthukverb_last_member_name', name.trim());
-      localStorage.setItem('runthukverb_last_branch', selectedBranch.id);
-      localStorage.setItem('runthukverb_last_gang_name', selectedBranch.name);
+      if (result.session.isMaster) {
+        localStorage.setItem('runthukverb_last_branch', result.session.gangId);
+      }
       onSuccess(result.session);
       return;
     }
@@ -86,7 +69,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
     if (result.retryAfterSec && result.retryAfterSec > 0) {
       setRemainingSec(result.retryAfterSec);
     }
-    setError(result.error || `รหัสผ่านประจำวันของ ${selectedBranch.name} ไม่ถูกต้อง`);
+    setError(result.error || 'รหัสผ่านประจำวันไม่ถูกต้อง');
   };
 
   return (
@@ -114,7 +97,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
             <span>COOLDOWN MAP</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1 max-w-[320px]">
-            ยืนยันตัวตนผ่านเซิร์ฟเวอร์เฉพาะสมาชิกกลุ่ม เลือกสาขาและระบุรหัสผ่านประจำวัน
+            ยืนยันตัวตนผ่านเซิร์ฟเวอร์เฉพาะสมาชิกกลุ่ม ระบุชื่อเล่นและรหัสผ่านประจำวัน
           </p>
         </div>
 
@@ -144,42 +127,6 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Branch Selector */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>สาขาที่เข้าใช้งาน</span>
-              </span>
-              {urlLockedBranch && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
-                  ล็อคตามลิงก์ {urlLockedBranch.name}
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-5 gap-1.5">
-              {AVAILABLE_BRANCHES.map((branch) => {
-                const isSelected = selectedBranch.id === branch.id;
-                const isDisabled = Boolean(urlLockedBranch && urlLockedBranch.id !== branch.id);
-                return (
-                  <button
-                    key={branch.id}
-                    type="button"
-                    disabled={isDisabled || isSubmitting}
-                    onClick={() => setSelectedBranch(branch)}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
-                      isSelected
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-sm'
-                        : 'bg-slate-800/70 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-800'
-                    }`}
-                  >
-                    สาขา {branch.num}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Member Name Input */}
           <div>
             <label
@@ -209,7 +156,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
                 className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5"
               >
                 <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                <span>รหัสผ่านประจำวัน ({selectedBranch.name})</span>
+                <span>รหัสผ่านประจำวัน</span>
               </label>
               <span className="text-[10px] text-slate-400">เปลี่ยนทุก 00:00 น.</span>
             </div>
@@ -250,7 +197,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
             ) : (
               <>
                 <Sparkles className="w-4 h-4 text-slate-950" />
-                <span>เข้าสู่ระบบแผนที่ ({selectedBranch.name})</span>
+                <span>เข้าสู่ระบบแผนที่</span>
               </>
             )}
           </button>
@@ -258,7 +205,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
 
         <div className="mt-5 pt-4 border-t border-slate-800 text-center">
           <p className="text-[11px] text-slate-500">
-            💡 ตรวจสอบรหัสผ่านประจำวันได้จากช่อง Discord ของ {selectedBranch.name}
+            💡 ตรวจสอบรหัสผ่านประจำวันได้จากหัวหน้ากลุ่มหรือช่องทางนัดหมายของคุณ
           </p>
         </div>
       </div>
