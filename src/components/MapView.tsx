@@ -659,68 +659,179 @@ function createClusterPopupNode(
   marker: L.Marker
 ): HTMLElement {
   const container = document.createElement('div');
-  container.className = 'p-1 text-slate-200 text-xs font-sans min-w-[260px] max-w-[320px]';
+  container.className = 'p-0.5 text-slate-200 text-xs font-sans w-[265px] max-w-[84vw] max-h-[calc(100vh-140px)] overflow-y-auto';
   L.DomEvent.disableClickPropagation(container);
   L.DomEvent.disableScrollPropagation(container);
 
-  const count = cluster.spots.length;
+  const liveSpots = cluster.spots.map((s) => callbacksRef.current.spotsById?.get(s.id) ?? s);
+
+  // Sort spatially: Top-to-Bottom (North -> South, higher Y first), then Left-to-Right (West -> East, lower X first)
+  const ys = liveSpots.map((s) => s.y);
+  const xs = liveSpots.map((s) => s.x);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const spanY = Math.max(1, maxY - minY);
+  const spanX = Math.max(1, maxX - minX);
+  const rowTolerance = spanY * 0.14;
+
+  const sortedSpots = [...liveSpots].sort((a, b) => {
+    if (Math.abs(b.y - a.y) > rowTolerance) {
+      return b.y - a.y;
+    }
+    return a.x - b.x;
+  });
+
+  // Compute aspect-preserving relative positions inside a 240x96 mini-radar box
+  const boxW = 240;
+  const boxH = 96;
+  const usableW = 192;
+  const usableH = 64;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const pxScale = Math.min(usableW / spanX, usableH / spanY);
+
+  const radarPoints = sortedSpots.map((spot, idx) => {
+    let px = boxW / 2 + (spot.x - centerX) * pxScale;
+    let py = boxH / 2 + (centerY - spot.y) * pxScale;
+    px = Math.max(18, Math.min(boxW - 18, px));
+    py = Math.max(14, Math.min(boxH - 14, py));
+    return {
+      spot,
+      num: idx + 1,
+      px,
+      py,
+    };
+  });
+
+  // Lightly separate overlapping dots if two spots sit almost on top of each other
+  for (let i = 0; i < radarPoints.length; i++) {
+    for (let j = i + 1; j < radarPoints.length; j++) {
+      const dx = radarPoints[j].px - radarPoints[i].px;
+      const dy = radarPoints[j].py - radarPoints[i].py;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 18) {
+        const angle = dist > 0.1 ? Math.atan2(dy, dx) : (j * Math.PI) / 3;
+        const push = (18 - dist) / 2 + 1;
+        radarPoints[i].px = Math.max(18, Math.min(boxW - 18, radarPoints[i].px - Math.cos(angle) * push));
+        radarPoints[i].py = Math.max(14, Math.min(boxH - 14, radarPoints[i].py - Math.sin(angle) * push));
+        radarPoints[j].px = Math.max(18, Math.min(boxW - 18, radarPoints[j].px + Math.cos(angle) * push));
+        radarPoints[j].py = Math.max(14, Math.min(boxH - 14, radarPoints[j].py + Math.sin(angle) * push));
+      }
+    }
+  }
+
+  const now = Date.now();
+  const count = sortedSpots.length;
+  const showRadar = count <= 12;
 
   container.innerHTML = `
-    <div class="flex items-center justify-between pb-2 border-b border-slate-700/80 mb-2">
+    <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/80 mb-1.5 pr-5">
       <div class="flex items-center gap-1.5 font-bold text-white text-xs">
         <span class="text-sm">📦</span>
         <span>กลุ่มหมุดใกล้กัน</span>
       </div>
-      <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+      <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
         ${count} จุด
       </span>
     </div>
 
-    <p class="text-[10px] text-slate-400 mb-2">
-      คลิก "เลือก" เพื่อโฟกัสหรือเปิดดูรายละเอียดของจุดนั้น
-    </p>
+    ${showRadar ? `
+      <div class="flex items-center justify-between text-[9px] font-mono text-slate-400 px-0.5 mb-1 select-none">
+        <span>🗺️ ผังตำแหน่งจริง (กดที่เลขได้)</span>
+        <span class="font-bold text-slate-500">N ▲</span>
+      </div>
+      <div class="relative w-full h-[96px] rounded-xl bg-slate-950/95 border border-slate-700/80 mb-2 overflow-hidden shadow-inner select-none" aria-label="แผนผังตำแหน่งหมุดย่อยในกลุ่ม">
+        <div class="absolute inset-0 opacity-20 pointer-events-none" style="background-image: linear-gradient(to right, #334155 1px, transparent 1px), linear-gradient(to bottom, #334155 1px, transparent 1px); background-size: 24px 24px;"></div>
+        ${radarPoints
+          .map(({ spot, num, px, py }) => {
+            const safeId = escapeHtml(spot.id);
+            const safeName = escapeHtml(spot.name);
+            const activeCd = callbacksRef.current.activeCooldowns?.find((c) => c.spotId === spot.id);
+            const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : -1;
+            const isUrgent = remSec > 0 && remSec <= 180;
+            const isReady = remSec === 0;
+            const isCd = remSec > 0;
+            const dotClass = isUrgent
+              ? 'bg-red-500 text-white border-yellow-200 shadow-[0_0_10px_#ef4444]'
+              : isReady
+              ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_8px_#10b981]'
+              : isCd
+              ? 'bg-amber-500 text-slate-950 border-amber-200'
+              : 'bg-amber-400 text-slate-950 border-white/80 hover:bg-amber-300';
+            const leftPct = ((px / boxW) * 100).toFixed(2);
+            const topPct = ((py / boxH) * 100).toFixed(2);
+            return `
+              <button
+                type="button"
+                data-cluster-spot-id="${safeId}"
+                data-radar-dot="${num}"
+                style="left: ${leftPct}%; top: ${topPct}%;"
+                class="absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 font-mono font-black text-[10px] flex items-center justify-center shadow-md transition-all duration-150 hover:scale-125 cursor-pointer z-10 ${dotClass}"
+                title="${num}. ${safeName}"
+              >
+                ${num}
+              </button>
+            `;
+          })
+          .join('')}
+      </div>
+    ` : `
+      <p class="text-[10px] text-slate-400 mb-1.5">
+        คลิกเลขลำดับหรือ "เลือก" เพื่อโฟกัสจุดนั้นทันที
+      </p>
+    `}
 
-    <div class="max-h-56 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-      ${cluster.spots
-        .map((spot) => {
-          const liveSpot = callbacksRef.current.spotsById?.get(spot.id) ?? spot;
-          const cat = getSpotCategoryInfo(liveSpot);
-          const icon = liveSpot.icon || cat?.icon || '🧱';
-          const safeId = escapeHtml(liveSpot.id);
-          const safeName = escapeHtml(liveSpot.name);
-          const activeCd = callbacksRef.current.activeCooldowns?.find(
-            (c) => c.spotId === liveSpot.id
-          );
-          const now = Date.now();
-          const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : 0;
+    <div class="max-h-48 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+      ${radarPoints
+        .map(({ spot, num }) => {
+          const cat = getSpotCategoryInfo(spot);
+          const icon = spot.icon || cat?.icon || '🧱';
+          const safeId = escapeHtml(spot.id);
+          const safeName = escapeHtml(spot.name);
+          const activeCd = callbacksRef.current.activeCooldowns?.find((c) => c.spotId === spot.id);
+          const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : -1;
           const isUrgent = remSec > 0 && remSec <= 180;
-          const cdMinutes = Math.floor(remSec / 60);
-          const cdSeconds = remSec % 60;
+          const isReady = remSec === 0;
+          const cdMinutes = Math.max(0, Math.floor(remSec / 60));
+          const cdSeconds = Math.max(0, remSec % 60);
           const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
+          const badgeClass = isUrgent
+            ? 'bg-red-500 text-white'
+            : isReady
+            ? 'bg-emerald-500 text-slate-950'
+            : remSec > 0
+            ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50'
+            : 'bg-amber-400 text-slate-950';
+
           return `
-          <div class="p-2 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-amber-500/40 transition-colors flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 min-w-0">
+          <div data-cluster-row="${num}" class="p-1.5 rounded-xl bg-slate-950/75 border border-slate-800/80 hover:border-amber-400/60 transition-colors flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="w-5 h-5 rounded-full font-mono font-black text-[10px] flex items-center justify-center shrink-0 ${badgeClass}">
+                ${num}
+              </span>
               <span class="shrink-0 flex items-center justify-center">${renderSpotIconHtml(icon, 'w-4 h-4')}</span>
               <div class="min-w-0">
                 <div class="font-bold text-white truncate text-[11px] leading-tight">${safeName}</div>
                 <div class="text-[10px] text-slate-400 font-mono">
                   ${
-                    remSec > 0
+                    isReady
+                      ? '<span class="text-emerald-400 font-bold">✅ เกิดแล้ว!</span>'
+                      : remSec > 0
                       ? `<span class="${isUrgent ? 'text-red-400 font-bold animate-pulse' : 'text-amber-300 font-semibold'}">⏱️ ${cdTimeStr}</span>`
-                      : liveSpot.postal
-                      ? `📮 #${escapeHtml(liveSpot.postal)}`
+                      : spot.postal
+                      ? `📮 #${escapeHtml(spot.postal)}`
                       : escapeHtml(cat.name)
                   }
                 </div>
               </div>
             </div>
-            
-            <div class="flex items-center gap-1 shrink-0">
-              <button type="button" data-cluster-spot-id="${safeId}" class="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition-colors shadow-sm cursor-pointer">
-                เลือก
-              </button>
-            </div>
+
+            <button type="button" data-cluster-spot-id="${safeId}" class="shrink-0 px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition-colors shadow-sm cursor-pointer">
+              เลือก
+            </button>
           </div>
         `;
         })
@@ -728,8 +839,27 @@ function createClusterPopupNode(
     </div>
   `;
 
+  // Sync hover highlight between mini-radar dots and list rows
+  container.querySelectorAll('[data-cluster-row]').forEach((row) => {
+    const num = row.getAttribute('data-cluster-row');
+    const dot = num ? (container.querySelector(`[data-radar-dot="${num}"]`) as HTMLElement | null) : null;
+    if (!dot) return;
+    row.addEventListener('mouseenter', () => {
+      dot.classList.add('scale-125', 'ring-2', 'ring-white', 'z-20');
+    });
+    row.addEventListener('mouseleave', () => {
+      dot.classList.remove('scale-125', 'ring-2', 'ring-white', 'z-20');
+    });
+    dot.addEventListener('mouseenter', () => {
+      row.classList.add('border-amber-400', 'bg-slate-900');
+    });
+    dot.addEventListener('mouseleave', () => {
+      row.classList.remove('border-amber-400', 'bg-slate-900');
+    });
+  });
+
   // Attach click listeners using data attribute (safe for any spot id characters)
-  const spotMap = new Map(cluster.spots.map((s) => [s.id, callbacksRef.current.spotsById?.get(s.id) ?? s]));
+  const spotMap = new Map(sortedSpots.map((s) => [s.id, s]));
   container.querySelectorAll('[data-cluster-spot-id]').forEach((btn) => {
     const id = btn.getAttribute('data-cluster-spot-id');
     const targetSpot = id ? spotMap.get(id) : undefined;
@@ -787,6 +917,7 @@ export const MapView = memo(({
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
   const clusterMarkersMapRef = useRef<Map<string, L.Marker>>(new Map());
+  const clustersByIdRef = useRef<Map<string, ClusterItem>>(new Map());
   const lockedLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const distanceLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const pingsLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -1356,6 +1487,7 @@ export const MapView = memo(({
         }
       } else {
         const cluster = item;
+        clustersByIdRef.current.set(cluster.id, cluster);
         const icon = createClusterDivIcon(cluster);
         const zIndexOffset = cluster.urgentCooldown ? 1500 : cluster.hasActiveCooldown ? 800 : 100;
 
@@ -1378,10 +1510,13 @@ export const MapView = memo(({
           });
 
           clusterMarker.bindPopup(
-            () => createClusterPopupNode(cluster, callbacksRef, clusterMarker),
+            () => {
+              const liveCluster = clustersByIdRef.current.get(cluster.id) ?? cluster;
+              return createClusterPopupNode(liveCluster, callbacksRef, clusterMarker);
+            },
             {
-              maxWidth: 320,
-              minWidth: 250,
+              maxWidth: 300,
+              minWidth: 255,
               className: 'custom-fivem-popup',
               autoClose: false,
               closeOnClick: true,
@@ -1395,11 +1530,18 @@ export const MapView = memo(({
             L.DomEvent.stopPropagation(e);
             soundEffects.playPinPlaced();
 
+            const liveCluster = clustersByIdRef.current.get(cluster.id) ?? cluster;
             const currentZ = map.getZoom();
-            const lls = cluster.spots.map((s) => gameCoordsToLatLng(s.x, s.y));
+            const lls = liveCluster.spots.map((s) => gameCoordsToLatLng(s.x, s.y));
             const bounds = L.latLngBounds(lls);
 
-            if (currentZ < 8 && bounds.isValid() && bounds.getNorthEast().distanceTo(bounds.getSouthWest()) > 0.04) {
+            // Open numbered mini-radar popup directly for small/medium clusters (no zoom needed!)
+            if (
+              liveCluster.spots.length > 8 &&
+              currentZ < 7 &&
+              bounds.isValid() &&
+              bounds.getNorthEast().distanceTo(bounds.getSouthWest()) > 0.04
+            ) {
               map.flyToBounds(bounds, {
                 padding: [70, 70],
                 maxZoom: Math.min(10, currentZ + 2),
