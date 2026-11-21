@@ -32,6 +32,8 @@ import { GangWatermark } from './components/GangWatermark';
 import { gangPresence, type OnlineMember, type GangNotification } from './utils/presence';
 import {
   getGangSession,
+  getSessionRole,
+  isGroupLeaderOrBoss,
   logoutGang,
   switchMasterBranchSession,
   verifySessionWithServer,
@@ -1209,7 +1211,13 @@ export function App() {
           onOpenBento={() => setIsBentoModalOpen(true)}
           memberName={gangSession.memberName}
           gangId={gangSession.gangId}
-          gangName={gangSession.isMaster ? (gangSession.gangName || 'กลุ่ม 1 (Master)') : 'สมาชิกกลุ่ม'}
+          gangName={
+            gangSession.isMaster
+              ? gangSession.gangName || 'กลุ่ม 1 (Master)'
+              : getSessionRole(gangSession) === 'group_leader'
+              ? 'หัวหน้ากลุ่ม'
+              : 'สมาชิกกลุ่ม'
+          }
           onCopyGangLink={handleCopyGangLink}
           isMaster={gangSession.isMaster}
           onSwitchMasterBranch={gangSession.isMaster ? handleSwitchMasterBranch : undefined}
@@ -1445,6 +1453,7 @@ export function App() {
             initialSpot={editingSpot}
             onDelete={handleDeleteSpot}
             isMaster={gangSession.isMaster}
+            canManageOfficial={isGroupLeaderOrBoss(gangSession)}
             onStartMoveSpot={handleStartMoveSpot}
           />
         </Suspense>

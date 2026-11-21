@@ -3,6 +3,8 @@ import {
   Users,
   Clock,
   Crown,
+  KeyRound,
+  RefreshCw,
   Copy,
   Check,
   X,
@@ -20,10 +22,14 @@ import { gangPresence, type OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession, UpcomingPinDay } from '../utils/gangAuth';
 import {
   AVAILABLE_BRANCHES,
-  fetchUpcomingPINs,
+  fetchPinsDashboard,
   formatPINsForDiscord,
+  getSessionRole,
+  isGroupLeaderOrBoss,
   logoutGang,
   parseBranch,
+  rotateLeaderPinOnServer,
+  rotateMemberPinOnServer,
   triggerServerForceLogout,
 } from '../utils/gangAuth';
 import { copyToClipboard } from '../utils/spotExport';
@@ -55,7 +61,10 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   onLogout,
   onSwitchMasterBranch,
 }) => {
-  const isMaster = Boolean(currentSession?.isMaster);
+  const role = getSessionRole(currentSession);
+  const isMaster = role === 'super_admin';
+  const isGroupLeader = role === 'group_leader';
+  const canManagePins = isGroupLeaderOrBoss(currentSession);
   const gangId = currentSession?.gangId || 'branch_1';
   const activeBranch = useMemo(() => parseBranch(gangId), [gangId]);
 
@@ -66,8 +75,16 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   const [pinPreviewBranchId, setPinPreviewBranchId] = useState<string>(gangId);
 
   const [upcomingPins, setUpcomingPins] = useState<UpcomingPinDay[]>([]);
+  const [leaderPins, setLeaderPins] = useState<Record<string, string>>({});
+  const [memberEpochs, setMemberEpochs] = useState<Record<string, number>>({});
+  const [leaderEpochs, setLeaderEpochs] = useState<Record<string, number>>({});
   const [pinsLoading, setPinsLoading] = useState(false);
   const [pinsError, setPinsError] = useState<string | null>(null);
+  const [pinsNotice, setPinsNotice] = useState<string | null>(null);
+  const [rotatingMemberPin, setRotatingMemberPin] = useState(false);
+  const [confirmRotateMemberPin, setConfirmRotateMemberPin] = useState(false);
+  const [rotatingLeaderPin, setRotatingLeaderPin] = useState(false);
+  const [confirmRotateLeaderPin, setConfirmRotateLeaderPin] = useState(false);
   const [confirmForceLogout, setConfirmForceLogout] = useState(false);
   const [forceLogoutBusy, setForceLogoutBusy] = useState(false);
 
@@ -105,8 +122,13 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     if (!isOpen) return;
     setNow(Date.now());
     setConfirmForceLogout(false);
+    setConfirmRotateMemberPin(false);
+    setConfirmRotateLeaderPin(false);
+    setPinsNotice(null);
     setPinPreviewBranchId(gangId);
-    if (!isMaster && (activeTab === 'boss' || activeTab === 'ip_logs')) {
+    if (!canManagePins && activeTab === 'boss') {
+      setActiveTab('online');
+    } else if (!isMaster && activeTab === 'ip_logs') {
       setActiveTab('online');
     }
     const timer = window.setInterval(() => setNow(Date.now()), 15000);
@@ -121,21 +143,30 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       window.clearInterval(timer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, isMaster, gangId, activeTab, onClose]);
+  }, [isOpen, isMaster, canManagePins, gangId, activeTab, onClose]);
 
   useEffect(() => {
-    if (!isOpen || !isMaster || !currentSession) return;
-    if (activeTab === 'boss' && upcomingPins.length === 0) {
+    if (!isOpen || !currentSession) return;
+    if (activeTab === 'boss' && canManagePins && upcomingPins.length === 0) {
       setPinsLoading(true);
       setPinsError(null);
-      void fetchUpcomingPINs(currentSession)
-        .then((data) => setUpcomingPins(data))
+      void fetchPinsDashboard(currentSession)
+        .then((data) => {
+          setUpcomingPins(data.schedule);
+          if (data.leaderPins) setLeaderPins(data.leaderPins);
+          if (data.memberEpochs) {
+            setMemberEpochs(data.memberEpochs);
+          } else if (typeof data.memberEpoch === 'number') {
+            setMemberEpochs((prev) => ({ ...prev, [gangId]: data.memberEpoch! }));
+          }
+          if (data.leaderEpochs) setLeaderEpochs(data.leaderEpochs);
+        })
         .catch((err) => setPinsError(err instanceof Error ? err.message : 'โหลดรหัสล้มเหลว'))
         .finally(() => setPinsLoading(false));
-    } else if (activeTab === 'ip_logs') {
+    } else if (activeTab === 'ip_logs' && isMaster) {
       void loadSecurityData();
     }
-  }, [isOpen, isMaster, currentSession, activeTab, upcomingPins.length, loadSecurityData]);
+  }, [isOpen, isMaster, canManagePins, currentSession, gangId, activeTab, upcomingPins.length, loadSecurityData]);
 
   useEffect(() => {
     return () => {
@@ -174,29 +205,99 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     feedbackTimerRef.current = window.setTimeout(() => setter(false), 2500);
   };
 
+  const targetBranchForPins = isMaster ? previewBranch.id : gangId;
+
   const handleCopyDiscord = async () => {
     if (upcomingPins.length === 0) return;
-    const text = formatPINsForDiscord(previewBranch.id, upcomingPins);
+    const text = formatPINsForDiscord(targetBranchForPins, upcomingPins, {
+      hideGroupNumber: !isMaster,
+    });
     await copyToClipboard(text);
     scheduleFeedbackReset(setCopied);
   };
 
-  const handleCopySinglePin = async (branchId: string, pinValue: string) => {
+  const handleCopySinglePin = async (keyId: string, pinValue: string) => {
     if (!pinValue || pinValue === '------') return;
     await copyToClipboard(pinValue);
-    setCopiedPinBranch(branchId);
+    setCopiedPinBranch(keyId);
     window.setTimeout(() => {
-      setCopiedPinBranch((prev) => (prev === branchId ? null : prev));
+      setCopiedPinBranch((prev) => (prev === keyId ? null : prev));
     }, 2000);
   };
 
-  const handleForceLogoutAll = async () => {
-    if (!currentSession?.isMaster) return;
+  const handleRotateMemberPin = async () => {
+    if (!currentSession || !canManagePins) return;
+    setRotatingMemberPin(true);
+    setPinsError(null);
+    setPinsNotice(null);
+    try {
+      const res = await rotateMemberPinOnServer(
+        currentSession,
+        isMaster ? previewBranch.id : undefined
+      );
+      setUpcomingPins(res.schedule);
+      if (res.leaderPins) setLeaderPins(res.leaderPins);
+      if (res.memberEpochs) {
+        setMemberEpochs(res.memberEpochs);
+      } else {
+        setMemberEpochs((prev) => ({ ...prev, [res.branchId]: res.memberEpoch }));
+      }
+      if (res.leaderEpochs) setLeaderEpochs(res.leaderEpochs);
+      setConfirmRotateMemberPin(false);
+      setPinsNotice(
+        isMaster
+          ? `รีเซ็ตรหัสสมาชิกของ ${parseBranch(res.branchId).name} เป็น ${res.newTodayPin} และเตะสมาชิกเดิมออกแล้ว`
+          : `ออกรหัสสมาชิกใหม่ (${res.newTodayPin}) และเตะสมาชิกที่ถือรหัสเดิมออกจากแผนที่แล้ว`
+      );
+      if (res.branchId === gangId) {
+        gangPresence.broadcastForceLogout('หัวหน้ากลุ่มรีเซ็ตรหัสผ่านสมาชิกใหม่');
+      }
+    } catch (err) {
+      setPinsError(err instanceof Error ? err.message : 'ไม่สามารถรีเซ็ตรหัสสมาชิกได้');
+    } finally {
+      setRotatingMemberPin(false);
+    }
+  };
+
+  const handleRotateLeaderPin = async () => {
+    if (!currentSession || !isMaster) return;
+    setRotatingLeaderPin(true);
+    setPinsError(null);
+    setPinsNotice(null);
+    try {
+      const res = await rotateLeaderPinOnServer(currentSession, previewBranch.id);
+      setUpcomingPins(res.schedule);
+      if (res.leaderPins) setLeaderPins(res.leaderPins);
+      if (res.memberEpochs) setMemberEpochs(res.memberEpochs);
+      if (res.leaderEpochs) setLeaderEpochs(res.leaderEpochs);
+      setConfirmRotateLeaderPin(false);
+      setPinsNotice(
+        `เปลี่ยนรหัสหัวหน้า ${previewBranch.name} เป็น ${res.newLeaderPin} แล้ว (หัวหน้าคนเดิมถูกตัด Session ทันที)`
+      );
+    } catch (err) {
+      setPinsError(err instanceof Error ? err.message : 'ไม่สามารถเปลี่ยนรหัสหัวหน้ากลุ่มได้');
+    } finally {
+      setRotatingLeaderPin(false);
+    }
+  };
+
+  const handleForceLogoutAll = async (branchId?: string) => {
+    if (!currentSession || !canManagePins) return;
     setForceLogoutBusy(true);
-    const ok = await triggerServerForceLogout(currentSession);
+    setPinsError(null);
+    const ok = await triggerServerForceLogout(currentSession, branchId);
     if (ok) {
-      gangPresence.broadcastForceLogout('หัวหน้ากลุ่มรีเซ็ต Session ทั้งหมด');
+      if (!branchId || branchId === gangId) {
+        gangPresence.broadcastForceLogout('หัวหน้ากลุ่มรีเซ็ต Session สมาชิกทั้งหมด');
+      }
       setConfirmForceLogout(false);
+      setPinsNotice(
+        branchId
+          ? `สั่งเตะสมาชิกของ ${parseBranch(branchId).name} ออกจากระบบแล้ว`
+          : isMaster
+          ? 'สั่งเตะสมาชิกทั่วไปทั้งหมดออกจากระบบแล้ว'
+          : 'สั่งเตะสมาชิกกลุ่มออกจากระบบแล้ว'
+      );
     } else {
       setPinsError('ไม่สามารถส่งคำสั่ง Force Logout ไปยังเซิร์ฟเวอร์ได้');
     }
@@ -307,7 +408,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 id="presence-modal-title" className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>{isMaster ? `กลุ่ม ${activeBranch.num}` : 'สมาชิกกลุ่ม'}</span>
+                  <span>{isMaster ? `กลุ่ม ${activeBranch.num}` : isGroupLeader ? 'หัวหน้ากลุ่ม' : 'สมาชิกกลุ่ม'}</span>
                 </h3>
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
                   <span className="relative flex h-2 w-2">
@@ -319,7 +420,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               </div>
               <p className="text-[11px] text-slate-400">
                 คุณล็อกอินในชื่อ: <span className="font-bold text-amber-400">{currentSession?.memberName || 'สมาชิก'}</span>
-                {isMaster ? ' (👑 หัวหน้าสูงสุด)' : 'สมาชิกกำลังออนไลน์'}
+                {isMaster
+                  ? ' (👑 หัวหน้าสูงสุด)'
+                  : isGroupLeader
+                  ? ' (🛡️ หัวหน้ากลุ่ม)'
+                  : ' • สมาชิกกำลังออนไลน์'}
               </p>
             </div>
           </div>
@@ -332,7 +437,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                   className="inline-flex items-center justify-center w-7 h-7 rounded-full ring-2 ring-slate-900 bg-slate-800 text-[10px] font-bold text-slate-200 shadow-sm"
                   title={`${m.memberName} (${m.device || 'Online'})`}
                 >
-                  {m.isMaster ? '👑' : m.memberName.slice(0, 1).toUpperCase()}
+                  {m.role === 'super_admin' || m.isMaster
+                    ? '👑'
+                    : m.role === 'group_leader'
+                    ? '🛡️'
+                    : m.memberName.slice(0, 1).toUpperCase()}
                 </div>
               ))}
               {onlineMembers.length > 4 && (
@@ -385,7 +494,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               <span>Timeline ประวัติ</span>
             </button>
 
-            {isMaster && (
+            {canManagePins && (
               <button
                 type="button"
                 onClick={() => setActiveTab('boss')}
@@ -395,8 +504,8 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Crown className="w-3.5 h-3.5" />
-                <span>รหัส 5 กลุ่ม (7 วัน)</span>
+                {isMaster ? <Crown className="w-3.5 h-3.5" /> : <KeyRound className="w-3.5 h-3.5" />}
+                <span>{isMaster ? 'จัดการรหัส 5 กลุ่ม' : 'จัดการรหัสกลุ่ม'}</span>
               </button>
             )}
 
@@ -451,7 +560,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-xs">
-                            {member.isMaster ? '👑' : '👤'}
+                            {member.role === 'super_admin' || member.isMaster
+                              ? '👑'
+                              : member.role === 'group_leader'
+                              ? '🛡️'
+                              : '👤'}
                           </div>
                           <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900"></span>
                         </div>
@@ -464,9 +577,14 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                                 คุณ
                               </span>
                             )}
-                            {member.isMaster && (
+                            {(member.role === 'super_admin' || member.isMaster) && (
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 font-semibold border border-red-500/30">
-                                หัวหน้า
+                                หัวหน้าสูงสุด
+                              </span>
+                            )}
+                            {member.role === 'group_leader' && !member.isMaster && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/30">
+                                หัวหน้ากลุ่ม
                               </span>
                             )}
                           </div>
@@ -586,28 +704,265 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: BOSS / DAILY PINS (Master Only) */}
-          {activeTab === 'boss' && isMaster && (
+          {/* TAB 3: BOSS / GROUP LEADER PIN MANAGEMENT */}
+          {activeTab === 'boss' && canManagePins && (
             <div className="space-y-3">
-              <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Crown className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      รหัสวันนี้ทั้ง 5 กลุ่ม & ตาราง 7 วัน ({previewBranch.name})
-                    </span>
-                  </div>
+              {isMaster ? (
+                <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        รหัสวันนี้ทั้ง 5 กลุ่ม & ตาราง 7 วัน ({previewBranch.name})
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    {onSwitchMasterBranch && previewBranch.id !== gangId && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {onSwitchMasterBranch && previewBranch.id !== gangId && (
+                        <button
+                          type="button"
+                          onClick={() => onSwitchMasterBranch(previewBranch.id)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-[11px] transition-all cursor-pointer"
+                        >
+                          สลับดูแผนที่ {previewBranch.name}
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => onSwitchMasterBranch(previewBranch.id)}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-[11px] transition-all cursor-pointer"
+                        disabled={upcomingPins.length === 0}
+                        onClick={handleCopyDiscord}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 active:scale-95 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
                       >
-                        สลับดูแผนที่ {previewBranch.name}
+                        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copied ? 'คัดลอกแล้ว!' : `คัดลอก ${previewBranch.name} ลง Discord`}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    สมาชิกใส่แค่ชื่อ + PIN 6 หลัก ระบบจะส่งเข้ากลุ่มให้ตรงอัตโนมัติ (รหัสสมาชิกเปลี่ยนทุก 00:00 น. • รหัสหัวหน้ากลุ่มใช้ยาวจนกว่าคุณจะกดรีเซ็ต)
+                  </p>
+
+                  {/* All 5 Groups Quick Selector + Today Member PINs */}
+                  {todayPinEntry && (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+                      {AVAILABLE_BRANCHES.map((branch) => {
+                        const todayPin = todayPinEntry.pins[branch.id] || '------';
+                        const isSelected = previewBranch.id === branch.id;
+                        const isCopiedPin = copiedPinBranch === `member:${branch.id}`;
+                        const epochCount = memberEpochs[branch.id] ?? 0;
+                        return (
+                          <div
+                            key={branch.id}
+                            onClick={() => {
+                              setPinPreviewBranchId(branch.id);
+                              setConfirmRotateMemberPin(false);
+                              setConfirmRotateLeaderPin(false);
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setPinPreviewBranchId(branch.id);
+                              }
+                            }}
+                            className={`p-2 rounded-xl border text-left transition-all cursor-pointer select-none ${
+                              isSelected
+                                ? 'bg-amber-500/20 border-amber-400 shadow-sm'
+                                : 'bg-slate-900/70 border-slate-700/80 hover:border-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-[10px] font-bold ${isSelected ? 'text-amber-300' : 'text-slate-300'}`}>
+                                {branch.name}
+                                {epochCount > 0 && (
+                                  <span className="ml-1 text-[9px] text-emerald-400">v{epochCount + 1}</span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleCopySinglePin(`member:${branch.id}`, todayPin);
+                                }}
+                                title={`คัดลอกรหัสสมาชิกวันนี้ของ ${branch.name}`}
+                                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
+                              >
+                                {isCopiedPin ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                              </button>
+                            </div>
+                            <div className="mt-1 font-mono text-xs font-black tracking-widest text-white">
+                              {todayPin}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Selected Group Persistent Leader PIN + Emergency Rotation Controls */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-500/20">
+                    {/* Persistent Leader PIN box */}
+                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-cyan-500/30 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
+                          <KeyRound className="w-3 h-3" />
+                          <span>รหัสหัวหน้า {previewBranch.name}</span>
+                          {(leaderEpochs[previewBranch.id] ?? 0) > 0 && (
+                            <span className="px-1 rounded bg-cyan-500/20 text-[9px] font-mono">
+                              #{(leaderEpochs[previewBranch.id] ?? 0) + 1}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <span className="font-mono text-sm font-black tracking-widest text-white">
+                            {leaderPins[previewBranch.id] || '------'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleCopySinglePin(
+                                `leader:${previewBranch.id}`,
+                                leaderPins[previewBranch.id] || ''
+                              )
+                            }
+                            title={`คัดลอกรหัสหัวหน้า ${previewBranch.name}`}
+                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 cursor-pointer"
+                          >
+                            {copiedPinBranch === `leader:${previewBranch.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {confirmRotateLeaderPin ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={rotatingLeaderPin}
+                            onClick={() => void handleRotateLeaderPin()}
+                            className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            {rotatingLeaderPin ? 'กำลังเปลี่ยน...' : 'ยืนยัน'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRotateLeaderPin(false)}
+                            className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRotateLeaderPin(true)}
+                          className="px-2 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>รีรหัสหัวหน้า</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Rotate Member PIN for selected group */}
+                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-rose-500/30 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-bold text-rose-300">
+                          รหัสสมาชิกวันนี้ ({previewBranch.name})
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          ใช้กรณีรหัสสมาชิกหลุด (เตะเดิมทันที)
+                        </div>
+                      </div>
+
+                      {confirmRotateMemberPin ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={rotatingMemberPin}
+                            onClick={() => void handleRotateMemberPin()}
+                            className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            {rotatingMemberPin ? 'กำลังรี...' : 'ยืนยัน'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRotateMemberPin(false)}
+                            className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRotateMemberPin(true)}
+                          className="px-2 py-1 rounded-lg bg-rose-950/70 hover:bg-rose-900/80 border border-rose-500/40 text-rose-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>รีรหัสสมาชิก</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Panic Force Logout */}
+                  <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] text-rose-300 font-medium">
+                      เตะสมาชิกทั้งหมดออกจากแผนที่ทันที (ต้องกรอกรหัสใหม่):
+                    </span>
+                    {confirmForceLogout ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={forceLogoutBusy}
+                          onClick={() => void handleForceLogoutAll(previewBranch.id)}
+                          className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] cursor-pointer"
+                        >
+                          เตะเฉพาะ {previewBranch.name}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={forceLogoutBusy}
+                          onClick={() => void handleForceLogoutAll()}
+                          className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] cursor-pointer"
+                        >
+                          {forceLogoutBusy ? 'กำลังส่ง...' : 'เตะทั้ง 5 กลุ่ม!'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmForceLogout(false)}
+                          className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmForceLogout(true)}
+                        className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-500/40 text-[11px] font-bold cursor-pointer"
+                      >
+                        🚨 รีเซ็ต Session สมาชิก
                       </button>
                     )}
+                  </div>
+                </div>
+              ) : (
+                /* GROUP LEADER SELF-SERVICE VIEW (Zero mention of 5 groups) */
+                <div className="p-3.5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        จัดการรหัสผ่านเข้ากลุ่ม (เฉพาะหัวหน้ากลุ่ม)
+                      </span>
+                    </div>
+
                     <button
                       type="button"
                       disabled={upcomingPins.length === 0}
@@ -615,98 +970,119 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                       className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 active:scale-95 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
                     >
                       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copied ? 'คัดลอกแล้ว!' : `คัดลอก ${previewBranch.name} ลง Discord`}</span>
+                      <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอกตารางลง Discord'}</span>
                     </button>
                   </div>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  สมาชิกใส่แค่ชื่อ + PIN 6 หลัก ระบบจะส่งเข้ากลุ่มให้ตรงอัตโนมัติ (เปลี่ยนทุก 00:00 น. UTC+7)
-                </p>
 
-                {/* All 5 Groups Quick Selector + Today PINs */}
-                {todayPinEntry && (
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
-                    {AVAILABLE_BRANCHES.map((branch) => {
-                      const todayPin = todayPinEntry.pins[branch.id] || '------';
-                      const isSelected = previewBranch.id === branch.id;
-                      const isCopiedPin = copiedPinBranch === branch.id;
-                      return (
-                        <div
-                          key={branch.id}
-                          onClick={() => setPinPreviewBranchId(branch.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              setPinPreviewBranchId(branch.id);
-                            }
-                          }}
-                          className={`p-2 rounded-xl border text-left transition-all cursor-pointer select-none ${
-                            isSelected
-                              ? 'bg-amber-500/20 border-amber-400 shadow-sm'
-                              : 'bg-slate-900/70 border-slate-700/80 hover:border-slate-600'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-1">
-                            <span className={`text-[10px] font-bold ${isSelected ? 'text-amber-300' : 'text-slate-300'}`}>
-                              {branch.name}
+                  {todayPinEntry && (
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+                          <span>รหัสผ่านสมาชิกวันนี้ (เปลี่ยนทุก 00:00 น.):</span>
+                          {(memberEpochs[gangId] ?? 0) > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                              รีใหม่วันนี้แล้ว ({(memberEpochs[gangId] ?? 0)} ครั้ง)
                             </span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleCopySinglePin(branch.id, todayPin);
-                              }}
-                              title={`คัดลอกรหัสวันนี้ของ ${branch.name}`}
-                              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
-                            >
-                              {isCopiedPin ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                            </button>
-                          </div>
-                          <div className="mt-1 font-mono text-xs font-black tracking-widest text-white">
-                            {todayPin}
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="font-mono text-xl font-black tracking-[0.2em] text-amber-300">
+                            {todayPinEntry.pins[gangId] || '------'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleCopySinglePin('leader_self_today', todayPinEntry.pins[gangId] || '')
+                            }
+                            className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedPinBranch === 'leader_self_today' ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>คัดลอกแล้ว</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>คัดลอก</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
 
-                {/* Panic Force Logout */}
-                <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] text-rose-300 font-medium">
-                    เตะสมาชิกทั่วไปทั้งหมดออกจากแผนที่ทันที (ต้องกรอกรหัสใหม่):
-                  </span>
-                  {confirmForceLogout ? (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={forceLogoutBusy}
-                        onClick={handleForceLogoutAll}
-                        className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] cursor-pointer"
-                      >
-                        {forceLogoutBusy ? 'กำลังส่งคำสั่ง...' : 'ยืนยันเตะทั้งหมด!'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmForceLogout(false)}
-                        className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
-                      >
-                        ยกเลิก
-                      </button>
+                      {confirmRotateMemberPin ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={rotatingMemberPin}
+                            onClick={() => void handleRotateMemberPin()}
+                            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs cursor-pointer"
+                          >
+                            {rotatingMemberPin ? 'กำลังออกรหัสใหม่...' : 'ยืนยันรีรหัส + เตะคนเก่า!'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRotateMemberPin(false)}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs cursor-pointer"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRotateMemberPin(true)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-500/50 text-rose-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>รหัสหลุด? กดรีรหัสสมาชิกทันที</span>
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmForceLogout(true)}
-                      className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-500/40 text-[11px] font-bold cursor-pointer"
-                    >
-                      🚨 รีเซ็ต Session สมาชิก
-                    </button>
                   )}
+
+                  {/* Force logout members of this group only */}
+                  <div className="pt-2 border-t border-cyan-500/20 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] text-rose-300 font-medium">
+                      เตะสมาชิกทั้งหมดออกจากแผนที่ (ต้องกรอกรหัสใหม่ • คุณยังออนไลน์ต่อได้):
+                    </span>
+                    {confirmForceLogout ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={forceLogoutBusy}
+                          onClick={() => void handleForceLogoutAll()}
+                          className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] cursor-pointer"
+                        >
+                          {forceLogoutBusy ? 'กำลังส่งคำสั่ง...' : 'ยืนยันเตะสมาชิกทั้งหมด!'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmForceLogout(false)}
+                          className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmForceLogout(true)}
+                        className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-500/40 text-[11px] font-bold cursor-pointer"
+                      >
+                        🚨 เตะสมาชิกทั้งหมด
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {pinsNotice && (
+                <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/50 text-emerald-200 text-xs font-medium">
+                  ✅ {pinsNotice}
+                </div>
+              )}
 
               {pinsError && (
                 <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs">
@@ -719,7 +1095,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
               ) : (
                 <div className="space-y-1.5">
                   {upcomingPins.map((item) => {
-                    const pin = item.pins[previewBranch.id] || '------';
+                    const pin = item.pins[targetBranchForPins] || '------';
                     return (
                       <div
                         key={item.dateStr}

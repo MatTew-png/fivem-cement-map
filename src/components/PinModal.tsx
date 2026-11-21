@@ -20,6 +20,7 @@ interface PinModalProps {
   initialSpot?: Partial<CementSpot> | null;
   onDelete?: (id: string) => void;
   isMaster?: boolean;
+  canManageOfficial?: boolean;
   onStartMoveSpot?: (spot: CementSpot) => void;
 }
 
@@ -32,11 +33,13 @@ export const PinModal = ({
   initialSpot,
   onDelete,
   isMaster = false,
+  canManageOfficial = false,
   onStartMoveSpot,
 }: PinModalProps) => {
   const isOfficial = Boolean(initialSpot?.id && officialSpotIds.has(initialSpot.id));
+  const hasOfficialControl = Boolean(isMaster || canManageOfficial);
   const [isCoordsOverrideUnlocked, setIsCoordsOverrideUnlocked] = useState(false);
-  const coordsLocked = isOfficial && !isMaster && !isCoordsOverrideUnlocked;
+  const coordsLocked = isOfficial && !hasOfficialControl && !isCoordsOverrideUnlocked;
 
   const [category, setCategory] = useState<string>('cement_mine');
   const [name, setName] = useState('');
@@ -278,7 +281,7 @@ export const PinModal = ({
                 <h2 id="pin-modal-title" className="text-base font-bold text-white tracking-wide">
                   {initialSpot?.id ? 'แก้ไขหมุดมาร์คเกอร์' : 'สร้างหมุดใหม่บนแผนที่'}
                 </h2>
-                {isOfficial && !isMaster && (
+                {isOfficial && !hasOfficialControl && (
                   <button
                     type="button"
                     onClick={() => setIsCoordsOverrideUnlocked((prev) => !prev)}
@@ -289,7 +292,7 @@ export const PinModal = ({
                     <span>{coordsLocked ? 'จุดหลัก (คลิกปลดล็อคพิกัด)' : 'ปลดล็อคพิกัดแล้ว'}</span>
                   </button>
                 )}
-                {isOfficial && isMaster && (
+                {isOfficial && hasOfficialControl && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1 font-bold">
                     <Crown className="w-3 h-3 text-red-400" />
                     <span>หัวหน้า</span>
@@ -814,7 +817,7 @@ export const PinModal = ({
                   }}
                   className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
                 >
-                  {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
+                  {isOfficial && hasOfficialControl && <Crown className="w-3.5 h-3.5 text-red-400" />}
                   <span>ลบหมุดนี้</span>
                 </button>
               )

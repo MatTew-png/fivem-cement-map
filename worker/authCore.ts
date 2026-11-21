@@ -19,15 +19,26 @@ export const BRANCH_NAMES: Record<string, string> = {
   master_boss: 'ผู้ดูแลระบบสูงสุด (Master Boss)',
 };
 
+export type UserRole = 'super_admin' | 'group_leader' | 'member';
+
 export interface SessionTokenPayload {
   sub: string;
   gangName: string;
   memberName: string;
   authDate: string;
   isMaster: boolean;
+  role?: UserRole;
+  pinEpoch?: number;
   iat: number;
   exp: number;
   ipHash: string;
+}
+
+export function resolvePayloadRole(payload: Pick<SessionTokenPayload, 'isMaster' | 'role'>): UserRole {
+  if (payload.role === 'super_admin' || payload.role === 'group_leader' || payload.role === 'member') {
+    return payload.role;
+  }
+  return payload.isMaster ? 'super_admin' : 'member';
 }
 
 const textEncoder = new TextEncoder();
@@ -110,14 +121,8 @@ export function isValidBranchId(branchId: string): boolean {
   return (BRANCH_IDS as readonly string[]).includes(branchId);
 }
 
-async function deriveCandidatePin(
-  secretSeed: string,
-  branchId: string,
-  dateStr: string,
-  attempt: number
-): Promise<string> {
-  const input = attempt === 0 ? `pin:v2:${branchId}:${dateStr}` : `pin:v2:${branchId}:${dateStr}:${attempt}`;
-  const digest = await hmacSha256(secretSeed, input);
+async function deriveSixDigitCode(secretSeed: string, message: string): Promise<string> {
+  const digest = await hmacSha256(secretSeed, message);
   const value =
     (((digest[0] & 0x7f) << 24) |
       (digest[1] << 16) |
@@ -127,22 +132,77 @@ async function deriveCandidatePin(
   return String(value).padStart(6, '0');
 }
 
+async function deriveCandidatePin(
+  secretSeed: string,
+  branchId: string,
+  dateStr: string,
+  attempt: number,
+  epoch = 0
+): Promise<string> {
+  const input =
+    epoch === 0 && attempt === 0
+      ? `pin:v2:${branchId}:${dateStr}`
+      : epoch === 0
+      ? `pin:v2:${branchId}:${dateStr}:${attempt}`
+      : `pin:v2:${branchId}:${dateStr}:e${epoch}:a${attempt}`;
+  return deriveSixDigitCode(secretSeed, input);
+}
+
 /**
- * Derives collision-free 6-digit daily PINs for all branches on a given date.
+ * Derives persistent 6-digit Leader PINs per branch (Type B: unchanged across midnight until rotated).
+ */
+export async function deriveAllLeaderPins(
+  secretSeed: string,
+  leaderEpochs: Partial<Record<BranchId, number>> = {},
+  reservedPins: ReadonlySet<string> = new Set()
+): Promise<Record<BranchId, string>> {
+  const result = {} as Record<BranchId, string>;
+  const usedPins = new Set<string>(reservedPins);
+
+  for (const branchId of BRANCH_IDS) {
+    const epoch = Math.max(0, Math.floor(leaderEpochs[branchId] ?? 0));
+    let attempt = 0;
+    let pin = await deriveSixDigitCode(
+      secretSeed,
+      attempt === 0
+        ? `leader-pin:v1:${branchId}:e${epoch}`
+        : `leader-pin:v1:${branchId}:e${epoch}:a${attempt}`
+    );
+    while (usedPins.has(pin)) {
+      attempt += 1;
+      pin = await deriveSixDigitCode(
+        secretSeed,
+        `leader-pin:v1:${branchId}:e${epoch}:a${attempt}`
+      );
+    }
+    usedPins.add(pin);
+    result[branchId] = pin;
+  }
+
+  return result;
+}
+
+/**
+ * Derives collision-free 6-digit daily Member PINs for all branches on a given date.
  */
 export async function deriveAllBranchDailyPins(
   secretSeed: string,
-  dateStr: string
+  dateStr: string,
+  options: {
+    memberEpochs?: Partial<Record<BranchId, number>>;
+    reservedPins?: ReadonlySet<string>;
+  } = {}
 ): Promise<Record<BranchId, string>> {
   const result = {} as Record<BranchId, string>;
-  const usedPins = new Set<string>();
+  const usedPins = new Set<string>(options.reservedPins);
 
   for (const branchId of BRANCH_IDS) {
+    const epoch = Math.max(0, Math.floor(options.memberEpochs?.[branchId] ?? 0));
     let attempt = 0;
-    let pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt);
+    let pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt, epoch);
     while (usedPins.has(pin)) {
       attempt += 1;
-      pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt);
+      pin = await deriveCandidatePin(secretSeed, branchId, dateStr, attempt, epoch);
     }
     usedPins.add(pin);
     result[branchId] = pin;
@@ -157,24 +217,32 @@ export async function deriveAllBranchDailyPins(
 export async function deriveDailyPin(
   secretSeed: string,
   branchId: string,
-  dateStr: string
+  dateStr: string,
+  options: {
+    memberEpochs?: Partial<Record<BranchId, number>>;
+    reservedPins?: ReadonlySet<string>;
+  } = {}
 ): Promise<string> {
   if (isValidBranchId(branchId)) {
-    const pins = await deriveAllBranchDailyPins(secretSeed, dateStr);
+    const pins = await deriveAllBranchDailyPins(secretSeed, dateStr, options);
     return pins[branchId as BranchId];
   }
-  return deriveCandidatePin(secretSeed, branchId, dateStr, 0);
+  return deriveCandidatePin(secretSeed, branchId, dateStr, 0, 0);
 }
 
 /**
- * Resolves which branch owns the provided daily PIN in constant-time comparisons.
+ * Resolves which branch owns the provided daily Member PIN in constant-time comparisons.
  */
 export async function resolveBranchByPin(
   secretSeed: string,
   inputPin: string,
-  dateStr: string
+  dateStr: string,
+  options: {
+    memberEpochs?: Partial<Record<BranchId, number>>;
+    reservedPins?: ReadonlySet<string>;
+  } = {}
 ): Promise<BranchId | null> {
-  const pins = await deriveAllBranchDailyPins(secretSeed, dateStr);
+  const pins = await deriveAllBranchDailyPins(secretSeed, dateStr, options);
   let matchedBranch: BranchId | null = null;
   for (const branchId of BRANCH_IDS) {
     if (await timingSafeEqual(inputPin, pins[branchId])) {
@@ -182,6 +250,55 @@ export async function resolveBranchByPin(
     }
   }
   return matchedBranch;
+}
+
+export async function resolvePinCredentials(options: {
+  masterPin: string;
+  secretSeed: string;
+  inputPin: string;
+  dateStr: string;
+  leaderEpochs?: Partial<Record<BranchId, number>>;
+  memberEpochs?: Partial<Record<BranchId, number>>;
+  requestedBranchId?: string;
+}): Promise<{ role: UserRole; branchId: string; pinEpoch: number } | null> {
+  const { masterPin, secretSeed, inputPin, dateStr, leaderEpochs, memberEpochs, requestedBranchId } = options;
+
+  if (await timingSafeEqual(inputPin, masterPin)) {
+    return { role: 'super_admin', branchId: MASTER_GANG_ID, pinEpoch: 0 };
+  }
+
+  const leaderReserved = new Set<string>([masterPin]);
+  const leaderPins = await deriveAllLeaderPins(secretSeed, leaderEpochs, leaderReserved);
+
+  for (const branchId of BRANCH_IDS) {
+    if (requestedBranchId && requestedBranchId !== branchId) continue;
+    if (await timingSafeEqual(inputPin, leaderPins[branchId])) {
+      return {
+        role: 'group_leader',
+        branchId,
+        pinEpoch: Math.max(0, Math.floor(leaderEpochs?.[branchId] ?? 0)),
+      };
+    }
+  }
+
+  const memberReserved = new Set<string>([masterPin, ...Object.values(leaderPins)]);
+  const memberPins = await deriveAllBranchDailyPins(secretSeed, dateStr, {
+    memberEpochs,
+    reservedPins: memberReserved,
+  });
+
+  for (const branchId of BRANCH_IDS) {
+    if (requestedBranchId && requestedBranchId !== branchId) continue;
+    if (await timingSafeEqual(inputPin, memberPins[branchId])) {
+      return {
+        role: 'member',
+        branchId,
+        pinEpoch: Math.max(0, Math.floor(memberEpochs?.[branchId] ?? 0)),
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -252,12 +369,13 @@ export async function verifySessionToken(
   const nowMs = options.nowMs ?? Date.now();
   if (nowMs > parsed.exp) return null;
 
+  const role = resolvePayloadRole(parsed);
   const currentDate = options.currentDate ?? getBangkokDateString(nowMs);
-  if (!parsed.isMaster && parsed.authDate !== currentDate) {
+  if (role === 'member' && parsed.authDate !== currentDate) {
     return null;
   }
 
-  if (options.forceLogoutAfter && parsed.iat < options.forceLogoutAfter && !parsed.isMaster) {
+  if (options.forceLogoutAfter && parsed.iat < options.forceLogoutAfter && role !== 'super_admin') {
     return null;
   }
 

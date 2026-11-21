@@ -1,7 +1,8 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { CementSpot, ActiveCooldown, TacticalPing } from '../types/map';
-import type { GangSession, ActivityLog } from './gangAuth';
+import type { GangSession, ActivityLog, UserRole } from './gangAuth';
 import {
+  getSessionRole,
   logActivity,
   getActivityLogs,
   clearActivityLogs,
@@ -14,6 +15,7 @@ export interface OnlineMember {
   clientId: string;
   memberName: string;
   isMaster: boolean;
+  role?: UserRole;
   joinedAt: number;
   lastSeen: number;
   device?: string;
@@ -427,10 +429,14 @@ class GangPresenceManager {
 
     const uniqueList = Array.from(uniqueMap.values());
 
-    // เรียง: หัวหน้าขึ้นก่อน แล้วตามด้วยเวลาที่ออนไลน์
+    // เรียง: หัวหน้าสูงสุด -> หัวหน้ากลุ่ม -> สมาชิก -> เวลาที่ออนไลน์
+    const roleRank = (m: OnlineMember) => {
+      const r = m.role ?? (m.isMaster ? 'super_admin' : 'member');
+      return r === 'super_admin' ? 0 : r === 'group_leader' ? 1 : 2;
+    };
     return uniqueList.sort((a, b) => {
-      if (a.isMaster && !b.isMaster) return -1;
-      if (!a.isMaster && b.isMaster) return 1;
+      const diff = roleRank(a) - roleRank(b);
+      if (diff !== 0) return diff;
       return a.joinedAt - b.joinedAt;
     });
   }
@@ -446,6 +452,7 @@ class GangPresenceManager {
       clientId: this.clientId,
       memberName: this.session.memberName,
       isMaster: this.session.isMaster,
+      role: getSessionRole(this.session),
       joinedAt: now,
       lastSeen: now,
       device: navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop',
@@ -578,6 +585,7 @@ class GangPresenceManager {
       clientId: this.clientId,
       memberName: this.session.memberName,
       isMaster: this.session.isMaster,
+      role: getSessionRole(this.session),
       joinedAt: self?.joinedAt || Date.now(),
       lastSeen: Date.now(),
       device: navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop',
@@ -653,6 +661,12 @@ class GangPresenceManager {
         clientId: data.clientId,
         memberName: data.memberName,
         isMaster: !!data.isMaster,
+        role:
+          data.role === 'super_admin' || data.role === 'group_leader' || data.role === 'member'
+            ? data.role
+            : data.isMaster
+            ? 'super_admin'
+            : 'member',
         joinedAt: isGenuineNewJoin ? (data.joinedAt || now) : (existingSession?.firstJoined || data.joinedAt || now),
         lastSeen: now,
         device: data.device || 'Desktop',

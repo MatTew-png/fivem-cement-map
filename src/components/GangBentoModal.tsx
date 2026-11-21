@@ -15,6 +15,7 @@ import {
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import type { OnlineMember } from '../utils/presence';
 import type { ActivityLog, GangSession } from '../utils/gangAuth';
+import { getSessionRole, isGroupLeaderOrBoss } from '../utils/gangAuth';
 import { isCementSpot } from '../utils/spotCategories';
 
 interface GangBentoModalProps {
@@ -109,11 +110,20 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   Tactical Intel Dashboard
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono font-bold">
-                  {currentSession?.isMaster ? (currentSession.gangName || 'กลุ่ม 1 (Master)') : 'สมาชิกกลุ่ม'}
+                  {currentSession?.isMaster
+                    ? currentSession.gangName || 'กลุ่ม 1 (Master)'
+                    : getSessionRole(currentSession) === 'group_leader'
+                    ? 'หัวหน้ากลุ่ม'
+                    : 'สมาชิกกลุ่ม'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่าย {currentSession?.isMaster ? (currentSession.gangName || 'กลุ่ม 1') : 'สมาชิกกลุ่ม'}
+                ศูนย์ข้อมูลสถิติ เรดาร์พิกัด และสถานะเครือข่าย{' '}
+                {currentSession?.isMaster
+                  ? currentSession.gangName || 'กลุ่ม 1'
+                  : getSessionRole(currentSession) === 'group_leader'
+                  ? 'หัวหน้ากลุ่ม'
+                  : 'สมาชิกกลุ่ม'}
               </p>
             </div>
           </div>
@@ -225,7 +235,9 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   ••••••
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">
-                  {currentSession?.isMaster ? 'ดูตารางรหัสได้ที่เมนูหัวหน้ากลุ่ม' : 'ตรวจสอบจาก Discord ของกลุ่ม'}
+                  {isGroupLeaderOrBoss(currentSession)
+                    ? 'ดูและจัดการรหัสผ่านได้ที่เมนูหัวหน้ากลุ่ม'
+                    : 'ตรวจสอบจาก Discord ของกลุ่ม'}
                 </div>
               </div>
 
@@ -235,7 +247,11 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   <span>Anti-Theft Active</span>
                 </span>
                 <span className="text-amber-400 font-bold">
-                  {currentSession?.isMaster ? '👑 BOSS' : (currentSession?.memberName || 'MEMBER')}
+                  {currentSession?.isMaster
+                    ? '👑 BOSS'
+                    : getSessionRole(currentSession) === 'group_leader'
+                    ? '🛡️ LEADER'
+                    : currentSession?.memberName || 'MEMBER'}
                 </span>
               </div>
             </div>
@@ -266,7 +282,8 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     <span>{m.memberName}</span>
-                    {m.isMaster && <span className="text-[10px]">👑</span>}
+                    {(m.role === 'super_admin' || m.isMaster) && <span className="text-[10px]">👑</span>}
+                    {m.role === 'group_leader' && !m.isMaster && <span className="text-[10px]">🛡️</span>}
                     {m.device === 'Mobile' ? (
                       <Smartphone className="w-2.5 h-2.5 text-slate-400" />
                     ) : (

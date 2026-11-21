@@ -1,5 +1,7 @@
 // ระบบความปลอดภัยและ Session ผ่าน Cloudflare Worker API สำหรับกลุ่ม FiveM (รันทุกเวิบ COOLDOWN)
 
+export type UserRole = 'super_admin' | 'group_leader' | 'member';
+
 export interface GangSession {
   gangId: string;
   gangName: string;
@@ -7,8 +9,25 @@ export interface GangSession {
   authDate: string; // YYYY-MM-DD (Asia/Bangkok)
   authenticatedAt: number;
   isMaster: boolean;
+  role?: UserRole;
   token?: string;
   channelKey?: string;
+}
+
+export function getSessionRole(
+  session?: Pick<GangSession, 'isMaster' | 'role'> | null
+): UserRole {
+  if (session?.role === 'super_admin' || session?.role === 'group_leader' || session?.role === 'member') {
+    return session.role;
+  }
+  return session?.isMaster ? 'super_admin' : 'member';
+}
+
+export function isGroupLeaderOrBoss(
+  session?: Pick<GangSession, 'isMaster' | 'role'> | null
+): boolean {
+  const role = getSessionRole(session);
+  return role === 'super_admin' || role === 'group_leader';
 }
 
 export interface ActivityLog {
@@ -72,6 +91,13 @@ export const AVAILABLE_BRANCHES: BranchInfo[] = [
   { id: 'branch_4', num: 4, name: 'กลุ่ม 4' },
   { id: 'branch_5', num: 5, name: 'กลุ่ม 5' },
 ];
+
+export function getGroupDisplayLabel(role: UserRole, branchId?: string): string {
+  if (role === 'super_admin') {
+    return `${parseBranch(branchId).name} (Master Boss)`;
+  }
+  return role === 'group_leader' ? 'หัวหน้ากลุ่ม' : 'สมาชิกกลุ่ม';
+}
 
 export function parseBranch(input?: string | null): BranchInfo {
   if (!input) return AVAILABLE_BRANCHES[0];
@@ -188,16 +214,20 @@ export async function verifyPIN(
     };
 
     if (res.ok && data.success && data.session && data.token) {
+      const role = getSessionRole(data.session);
       const savedMasterBranch =
         typeof window !== 'undefined' ? localStorage.getItem('runthukverb_last_branch') : null;
-      const targetBranch = data.session.isMaster
-        ? parseBranch(explicitBranch?.id || savedMasterBranch || 'branch_1')
-        : parseBranch(data.session.gangId);
+      const targetBranch =
+        role === 'super_admin'
+          ? parseBranch(explicitBranch?.id || savedMasterBranch || 'branch_1')
+          : parseBranch(data.session.gangId);
 
       const session: GangSession = {
         ...data.session,
+        role,
+        isMaster: role === 'super_admin',
         gangId: targetBranch.id,
-        gangName: data.session.isMaster ? `${targetBranch.name} (Master Boss)` : 'สมาชิกกลุ่ม',
+        gangName: getGroupDisplayLabel(role, targetBranch.id),
         token: data.token,
         channelKey: data.channelKey,
       };
@@ -206,8 +236,10 @@ export async function verifyPIN(
       logActivity(
         cleanName,
         'login',
-        session.isMaster
+        role === 'super_admin'
           ? `เข้าสู่ระบบด้วย Master PIN (${targetBranch.name})`
+          : role === 'group_leader'
+          ? 'เข้าสู่ระบบในฐานะหัวหน้ากลุ่ม'
           : 'เข้าสู่ระบบด้วยรหัสผ่านประจำวัน',
         session.gangId
       );
@@ -295,28 +327,20 @@ export async function verifySessionWithServer(
   }
 }
 
-export async function fetchUpcomingPINs(session: GangSession): Promise<UpcomingPinDay[]> {
-  if (!session.isMaster || !session.token) {
-    throw new Error('เฉพาะ Master Boss เท่านั้นที่ดูตารางรหัสผ่านได้');
-  }
+export interface PinsDashboardResponse {
+  schedule: UpcomingPinDay[];
+  leaderPins?: Record<string, string>;
+  memberEpochs?: Record<string, number>;
+  leaderEpochs?: Record<string, number>;
+  memberEpoch?: number;
+}
 
+function mapScheduleDays(
+  rawSchedule: Array<{ date: string; pins: Record<string, string> }> = []
+): UpcomingPinDay[] {
   const daysOfWeek = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
   const todayStr = getLocalDateString();
-
-  const res = await fetch(getApiEndpoint('/api/pins/upcoming'), {
-    headers: { Authorization: `Bearer ${session.token}` },
-    cache: 'no-store',
-  });
-
-  if (!res.ok) {
-    throw new Error('ไม่สามารถดึงตารางรหัสผ่านจากเซิร์ฟเวอร์ได้');
-  }
-
-  const data = (await res.json()) as {
-    schedule: Array<{ date: string; pins: Record<string, string> }>;
-  };
-
-  return (data.schedule || []).map((item) => {
+  return rawSchedule.map((item) => {
     const [year, month, day] = item.date.split('-').map(Number);
     const utcDate = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
     const dayName = daysOfWeek[utcDate.getUTCDay()] || '';
@@ -329,9 +353,132 @@ export async function fetchUpcomingPINs(session: GangSession): Promise<UpcomingP
   });
 }
 
+export async function fetchPinsDashboard(session: GangSession): Promise<PinsDashboardResponse> {
+  if (!isGroupLeaderOrBoss(session) || !session.token) {
+    throw new Error('เฉพาะหัวหน้ากลุ่มหรือผู้ดูแลระบบเท่านั้นที่ดูตารางรหัสผ่านได้');
+  }
+
+  const res = await fetch(getApiEndpoint('/api/pins/upcoming'), {
+    headers: { Authorization: `Bearer ${session.token}` },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error('ไม่สามารถดึงตารางรหัสผ่านจากเซิร์ฟเวอร์ได้');
+  }
+
+  const data = (await res.json()) as {
+    schedule: Array<{ date: string; pins: Record<string, string> }>;
+    leaderPins?: Record<string, string>;
+    memberEpochs?: Record<string, number>;
+    leaderEpochs?: Record<string, number>;
+    memberEpoch?: number;
+  };
+
+  return {
+    schedule: mapScheduleDays(data.schedule),
+    leaderPins: data.leaderPins,
+    memberEpochs: data.memberEpochs,
+    leaderEpochs: data.leaderEpochs,
+    memberEpoch: data.memberEpoch,
+  };
+}
+
+export async function fetchUpcomingPINs(session: GangSession): Promise<UpcomingPinDay[]> {
+  const dashboard = await fetchPinsDashboard(session);
+  return dashboard.schedule;
+}
+
+export async function rotateMemberPinOnServer(
+  session: GangSession,
+  branchId?: string
+): Promise<PinsDashboardResponse & { branchId: string; memberEpoch: number; newTodayPin: string }> {
+  if (!isGroupLeaderOrBoss(session) || !session.token) {
+    throw new Error('ไม่มีสิทธิ์รีเซ็ตรหัสสมาชิก');
+  }
+
+  const res = await fetch(getApiEndpoint('/api/pins/rotate-member'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify(branchId ? { branchId } : {}),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    branchId?: string;
+    memberEpoch?: number;
+    newTodayPin?: string;
+    schedule?: Array<{ date: string; pins: Record<string, string> }>;
+    leaderPins?: Record<string, string>;
+    memberEpochs?: Record<string, number>;
+    leaderEpochs?: Record<string, number>;
+  };
+
+  if (!res.ok) {
+    throw new Error(data.error || 'ไม่สามารถรีเซ็ตรหัสผ่านสมาชิกได้');
+  }
+
+  return {
+    branchId: data.branchId || session.gangId,
+    memberEpoch: data.memberEpoch ?? 0,
+    newTodayPin: data.newTodayPin || '',
+    schedule: mapScheduleDays(data.schedule),
+    leaderPins: data.leaderPins,
+    memberEpochs: data.memberEpochs,
+    leaderEpochs: data.leaderEpochs,
+  };
+}
+
+export async function rotateLeaderPinOnServer(
+  session: GangSession,
+  branchId: string
+): Promise<PinsDashboardResponse & { branchId: string; leaderEpoch: number; newLeaderPin: string }> {
+  if (getSessionRole(session) !== 'super_admin' || !session.token) {
+    throw new Error('เฉพาะหัวหน้าสูงสุดเท่านั้นที่รีเซ็ตรหัสหัวหน้ากลุ่มได้');
+  }
+
+  const res = await fetch(getApiEndpoint('/api/pins/rotate-leader'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify({ branchId }),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    branchId?: string;
+    leaderEpoch?: number;
+    newLeaderPin?: string;
+    schedule?: Array<{ date: string; pins: Record<string, string> }>;
+    leaderPins?: Record<string, string>;
+    memberEpochs?: Record<string, number>;
+    leaderEpochs?: Record<string, number>;
+  };
+
+  if (!res.ok) {
+    throw new Error(data.error || 'ไม่สามารถรีเซ็ตรหัสหัวหน้ากลุ่มได้');
+  }
+
+  return {
+    branchId: data.branchId || branchId,
+    leaderEpoch: data.leaderEpoch ?? 0,
+    newLeaderPin: data.newLeaderPin || '',
+    schedule: mapScheduleDays(data.schedule),
+    leaderPins: data.leaderPins,
+    memberEpochs: data.memberEpochs,
+    leaderEpochs: data.leaderEpochs,
+  };
+}
+
 export function formatPINsForDiscord(
   branchInput: string,
-  upcomingDays: UpcomingPinDay[]
+  upcomingDays: UpcomingPinDay[],
+  options: { hideGroupNumber?: boolean } = {}
 ): string {
   const branch = parseBranch(branchInput);
   const origin =
@@ -339,7 +486,8 @@ export function formatPINsForDiscord(
       ? window.location.origin
       : 'https://runthukverb-cement-cooldown.pages.dev';
 
-  let text = `👑 **[${branch.name} - แผนที่ COOLDOWN] - ตารางรหัสผ่านประจำวัน** 🔒\n`;
+  const headerLabel = options.hideGroupNumber ? 'แผนที่ COOLDOWN' : `${branch.name} - แผนที่ COOLDOWN`;
+  let text = `👑 **[${headerLabel}] - ตารางรหัสผ่านประจำวัน** 🔒\n`;
   text += `> ⚠️ ห้ามส่งต่อให้คนนอกกลุ่มเด็ดขาด รหัสจะเปลี่ยนอัตโนมัติทุก 00:00 น.\n\n`;
 
   upcomingDays.forEach((item) => {
@@ -355,12 +503,19 @@ export function formatPINsForDiscord(
   return text;
 }
 
-export async function triggerServerForceLogout(session: GangSession): Promise<boolean> {
-  if (!session.isMaster || !session.token) return false;
+export async function triggerServerForceLogout(
+  session: GangSession,
+  branchId?: string
+): Promise<boolean> {
+  if (!isGroupLeaderOrBoss(session) || !session.token) return false;
   try {
     const res = await fetch(getApiEndpoint('/api/admin/force-logout'), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session.token}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify(branchId ? { branchId } : {}),
     });
     return res.ok;
   } catch {
@@ -402,7 +557,14 @@ function isValidLocalSession(session: GangSession | null, todayStr: string): ses
   if (!session || typeof session.token !== 'string' || !session.token.includes('.')) {
     return false;
   }
-  if (!session.isMaster && session.authDate !== todayStr) {
+  const role = getSessionRole(session);
+  if (role === 'member' && session.authDate !== todayStr) {
+    return false;
+  }
+  if (
+    typeof session.authenticatedAt === 'number' &&
+    Date.now() - session.authenticatedAt > 24 * 60 * 60 * 1000
+  ) {
     return false;
   }
   return true;
@@ -440,10 +602,12 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
         try {
           const bSession = JSON.parse(branchSpecificData) as GangSession;
           if (isValidLocalSession(bSession, todayStr)) {
+            const bRole = getSessionRole(bSession);
             return {
               ...bSession,
+              role: bRole,
               gangId: targetBranch.id,
-              gangName: 'สมาชิกกลุ่ม',
+              gangName: getGroupDisplayLabel(bRole, targetBranch.id),
             };
           }
         } catch {
@@ -458,10 +622,12 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
           if (isValidLocalSession(mainSession, todayStr)) {
             const mainBranch = parseBranch(mainSession.gangId || mainSession.gangName);
             if (mainBranch.id === targetBranch.id) {
+              const mainRole = getSessionRole(mainSession);
               return {
                 ...mainSession,
+                role: mainRole,
                 gangId: targetBranch.id,
-                gangName: 'สมาชิกกลุ่ม',
+                gangName: getGroupDisplayLabel(mainRole, targetBranch.id),
               };
             }
           }
@@ -482,10 +648,12 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
     }
 
     const branch = parseBranch(session.gangId || session.gangName);
+    const role = getSessionRole(session);
     return {
       ...session,
+      role,
       gangId: branch.id,
-      gangName: session.isMaster ? `${branch.name} (Master Boss)` : 'สมาชิกกลุ่ม',
+      gangName: getGroupDisplayLabel(role, branch.id),
     };
   } catch {
     return null;

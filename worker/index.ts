@@ -3,6 +3,7 @@ import {
   MASTER_GANG_ID,
   buildApiHeaders,
   deriveAllBranchDailyPins,
+  deriveAllLeaderPins,
   deriveDailyChannelKey,
   extractClientIp,
   getBangkokDateString,
@@ -11,13 +12,14 @@ import {
   isOriginAllowed,
   isValidBranchId,
   isValidDiscordWebhookUrl,
-  resolveBranchByPin,
+  resolvePayloadRole,
+  resolvePinCredentials,
   sanitizeText,
   signSessionToken,
-  timingSafeEqual,
   verifySessionToken,
   type BranchId,
   type SessionTokenPayload,
+  type UserRole,
 } from './authCore.ts';
 import {
   addBan,
@@ -25,14 +27,24 @@ import {
   clearRateLimit,
   findBanByIp,
   getBanList,
+  getBranchLeaderForceLogoutAfter,
+  getBranchMemberForceLogoutAfter,
   getConfiguredWebhookUrl,
   getForceLogoutAfter,
+  getLeaderPinEpoch,
+  getLeaderPinEpochs,
+  getMemberPinEpoch,
+  getMemberPinEpochs,
   getRateLimitStatus,
   getSecurityLogs,
   maskWebhookUrl,
   recordFailedAttempt,
   removeBan,
+  rotateLeaderPinEpoch,
+  rotateMemberPinEpoch,
   sendDiscordSecurityAlert,
+  setBranchLeaderForceLogoutAfter,
+  setBranchMemberForceLogoutAfter,
   setForceLogoutAfter,
   setStoredWebhookUrl,
   type KvStoreLike,
@@ -89,8 +101,74 @@ async function authenticateRequest(
   const token = extractBearerToken(request);
   const secret = getSessionSecret(env);
   if (!token || !secret) return null;
-  const forceLogoutAfter = await getForceLogoutAfter(env.GANG_VAULT);
-  return verifySessionToken(token, secret, { forceLogoutAfter });
+
+  const kv = env.GANG_VAULT;
+  const forceLogoutAfter = await getForceLogoutAfter(kv);
+  const payload = await verifySessionToken(token, secret, { forceLogoutAfter });
+  if (!payload) return null;
+
+  const role = resolvePayloadRole(payload);
+  if (role === 'member' && isValidBranchId(payload.sub)) {
+    const todayStr = getBangkokDateString();
+    const [memberAfter, currentEpoch] = await Promise.all([
+      getBranchMemberForceLogoutAfter(payload.sub, kv),
+      getMemberPinEpoch(payload.sub, todayStr, kv),
+    ]);
+    if (payload.iat < memberAfter || (payload.pinEpoch ?? 0) !== currentEpoch) {
+      return null;
+    }
+  } else if (role === 'group_leader' && isValidBranchId(payload.sub)) {
+    const [leaderAfter, currentLeaderEpoch] = await Promise.all([
+      getBranchLeaderForceLogoutAfter(payload.sub, kv),
+      getLeaderPinEpoch(payload.sub, kv),
+    ]);
+    if (payload.iat < leaderAfter || (payload.pinEpoch ?? 0) !== currentLeaderEpoch) {
+      return null;
+    }
+  }
+
+  return payload;
+}
+
+async function buildPinDashboardData(
+  secretSeed: string,
+  masterPin: string,
+  role: UserRole,
+  branchId: string,
+  kv?: KvStoreLike
+) {
+  const todayStr = getBangkokDateString();
+  const [leaderEpochs, memberEpochs] = await Promise.all([
+    getLeaderPinEpochs(kv),
+    getMemberPinEpochs(todayStr, kv),
+  ]);
+  const leaderPins = await deriveAllLeaderPins(secretSeed, leaderEpochs, new Set([masterPin]));
+  const reservedPins = new Set<string>([masterPin, ...Object.values(leaderPins)]);
+  const dates = getUpcomingBangkokDates(7);
+
+  const schedule = await Promise.all(
+    dates.map(async (date) => {
+      const allPins = await deriveAllBranchDailyPins(secretSeed, date, {
+        memberEpochs: date === todayStr ? memberEpochs : undefined,
+        reservedPins,
+      });
+      if (role === 'super_admin') {
+        return { date, pins: allPins };
+      }
+      return {
+        date,
+        pins: isValidBranchId(branchId) ? { [branchId]: allPins[branchId as BranchId] } : {},
+      };
+    })
+  );
+
+  if (role === 'super_admin') {
+    return { schedule, leaderPins, memberEpochs, leaderEpochs };
+  }
+  return {
+    schedule,
+    memberEpoch: isValidBranchId(branchId) ? memberEpochs[branchId as BranchId] : 0,
+  };
 }
 
 function isValidIpFormat(ip: string): boolean {
@@ -234,33 +312,26 @@ export async function handleApiRequest(
       return jsonResponse({ success: false, error: 'กรุณากรอกรหัสผ่าน' }, 400, headers);
     }
 
-    const todayStr = getBangkokDateString();
-    const isMaster = await timingSafeEqual(pin, masterPin);
-    let matchedBranch: BranchId | null = null;
-    let isValidBranchPin = false;
-
-    if (!isMaster) {
-      if (requestedBranch) {
-        if (!isValidBranchId(requestedBranch)) {
-          return jsonResponse(
-            { success: false, error: 'รหัสผ่านหรือกลุ่มไม่ถูกต้อง' },
-            400,
-            headers
-          );
-        }
-        const allPins = await deriveAllBranchDailyPins(secretSeed, todayStr);
-        const expectedPin = allPins[requestedBranch as BranchId];
-        isValidBranchPin = await timingSafeEqual(pin, expectedPin);
-        if (isValidBranchPin) {
-          matchedBranch = requestedBranch as BranchId;
-        }
-      } else {
-        matchedBranch = await resolveBranchByPin(secretSeed, pin, todayStr);
-        isValidBranchPin = matchedBranch !== null;
-      }
+    if (requestedBranch && !isValidBranchId(requestedBranch)) {
+      return jsonResponse({ success: false, error: 'รหัสผ่านหรือกลุ่มไม่ถูกต้อง' }, 400, headers);
     }
 
-    if (!isMaster && !isValidBranchPin) {
+    const todayStr = getBangkokDateString();
+    const [leaderEpochs, memberEpochs] = await Promise.all([
+      getLeaderPinEpochs(kv),
+      getMemberPinEpochs(todayStr, kv),
+    ]);
+    const credentials = await resolvePinCredentials({
+      masterPin,
+      secretSeed,
+      inputPin: pin,
+      dateStr: todayStr,
+      leaderEpochs,
+      memberEpochs,
+      requestedBranchId: requestedBranch || undefined,
+    });
+
+    if (!credentials) {
       const nextRate = await recordFailedAttempt(clientIp, kv);
       const log = await appendSecurityLog(
         {
@@ -305,8 +376,14 @@ export async function handleApiRequest(
 
     await clearRateLimit(clientIp, kv);
 
-    const gangId = isMaster ? MASTER_GANG_ID : (matchedBranch ?? requestedBranch ?? 'branch_1');
-    const gangName = isMaster ? (BRANCH_NAMES[MASTER_GANG_ID] ?? 'Master Boss') : 'สมาชิกกลุ่ม';
+    const role: UserRole = credentials.role;
+    const isMaster = role === 'super_admin';
+    const gangId = credentials.branchId;
+    const gangName = isMaster
+      ? (BRANCH_NAMES[MASTER_GANG_ID] ?? 'Master Boss')
+      : role === 'group_leader'
+      ? 'หัวหน้ากลุ่ม'
+      : 'สมาชิกกลุ่ม';
     const nowMs = Date.now();
     const sessionSecret = getSessionSecret(env);
     const ipHash = await hashIdentifier(sessionSecret, clientIp);
@@ -316,6 +393,8 @@ export async function handleApiRequest(
       memberName,
       authDate: todayStr,
       isMaster,
+      role,
+      pinEpoch: credentials.pinEpoch,
       iat: nowMs,
       exp: nowMs + 24 * 60 * 60 * 1000,
       ipHash,
@@ -353,6 +432,7 @@ export async function handleApiRequest(
           authDate: todayStr,
           authenticatedAt: nowMs,
           isMaster,
+          role,
           token,
           channelKey,
         },
@@ -382,6 +462,7 @@ export async function handleApiRequest(
     const channelKey = secretSeed
       ? await deriveDailyChannelKey(secretSeed, todayStr)
       : undefined;
+    const role = resolvePayloadRole(payload);
 
     return jsonResponse(
       {
@@ -394,6 +475,7 @@ export async function handleApiRequest(
           authDate: payload.authDate,
           authenticatedAt: payload.iat,
           isMaster: payload.isMaster,
+          role,
           channelKey,
         },
       },
@@ -407,24 +489,135 @@ export async function handleApiRequest(
     if (!payload) {
       return jsonResponse({ error: 'Unauthorized' }, 401, headers);
     }
-    if (!payload.isMaster) {
+    const role = resolvePayloadRole(payload);
+    if (role === 'member') {
+      return jsonResponse({ error: 'Forbidden: Leader or Master access only' }, 403, headers);
+    }
+
+    const secretSeed = env.GANG_SECRET_SEED?.trim() ?? '';
+    const masterPin = env.MASTER_PIN?.trim() ?? '';
+    if (!secretSeed || !masterPin) {
+      return jsonResponse({ error: 'Auth secrets are not configured' }, 503, headers);
+    }
+
+    const data = await buildPinDashboardData(secretSeed, masterPin, role, payload.sub, kv);
+    return jsonResponse(data, 200, headers);
+  }
+
+  if (url.pathname === '/api/pins/rotate-member' && request.method === 'POST') {
+    const payload = await authenticateRequest(request, env);
+    if (!payload) {
+      return jsonResponse({ error: 'Unauthorized' }, 401, headers);
+    }
+    const role = resolvePayloadRole(payload);
+    if (role === 'member') {
+      return jsonResponse({ error: 'Forbidden: Leader or Master access only' }, 403, headers);
+    }
+
+    const secretSeed = env.GANG_SECRET_SEED?.trim() ?? '';
+    const masterPin = env.MASTER_PIN?.trim() ?? '';
+    if (!secretSeed || !masterPin) {
+      return jsonResponse({ error: 'Auth secrets are not configured' }, 503, headers);
+    }
+
+    const body = await parseJsonBody<{ branchId?: string }>(request);
+    const requested = sanitizeText(body?.branchId, 24);
+    const targetBranch = role === 'super_admin' ? requested : payload.sub;
+
+    if (role === 'group_leader' && requested && requested !== payload.sub) {
+      return jsonResponse({ error: 'Forbidden: Cannot rotate another group PIN' }, 403, headers);
+    }
+    if (!isValidBranchId(targetBranch)) {
+      return jsonResponse({ error: 'กรุณาระบุกลุ่มที่ต้องการรีเซ็ตรหัส' }, 400, headers);
+    }
+
+    const todayStr = getBangkokDateString();
+    const nextEpoch = await rotateMemberPinEpoch(targetBranch, todayStr, kv);
+    await setBranchMemberForceLogoutAfter(targetBranch, Date.now(), kv);
+
+    const log = await appendSecurityLog(
+      {
+        ip: clientIp,
+        memberName: payload.memberName,
+        branchId: targetBranch,
+        event: 'pin_rotated',
+        country,
+        city,
+        userAgent,
+      },
+      kv
+    );
+    const webhookUrl = await getConfiguredWebhookUrl(env.DISCORD_WEBHOOK_URL, kv);
+    scheduleAlert(sendDiscordSecurityAlert(webhookUrl, log));
+
+    const dashboardData = await buildPinDashboardData(secretSeed, masterPin, role, targetBranch, kv);
+    const todayPins = dashboardData.schedule[0]?.pins as Record<string, string> | undefined;
+    const newTodayPin = todayPins?.[targetBranch] ?? '';
+    return jsonResponse(
+      {
+        ok: true,
+        branchId: targetBranch,
+        memberEpoch: nextEpoch,
+        newTodayPin,
+        ...dashboardData,
+      },
+      200,
+      headers
+    );
+  }
+
+  if (url.pathname === '/api/pins/rotate-leader' && request.method === 'POST') {
+    const payload = await authenticateRequest(request, env);
+    if (!payload) {
+      return jsonResponse({ error: 'Unauthorized' }, 401, headers);
+    }
+    const role = resolvePayloadRole(payload);
+    if (role !== 'super_admin') {
       return jsonResponse({ error: 'Forbidden: Master access only' }, 403, headers);
     }
 
     const secretSeed = env.GANG_SECRET_SEED?.trim() ?? '';
-    if (!secretSeed) {
-      return jsonResponse({ error: 'GANG_SECRET_SEED is not configured' }, 503, headers);
+    const masterPin = env.MASTER_PIN?.trim() ?? '';
+    if (!secretSeed || !masterPin) {
+      return jsonResponse({ error: 'Auth secrets are not configured' }, 503, headers);
     }
 
-    const dates = getUpcomingBangkokDates(7);
-    const schedule = await Promise.all(
-      dates.map(async (date) => ({
-        date,
-        pins: await deriveAllBranchDailyPins(secretSeed, date),
-      }))
-    );
+    const body = await parseJsonBody<{ branchId?: string }>(request);
+    const targetBranch = sanitizeText(body?.branchId, 24);
+    if (!isValidBranchId(targetBranch)) {
+      return jsonResponse({ error: 'กรุณาระบุกลุ่มที่ต้องการรีเซ็ตรหัสหัวหน้า' }, 400, headers);
+    }
 
-    return jsonResponse({ schedule }, 200, headers);
+    const nextLeaderEpoch = await rotateLeaderPinEpoch(targetBranch, kv);
+    await setBranchLeaderForceLogoutAfter(targetBranch, Date.now(), kv);
+
+    const log = await appendSecurityLog(
+      {
+        ip: clientIp,
+        memberName: payload.memberName,
+        branchId: targetBranch,
+        event: 'leader_rotated',
+        country,
+        city,
+        userAgent,
+      },
+      kv
+    );
+    const webhookUrl = await getConfiguredWebhookUrl(env.DISCORD_WEBHOOK_URL, kv);
+    scheduleAlert(sendDiscordSecurityAlert(webhookUrl, log));
+
+    const dashboardData = await buildPinDashboardData(secretSeed, masterPin, role, targetBranch, kv);
+    return jsonResponse(
+      {
+        ok: true,
+        branchId: targetBranch,
+        leaderEpoch: nextLeaderEpoch,
+        newLeaderPin: dashboardData.leaderPins?.[targetBranch as BranchId] ?? '',
+        ...dashboardData,
+      },
+      200,
+      headers
+    );
   }
 
   if (url.pathname === '/api/security/visit' && request.method === 'POST') {
@@ -578,11 +771,31 @@ export async function handleApiRequest(
     if (!payload) {
       return jsonResponse({ error: 'Unauthorized' }, 401, headers);
     }
-    if (!payload.isMaster) {
+    const role = resolvePayloadRole(payload);
+    if (role === 'member') {
       return jsonResponse({ error: 'Forbidden' }, 403, headers);
     }
 
+    const body = await parseJsonBody<{ branchId?: string }>(request);
+    const requestedBranch = sanitizeText(body?.branchId, 24);
     const forceLogoutAfter = Date.now();
+
+    if (role === 'group_leader') {
+      if (requestedBranch && requestedBranch !== payload.sub) {
+        return jsonResponse({ error: 'Forbidden: Cannot kick another group' }, 403, headers);
+      }
+      if (!isValidBranchId(payload.sub)) {
+        return jsonResponse({ error: 'Invalid branch context' }, 400, headers);
+      }
+      await setBranchMemberForceLogoutAfter(payload.sub, forceLogoutAfter, kv);
+      return jsonResponse({ ok: true, branchId: payload.sub, forceLogoutAfter }, 200, headers);
+    }
+
+    if (requestedBranch && isValidBranchId(requestedBranch)) {
+      await setBranchMemberForceLogoutAfter(requestedBranch, forceLogoutAfter, kv);
+      return jsonResponse({ ok: true, branchId: requestedBranch, forceLogoutAfter }, 200, headers);
+    }
+
     await setForceLogoutAfter(forceLogoutAfter, kv);
     return jsonResponse({ ok: true, forceLogoutAfter }, 200, headers);
   }

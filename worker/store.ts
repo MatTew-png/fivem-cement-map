@@ -1,3 +1,5 @@
+import { BRANCH_IDS, type BranchId } from './authCore.ts';
+
 export interface KvStoreLike {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
@@ -8,7 +10,7 @@ export interface ServerIpLogEntry {
   ip: string;
   memberName: string;
   branchId: string;
-  event: 'visit' | 'login' | 'failed_pin' | 'banned_attempt';
+  event: 'visit' | 'login' | 'failed_pin' | 'banned_attempt' | 'pin_rotated' | 'leader_rotated';
   timestamp: number;
   country?: string;
   city?: string;
@@ -220,6 +222,103 @@ export async function setForceLogoutAfter(timestampMs: number, kv?: KvStoreLike)
   await writeKey(kv, KEY_FORCE_LOGOUT, String(timestampMs));
 }
 
+export async function getBranchMemberForceLogoutAfter(
+  branchId: string,
+  kv?: KvStoreLike
+): Promise<number> {
+  const raw = await readKey(kv, `security:force_logout_member:${branchId}`);
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function setBranchMemberForceLogoutAfter(
+  branchId: string,
+  timestampMs: number,
+  kv?: KvStoreLike
+): Promise<void> {
+  await writeKey(kv, `security:force_logout_member:${branchId}`, String(timestampMs), 36 * 60 * 60);
+}
+
+export async function getBranchLeaderForceLogoutAfter(
+  branchId: string,
+  kv?: KvStoreLike
+): Promise<number> {
+  const raw = await readKey(kv, `security:force_logout_leader:${branchId}`);
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function setBranchLeaderForceLogoutAfter(
+  branchId: string,
+  timestampMs: number,
+  kv?: KvStoreLike
+): Promise<void> {
+  await writeKey(kv, `security:force_logout_leader:${branchId}`, String(timestampMs), 36 * 60 * 60);
+}
+
+interface StoredDailyEpoch {
+  date: string;
+  epoch: number;
+}
+
+export async function getMemberPinEpoch(
+  branchId: string,
+  dateStr: string,
+  kv?: KvStoreLike
+): Promise<number> {
+  const stored = await readJson<StoredDailyEpoch | null>(kv, `pin_epoch:${branchId}`, null);
+  if (!stored || stored.date !== dateStr || typeof stored.epoch !== 'number') {
+    return 0;
+  }
+  return Math.max(0, Math.floor(stored.epoch));
+}
+
+export async function getMemberPinEpochs(
+  dateStr: string,
+  kv?: KvStoreLike
+): Promise<Record<BranchId, number>> {
+  const entries = await Promise.all(
+    BRANCH_IDS.map(async (b) => [b, await getMemberPinEpoch(b, dateStr, kv)] as const)
+  );
+  return Object.fromEntries(entries) as Record<BranchId, number>;
+}
+
+export async function rotateMemberPinEpoch(
+  branchId: string,
+  dateStr: string,
+  kv?: KvStoreLike
+): Promise<number> {
+  const current = await getMemberPinEpoch(branchId, dateStr, kv);
+  const nextEpoch = current + 1;
+  await writeKey(
+    kv,
+    `pin_epoch:${branchId}`,
+    JSON.stringify({ date: dateStr, epoch: nextEpoch }),
+    36 * 60 * 60
+  );
+  return nextEpoch;
+}
+
+export async function getLeaderPinEpoch(branchId: string, kv?: KvStoreLike): Promise<number> {
+  const raw = await readKey(kv, `leader_epoch:${branchId}`);
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+export async function getLeaderPinEpochs(kv?: KvStoreLike): Promise<Record<BranchId, number>> {
+  const entries = await Promise.all(
+    BRANCH_IDS.map(async (b) => [b, await getLeaderPinEpoch(b, kv)] as const)
+  );
+  return Object.fromEntries(entries) as Record<BranchId, number>;
+}
+
+export async function rotateLeaderPinEpoch(branchId: string, kv?: KvStoreLike): Promise<number> {
+  const current = await getLeaderPinEpoch(branchId, kv);
+  const nextEpoch = current + 1;
+  await writeKey(kv, `leader_epoch:${branchId}`, String(nextEpoch));
+  return nextEpoch;
+}
+
 export async function getConfiguredWebhookUrl(
   envWebhook: string | undefined,
   kv?: KvStoreLike
@@ -251,12 +350,14 @@ export async function sendDiscordSecurityAlert(
   log: ServerIpLogEntry
 ): Promise<void> {
   if (!webhookUrl) return;
-  const isDanger = log.event === 'failed_pin' || log.event === 'banned_attempt';
+  const isDanger = log.event === 'failed_pin' || log.event === 'banned_attempt' || log.event === 'pin_rotated' || log.event === 'leader_rotated';
   const titleMap: Record<ServerIpLogEntry['event'], string> = {
     visit: '👀 มีคนเปิดดูหน้าเว็บแผนที่',
     login: '✅ ยืนยันตัวตนเข้าแผนที่สำเร็จ',
     failed_pin: '🚨 ใส่รหัส PIN ผิดพลาด',
     banned_attempt: '⛔ บล็อก IP ที่ถูกแบนไม่ให้เข้าใช้งาน',
+    pin_rotated: '🔄 รีเซ็ตรหัสผ่านสมาชิกกลุ่มใหม่',
+    leader_rotated: '👑 รีเซ็ตรหัสหัวหน้ากลุ่มใหม่',
   };
 
   const payload = {
