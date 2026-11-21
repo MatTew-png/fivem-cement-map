@@ -50,7 +50,23 @@ import {
   setGroupName,
   setStoredWebhookUrl,
   type KvStoreLike,
+  type StoreRef,
 } from './store.ts';
+import { SupabaseRestClient } from './supabaseRest.ts';
+import {
+  appendActivityLogInDb,
+  clearActivityLogsInDb,
+  deleteCooldownInDb,
+  deleteSpotInDb,
+  getMapStateFromDb,
+  replaceSpotsWithBackupInDb,
+  seedBranchSpotsInDb,
+  upsertCooldownInDb,
+  upsertSpotInDb,
+  type StoredActivityLog,
+  type StoredCooldown,
+  type StoredSpot,
+} from './mapDb.ts';
 
 export interface WorkerEnv {
   ASSETS?: { fetch(request: Request): Promise<Response> };
@@ -60,6 +76,46 @@ export interface WorkerEnv {
   SESSION_SECRET?: string;
   DISCORD_WEBHOOK_URL?: string;
   ALLOWED_ORIGINS?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+}
+
+const DEFAULT_SUPABASE_URL = 'https://ibtamnpkagjmnlzuejju.supabase.co';
+
+function getSupabaseCredentials(env: WorkerEnv): { url: string; serviceRoleKey: string } | undefined {
+  const url = env.SUPABASE_URL?.trim() || DEFAULT_SUPABASE_URL;
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (url && serviceRoleKey) {
+    return { url, serviceRoleKey };
+  }
+  return undefined;
+}
+
+function getStoreRef(env: WorkerEnv): StoreRef {
+  return {
+    kv: env.GANG_VAULT,
+    db: getSupabaseCredentials(env),
+  };
+}
+
+function getMapDb(env: WorkerEnv): SupabaseRestClient | null {
+  const creds = getSupabaseCredentials(env);
+  return creds ? new SupabaseRestClient(creds) : null;
+}
+
+function resolveTargetBranchForMap(
+  role: UserRole,
+  payloadSub: string,
+  requestedBranch?: string
+): string | null {
+  if (role === 'super_admin') {
+    const candidate = sanitizeText(requestedBranch, 24) || 'branch_1';
+    return isValidBranchId(candidate) ? candidate : null;
+  }
+  if (requestedBranch && requestedBranch !== payloadSub) {
+    return null;
+  }
+  return isValidBranchId(payloadSub) ? payloadSub : null;
 }
 
 export interface ExecutionCtxLike {
@@ -104,8 +160,8 @@ async function authenticateRequest(
   const secret = getSessionSecret(env);
   if (!token || !secret) return null;
 
-  const kv = env.GANG_VAULT;
-  const forceLogoutAfter = await getForceLogoutAfter(kv);
+  const storeRef = getStoreRef(env);
+  const forceLogoutAfter = await getForceLogoutAfter(storeRef);
   const payload = await verifySessionToken(token, secret, { forceLogoutAfter });
   if (!payload) return null;
 
@@ -113,16 +169,16 @@ async function authenticateRequest(
   if (role === 'member' && isValidBranchId(payload.sub)) {
     const todayStr = getBangkokDateString();
     const [memberAfter, currentEpoch] = await Promise.all([
-      getBranchMemberForceLogoutAfter(payload.sub, kv),
-      getMemberPinEpoch(payload.sub, todayStr, kv),
+      getBranchMemberForceLogoutAfter(payload.sub, storeRef),
+      getMemberPinEpoch(payload.sub, todayStr, storeRef),
     ]);
     if (payload.iat < memberAfter || (payload.pinEpoch ?? 0) !== currentEpoch) {
       return null;
     }
   } else if (role === 'group_leader' && isValidBranchId(payload.sub)) {
     const [leaderAfter, currentLeaderEpoch] = await Promise.all([
-      getBranchLeaderForceLogoutAfter(payload.sub, kv),
-      getLeaderPinEpoch(payload.sub, kv),
+      getBranchLeaderForceLogoutAfter(payload.sub, storeRef),
+      getLeaderPinEpoch(payload.sub, storeRef),
     ]);
     if (payload.iat < leaderAfter || (payload.pinEpoch ?? 0) !== currentLeaderEpoch) {
       return null;
@@ -165,7 +221,7 @@ async function buildPinDashboardData(
   masterPin: string,
   role: UserRole,
   branchId: string,
-  kv?: KvStoreLike
+  kv?: StoreRef
 ) {
   const todayStr = getBangkokDateString();
   const [leaderEpochs, memberEpochs, groupNames] = await Promise.all([
@@ -227,7 +283,8 @@ export async function handleApiRequest(
     return new Response(null, { status: 204, headers });
   }
 
-  const kv = env.GANG_VAULT;
+  const kv = getStoreRef(env);
+  const hasSupabaseDb = Boolean(getSupabaseCredentials(env));
   const clientIp = extractClientIp(request);
   const city = sanitizeText(request.headers.get('cf-ipcity'), 64);
   const country = sanitizeText(request.headers.get('cf-ipcountry') || 'TH', 8);
@@ -245,7 +302,10 @@ export async function handleApiRequest(
         ok: true,
         service: 'runthukverb-cement-cooldown',
         configured: Boolean(env.MASTER_PIN?.trim() && env.GANG_SECRET_SEED?.trim()),
-        kvBound: Boolean(kv),
+        kvBound: Boolean(env.GANG_VAULT),
+        supabaseConfigured: hasSupabaseDb,
+        storage: hasSupabaseDb ? 'supabase-postgres' : env.GANG_VAULT ? 'cloudflare-kv' : 'memory',
+        realtime: 'supabase-realtime',
         date: getBangkokDateString(),
       },
       200,
@@ -875,6 +935,147 @@ export async function handleApiRequest(
 
     await setForceLogoutAfter(forceLogoutAfter, kv);
     return jsonResponse({ ok: true, forceLogoutAfter }, 200, headers);
+  }
+
+  // Persistent Map Data Endpoints backed by Supabase Postgres
+  if (url.pathname.startsWith('/api/map/')) {
+    const payload = await authenticateRequest(request, env);
+    if (!payload) {
+      return jsonResponse({ error: 'Unauthorized' }, 401, headers);
+    }
+    const role = resolvePayloadRole(payload);
+    const mapDb = getMapDb(env);
+
+    if (url.pathname === '/api/map/state' && request.method === 'GET') {
+      const requestedBranch = sanitizeText(url.searchParams.get('branchId'), 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch) {
+        return jsonResponse({ error: 'Forbidden' }, 403, headers);
+      }
+      if (!mapDb) {
+        return jsonResponse({ enabled: false }, 200, headers);
+      }
+      const state = await getMapStateFromDb(mapDb, targetBranch);
+      return jsonResponse({ enabled: true, branchId: targetBranch, ...state }, 200, headers);
+    }
+
+    if (!mapDb) {
+      return jsonResponse({ ok: true, enabled: false }, 200, headers);
+    }
+
+    if (url.pathname === '/api/map/seed' && request.method === 'POST') {
+      const body = await parseJsonBody<{ spots?: StoredSpot[]; replace?: boolean; branchId?: string }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch) {
+        return jsonResponse({ error: 'Forbidden' }, 403, headers);
+      }
+      const replace = Boolean(body?.replace) && role === 'super_admin';
+      const spots = Array.isArray(body?.spots) ? body.spots : [];
+      const res = await seedBranchSpotsInDb(mapDb, targetBranch, spots, replace);
+      return jsonResponse({ ok: true, enabled: true, ...res }, 200, headers);
+    }
+
+    if (url.pathname === '/api/map/spots' && request.method === 'POST') {
+      const body = await parseJsonBody<{ spot?: StoredSpot; branchId?: string }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch || !body?.spot) {
+        return jsonResponse({ error: !targetBranch ? 'Forbidden' : 'Missing spot' }, !targetBranch ? 403 : 400, headers);
+      }
+      const saved = await upsertSpotInDb(mapDb, targetBranch, body.spot);
+      return jsonResponse({ ok: true, spot: saved }, 200, headers);
+    }
+
+    if (url.pathname === '/api/map/spots/delete' && request.method === 'POST') {
+      const body = await parseJsonBody<{ spotId?: string; branchId?: string }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const spotId = sanitizeText(body?.spotId, 80);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch || !spotId) {
+        return jsonResponse({ error: !targetBranch ? 'Forbidden' : 'Missing spotId' }, !targetBranch ? 403 : 400, headers);
+      }
+      await deleteSpotInDb(mapDb, targetBranch, spotId);
+      return jsonResponse({ ok: true }, 200, headers);
+    }
+
+    if (url.pathname === '/api/map/spots/bulk' && request.method === 'POST') {
+      const body = await parseJsonBody<{
+        action?: 'import' | 'restore' | 'reset';
+        spots?: StoredSpot[];
+        reason?: string;
+        branchId?: string;
+      }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch) {
+        return jsonResponse({ error: 'Forbidden' }, 403, headers);
+      }
+      if (body?.action === 'reset' && role !== 'super_admin') {
+        return jsonResponse({ error: 'Forbidden: Master access only' }, 403, headers);
+      }
+      const spots = Array.isArray(body?.spots) ? body.spots : [];
+      const reason = body?.reason || (body?.action === 'restore' ? 'กู้คืนข้อมูลสำรอง' : 'นำเข้าข้อมูลพิกัด');
+      const res = await replaceSpotsWithBackupInDb(
+        mapDb,
+        targetBranch,
+        spots,
+        reason,
+        payload.memberName
+      );
+      return jsonResponse({ ok: true, ...res }, 200, headers);
+    }
+
+    if (url.pathname === '/api/map/cooldowns' && request.method === 'POST') {
+      const body = await parseJsonBody<{
+        action?: 'start' | 'cancel';
+        cooldown?: StoredCooldown;
+        spotId?: string;
+        branchId?: string;
+      }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch) {
+        return jsonResponse({ error: 'Forbidden' }, 403, headers);
+      }
+      if (body?.action === 'cancel') {
+        const spotId = sanitizeText(body.spotId, 80);
+        if (spotId) await deleteCooldownInDb(mapDb, targetBranch, spotId);
+        return jsonResponse({ ok: true }, 200, headers);
+      }
+      if (body?.action === 'start' && body.cooldown) {
+        await upsertCooldownInDb(mapDb, targetBranch, body.cooldown);
+        return jsonResponse({ ok: true }, 200, headers);
+      }
+      return jsonResponse({ error: 'Invalid cooldown payload' }, 400, headers);
+    }
+
+    if (url.pathname === '/api/map/activity' && request.method === 'POST') {
+      const body = await parseJsonBody<{
+        action?: 'append' | 'clear';
+        entry?: Omit<StoredActivityLog, 'id' | 'timestamp'> & { id?: string; timestamp?: number };
+        branchId?: string;
+      }>(request);
+      const requestedBranch = sanitizeText(body?.branchId, 24);
+      const targetBranch = resolveTargetBranchForMap(role, payload.sub, requestedBranch || undefined);
+      if (!targetBranch) {
+        return jsonResponse({ error: 'Forbidden' }, 403, headers);
+      }
+      if (body?.action === 'clear') {
+        if (role === 'member') {
+          return jsonResponse({ error: 'Forbidden: Leader or Master access only' }, 403, headers);
+        }
+        await clearActivityLogsInDb(mapDb, targetBranch);
+        return jsonResponse({ ok: true }, 200, headers);
+      }
+      if (body?.action === 'append' && body.entry) {
+        await appendActivityLogInDb(mapDb, targetBranch, body.entry);
+        return jsonResponse({ ok: true }, 200, headers);
+      }
+      return jsonResponse({ error: 'Invalid activity payload' }, 400, headers);
+    }
+
+    return jsonResponse({ error: 'Map API route not found' }, 404, headers);
   }
 
   return jsonResponse({ error: 'API route not found' }, 404, headers);

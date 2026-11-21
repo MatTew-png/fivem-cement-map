@@ -22,7 +22,16 @@ import {
   saveSpotsToStorage,
   loadCooldownsFromStorage,
   saveCooldownsToStorage,
+  type SpotBackupSnapshot,
 } from './utils/storage';
+import {
+  bulkReplaceSpotsOnServer,
+  deleteSpotOnServer,
+  fetchServerMapState,
+  saveSpotToServer,
+  seedServerSpots,
+  syncCooldownToServer,
+} from './utils/mapSync';
 import { calculateGameDistance } from './utils/crs';
 import { soundEffects } from './utils/sound';
 import { coordsBus } from './utils/coordsBus';
@@ -279,17 +288,48 @@ export function App() {
     } catch {}
   }, []);
 
-  // Effect: When gang session changes, sync spots & cooldowns for this specific gang
+  // Track latest session in ref for async persistence helpers
+  const gangSessionRef = useRef<GangSession | null>(gangSession);
   useEffect(() => {
-    if (gangSession?.gangId) {
-      const gangSpots = loadSpotsFromStorage(gangSession.gangId);
-      const resolvedSpots = gangSpots && gangSpots.length > 0 ? gangSpots : DEFAULT_SPOTS;
-      spotsRef.current = resolvedSpots;
-      setSpots(resolvedSpots);
-      const gangCooldowns = loadCooldownsFromStorage(gangSession.gangId);
-      setActiveCooldowns(gangCooldowns);
-    }
-  }, [gangSession?.gangId]);
+    gangSessionRef.current = gangSession;
+  }, [gangSession]);
+  const [serverBackups, setServerBackups] = useState<SpotBackupSnapshot[] | null>(null);
+
+  // Effect: When gang session changes, sync spots & cooldowns from local cache AND Supabase DB
+  useEffect(() => {
+    if (!gangSession?.gangId) return;
+    let cancelled = false;
+
+    const gangSpots = loadSpotsFromStorage(gangSession.gangId);
+    const localResolved = gangSpots && gangSpots.length > 0 ? gangSpots : DEFAULT_SPOTS;
+    spotsRef.current = localResolved;
+    setSpots(localResolved);
+    setActiveCooldowns(loadCooldownsFromStorage(gangSession.gangId));
+
+    void fetchServerMapState(gangSession).then(async (state) => {
+      if (cancelled || !state.enabled) return;
+      if (!state.spotsSeeded) {
+        await seedServerSpots(gangSession, localResolved);
+        return;
+      }
+      if (Array.isArray(state.spots)) {
+        spotsRef.current = state.spots;
+        setSpots(state.spots);
+        saveSpotsToStorage(state.spots, gangSession.gangId);
+      }
+      if (Array.isArray(state.activeCooldowns)) {
+        setActiveCooldowns(state.activeCooldowns);
+        saveCooldownsToStorage(state.activeCooldowns, gangSession.gangId);
+      }
+      if (Array.isArray(state.backups)) {
+        setServerBackups(state.backups);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gangSession?.gangId, gangSession?.token]);
 
   const handleCopyGangLink = useCallback(() => {
     const origin =
@@ -809,8 +849,11 @@ export function App() {
     });
 
     gangPresence.broadcastSpotChange(isNew ? 'add' : 'update', spot);
+    if (gangSessionRef.current) {
+      void saveSpotToServer(gangSessionRef.current, spot);
+    }
 
-    // ส่งชุดหมุดที่อัปเดตแล้วขึ้น HiveMQ Retained Topic ทันที เพื่อให้คนที่เปิดทีหลังได้หมุดนี้ด้วยแน่นอน!
+    // ส่งชุดหมุดที่อัปเดตแล้วขึ้น Realtime channel ทันที
     const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
     const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
     gangPresence.broadcastSpotManifest(customSpots);
@@ -824,8 +867,11 @@ export function App() {
     setSelectedSpot((prev) => (prev?.id === id ? null : prev));
     setMovingSpot((prev) => (prev?.id === id ? null : prev));
     gangPresence.broadcastSpotChange('delete', undefined, id);
+    if (gangSessionRef.current) {
+      void deleteSpotOnServer(gangSessionRef.current, id);
+    }
 
-    // อัปเดตชุดหมุดบน HiveMQ Retained Topic ทันที
+    // อัปเดตชุดหมุดบน Realtime channel ทันที
     const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
     const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
     gangPresence.broadcastSpotManifest(customSpots);
@@ -852,6 +898,9 @@ export function App() {
     // so accidental clicks can be reverted cleanly with "ยกเลิก".
     if (movingSpotRef.current?.id !== spotId) {
       gangPresence.broadcastSpotChange('move', movedSpot);
+      if (gangSessionRef.current) {
+        void saveSpotToServer(gangSessionRef.current, movedSpot);
+      }
       const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
       const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
       gangPresence.broadcastSpotManifest(customSpots);
@@ -876,6 +925,9 @@ export function App() {
         !origin || origin.x !== latestSpot.x || origin.y !== latestSpot.y;
       if (changed) {
         gangPresence.broadcastSpotChange('move', latestSpot);
+        if (gangSessionRef.current) {
+          void saveSpotToServer(gangSessionRef.current, latestSpot);
+        }
         const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
         const customSpots = spotsRef.current.filter((s) => !defaultIds.has(s.id));
         gangPresence.broadcastSpotManifest(customSpots);
@@ -984,23 +1036,25 @@ export function App() {
     const expiresAt = now + durationSeconds * 1000;
     const starterName = gangSession?.memberName;
 
+    const newCooldown: ActiveCooldown = {
+      spotId: spot.id,
+      spotName: spot.name,
+      startedBy: starterName,
+      startedAt: now,
+      expiresAt,
+      durationSeconds,
+    };
+
     setActiveCooldowns((prev) => {
       const filtered = prev.filter((c) => c.spotId !== spot.id);
-      const updated = [
-        ...filtered,
-        {
-          spotId: spot.id,
-          spotName: spot.name,
-          startedBy: starterName,
-          startedAt: now,
-          expiresAt,
-          durationSeconds,
-        },
-      ];
+      const updated = [...filtered, newCooldown];
       gangPresence.broadcastCooldownManifest(updated);
       return updated;
     });
 
+    if (gangSessionRef.current) {
+      void syncCooldownToServer(gangSessionRef.current, { action: 'start', cooldown: newCooldown });
+    }
     gangPresence.broadcastCooldown(spot.id, spot.name, mins, 'start');
     soundEffects.playCooldownStarted();
   }, [gangSession?.memberName]);
@@ -1027,6 +1081,9 @@ export function App() {
       gangPresence.broadcastCooldownManifest(updated);
       return updated;
     });
+    if (gangSessionRef.current) {
+      void syncCooldownToServer(gangSessionRef.current, { action: 'cancel', spotId });
+    }
     gangPresence.broadcastCooldown(spotId, '', 0, 'cancel');
   }, []);
 
@@ -1038,6 +1095,11 @@ export function App() {
     spotsRef.current = importedSpots;
     setSpots(importedSpots);
     saveSpotsToStorage(importedSpots, gangSession?.gangId);
+    if (gangSessionRef.current) {
+      void bulkReplaceSpotsOnServer(gangSessionRef.current, 'import', importedSpots, 'นำเข้า / กู้คืนพิกัด').then((res) => {
+        if (res?.backups) setServerBackups(res.backups);
+      });
+    }
     soundEffects.playPinPlaced();
   }, [gangSession?.gangId]);
 
@@ -1046,6 +1108,11 @@ export function App() {
     setSpots(DEFAULT_SPOTS);
     setActiveCooldowns([]);
     saveSpotsToStorage(DEFAULT_SPOTS, gangSession?.gangId);
+    if (gangSessionRef.current) {
+      void bulkReplaceSpotsOnServer(gangSessionRef.current, 'reset', DEFAULT_SPOTS, 'รีเซ็ตจุดกลับค่าเริ่มต้น').then((res) => {
+        if (res?.backups) setServerBackups(res.backups);
+      });
+    }
   }, [gangSession?.gangId]);
 
   const handleClearAllSpots = useCallback(() => {
@@ -1057,6 +1124,11 @@ export function App() {
     setSpots([]);
     setActiveCooldowns([]);
     saveSpotsToStorage([], gangSession?.gangId);
+    if (gangSessionRef.current) {
+      void bulkReplaceSpotsOnServer(gangSessionRef.current, 'reset', [], 'ล้างจุดทั้งหมด').then((res) => {
+        if (res?.backups) setServerBackups(res.backups);
+      });
+    }
     setSelectedSpot(null);
     setIsClearConfirmOpen(false);
   }, [gangSession?.gangId]);
@@ -1477,6 +1549,7 @@ export function App() {
             onResetDefault={handleResetDefault}
             isMaster={gangSession.isMaster}
             gangId={gangSession.gangId}
+            serverBackups={serverBackups}
           />
         </Suspense>
       )}

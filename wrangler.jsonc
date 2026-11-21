@@ -13,7 +13,8 @@
     "MASTER_PIN": "222547",
     "GANG_SECRET_SEED": "RUNTHUKVERB_GANG_SECRET_KEY_2026",
     "SESSION_SECRET": "RUNTHUKVERB_GANG_SECRET_KEY_2026_SESSION_HMAC",
-    "ALLOWED_ORIGINS": "https://runthukverb-cement-cooldown.pages.dev,https://runthukverb-supply.pages.dev"
+    "ALLOWED_ORIGINS": "https://runthukverb-cement-cooldown.pages.dev,https://runthukverb-supply.pages.dev",
+    "SUPABASE_URL": "https://ibtamnpkagjmnlzuejju.supabase.co"
   },
   "observability": {
     "enabled": true

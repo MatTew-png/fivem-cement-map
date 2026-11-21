@@ -1,4 +1,4 @@
-import mqtt, { type MqttClient } from 'mqtt';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { CementSpot, ActiveCooldown, TacticalPing } from '../types/map';
 import type { GangSession, ActivityLog, UserRole } from './gangAuth';
 import {
@@ -10,6 +10,8 @@ import {
   normalizeGangId,
   verifySessionWithServer,
 } from './gangAuth';
+import { getSupabaseClient } from './supabaseClient';
+import { syncActivityLogToServer } from './mapSync';
 
 export interface OnlineMember {
   clientId: string;
@@ -58,8 +60,6 @@ export type SpotManifestListener = (customSpots: CementSpot[], senderName: strin
 export type CooldownManifestListener = (activeCooldowns: ActiveCooldown[], senderName: string) => void;
 export type SyncRequestListener = () => void;
 export type TacticalPingListener = (ping: TacticalPing) => void;
-
-const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 
 function encryptPayload(data: object, secretKey: string): string {
   try {
@@ -114,11 +114,10 @@ function decryptPayload(raw: string, secretKey: string): Record<string, unknown>
 class GangPresenceManager {
   private clientId: string = `client_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   private session: GangSession | null = null;
-  private client: MqttClient | null = null;
+  private channel: RealtimeChannel | null = null;
   private bc: BroadcastChannel | null = null;
   private heartbeatTimer: number | null = null;
   private pruneTimer: number | null = null;
-  private reconnectTimer: number | null = null;
   private membersMap: Map<string, OnlineMember> = new Map();
   private memberSessions: Map<string, { firstJoined: number; lastSeen: number; lastNotifiedJoin: number }> = new Map();
   private listeners: Set<PresenceListener> = new Set();
@@ -129,7 +128,7 @@ class GangPresenceManager {
   private cdManifestListeners: Set<CooldownManifestListener> = new Set();
   private syncRequestListeners: Set<SyncRequestListener> = new Set();
   private pingListeners: Set<TacticalPingListener> = new Set();
-  private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
+  private outgoingQueue: Array<{ payload: string }> = [];
   private isConnected: boolean = false;
 
   public getGangId(): string {
@@ -146,23 +145,15 @@ class GangPresenceManager {
     return `${key}${this.getGangId()}`;
   }
 
-  public getMqttTopic(): string {
-    return `fivem/gang_v5_${this.getChannelNamespace()}/events`;
-  }
-
-  public getSpotsRetainedTopic(): string {
-    return `fivem/gang_v5_${this.getChannelNamespace()}/spots_manifest_retained`;
-  }
-
-  public getCooldownsRetainedTopic(): string {
-    return `fivem/gang_v5_${this.getChannelNamespace()}/cooldowns_manifest_retained`;
+  public getRealtimeChannelName(): string {
+    return `cement_rt_${this.getChannelNamespace()}`;
   }
 
   public getBroadcastChannelName(): string {
     return `fivem_gang_${this.getGangId()}_bc`;
   }
 
-  // เริ่มระบบ Presence สำหรับสมาชิกที่ล็อกอินแล้ว
+  // เริ่มระบบ Presence สำหรับสมาชิกที่ล็อกอินแล้ว (Supabase Realtime)
   public start(session: GangSession) {
     this.session = session;
 
@@ -179,27 +170,25 @@ class GangPresenceManager {
     }
 
     this.addSelfMember();
-    this.connectWebSocket();
+    this.connectRealtime();
 
-    // ส่ง Heartbeat ทุกๆ 15 วินาที
+    // ส่ง Heartbeat ทุกๆ 20 วินาที
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = window.setInterval(() => {
       this.sendHeartbeat();
-    }, 15000);
+    }, 20000);
 
-    // ตรวจสอบและตัดรายชื่อคนที่ขาดการเชื่อมต่อเกิน 90 วินาที (Prune inactive)
+    // ตรวจสอบและตัดรายชื่อคนที่ขาดการเชื่อมต่อเกิน 90 วินาที
     if (this.pruneTimer) clearInterval(this.pruneTimer);
     this.pruneTimer = window.setInterval(() => {
       this.pruneInactiveMembers();
     }, 5000);
 
-    // ตรวจจับเมื่อผู้ใช้สลับกลับมาที่แท็บ ให้ส่ง Heartbeat และขอซิงค์หมุดทันที
     if (typeof window !== 'undefined') {
       window.addEventListener('visibilitychange', this.handleVisibilityChange);
       window.addEventListener('beforeunload', this.handleBeforeUnload);
     }
 
-    // ส่ง Ping แรกทันที
     this.sendHeartbeat();
   }
 
@@ -207,7 +196,6 @@ class GangPresenceManager {
   public stop() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.pruneTimer) clearInterval(this.pruneTimer);
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('visibilitychange', this.handleVisibilityChange);
@@ -223,15 +211,18 @@ class GangPresenceManager {
       this.bc = null;
     }
 
-    if (this.client) {
+    if (this.channel) {
+      const ch = this.channel;
+      this.channel = null;
       try {
-        this.client.end(true);
+        void ch.untrack();
+        void getSupabaseClient().removeChannel(ch);
       } catch {
         // Ignore
       }
-      this.client = null;
     }
 
+    this.isConnected = false;
     this.membersMap.clear();
     this.memberSessions.clear();
     this.notifyListeners();
@@ -295,9 +286,17 @@ class GangPresenceManager {
       clientId: this.clientId,
       ...ping,
     };
-    this.publish(payload, this.getMqttTopic(), { qos: 1 });
+    this.publish(payload);
     this.pingListeners.forEach((cb) => cb(ping));
-    logActivity(this.session.memberName, 'spot_update', `ปิงเรียกกลุ่มที่จุด: ${label}`, this.session.gangId);
+    const entry = {
+      id: ping.id,
+      memberName: this.session.memberName,
+      action: 'spot_update' as const,
+      details: `ปิงเรียกกลุ่มที่จุด: ${label}`,
+      timestamp: ping.timestamp,
+    };
+    logActivity(entry.memberName, entry.action, entry.details, this.session.gangId);
+    void syncActivityLogToServer(this.session, { action: 'append', entry });
     this.notifyListeners();
   }
 
@@ -310,10 +309,10 @@ class GangPresenceManager {
       memberName: this.session.memberName,
       timestamp: Date.now(),
     };
-    this.publish(payload, this.getMqttTopic(), { qos: 1 });
+    this.publish(payload);
   }
 
-  // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกใหม่และคนที่เข้าทีหลังได้รับข้อมูลครบถ้วนตลอดไป
+  // ส่งสำเนาหมุดทั้งหมดที่มีการปักหรืออัปเดต เพื่อให้สมาชิกที่ออนไลน์อยู่ซิงค์ทันที
   public broadcastSpotManifest(customSpots: CementSpot[]) {
     if (!this.session || customSpots.length === 0) return;
     const payload = {
@@ -323,17 +322,13 @@ class GangPresenceManager {
       customSpots,
       timestamp: Date.now(),
     };
-    // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
-    this.publish(payload, this.getMqttTopic(), { qos: 1 });
-    // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
-    this.publish(payload, this.getSpotsRetainedTopic(), { qos: 1, retain: true });
+    this.publish(payload);
   }
 
-  // ส่งสำเนาคูลดาวน์ทั้งหมดที่กำลังนับถอยหลัง เพื่อให้สมาชิกที่เปิดเว็บทีหลังได้รับทันที
+  // ส่งสำเนาคูลดาวน์ทั้งหมดที่กำลังนับถอยหลัง
   public broadcastCooldownManifest(activeCooldowns: ActiveCooldown[]) {
     if (!this.session) return;
     const now = Date.now();
-    // เก็บเฉพาะคูลดาวน์ที่ยังไม่หมดอายุ (หรือเพิ่งหมดอายุไม่เกิน 60 วินาที)
     const valid = activeCooldowns.filter((c) => c && c.expiresAt > now - 60000);
     const payload = {
       type: 'cooldown_manifest',
@@ -342,10 +337,7 @@ class GangPresenceManager {
       cooldowns: valid,
       timestamp: now,
     };
-    // 1. ส่งแจ้งเตือน Real-time ให้เพื่อนที่กำลังเปิดเว็บอยู่
-    this.publish(payload, this.getMqttTopic(), { qos: 1 });
-    // 2. ส่งแบบ RETAINED ให้ HiveMQ Broker จดจำไว้ถาวร เพื่อให้คนที่เปิดเว็บทีหลังได้รับทันที!
-    this.publish(payload, this.getCooldownsRetainedTopic(), { qos: 1, retain: true });
+    this.publish(payload);
   }
 
   public triggerNotification(notif: Omit<GangNotification, 'id' | 'timestamp'>) {
@@ -373,7 +365,18 @@ class GangPresenceManager {
     this.publish(payload);
 
     if (action === 'start') {
-      logActivity(this.session.memberName, 'cooldown_start', `เริ่มจับเวลาจุด ${spotName} (${durationMinutes} นาที)`, this.session.gangId);
+      const details = `เริ่มจับเวลาจุด ${spotName} (${durationMinutes} นาที)`;
+      logActivity(this.session.memberName, 'cooldown_start', details, this.session.gangId);
+      void syncActivityLogToServer(this.session, {
+        action: 'append',
+        entry: {
+          id: `cd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          memberName: this.session.memberName,
+          action: 'cooldown_start',
+          details,
+          timestamp: Date.now(),
+        },
+      });
       this.notifyListeners();
     }
   }
@@ -397,15 +400,34 @@ class GangPresenceManager {
     this.publish(payload);
 
     // บันทึก Activity Log
-    if (action === 'add') {
-      logActivity(this.session.memberName, 'spot_add', `ปักหมุดใหม่: ${name}`, this.session.gangId);
-    } else if (action === 'delete') {
-      logActivity(this.session.memberName, 'spot_delete', `ลบหมุด: ${name}`, this.session.gangId);
-    } else if (action === 'move') {
-      logActivity(this.session.memberName, 'spot_move', `ย้ายพิกัด: ${name}`, this.session.gangId);
-    } else if (action === 'update') {
-      logActivity(this.session.memberName, 'spot_update', `แก้ไขข้อมูล: ${name}`, this.session.gangId);
-    }
+    const details =
+      action === 'add'
+        ? `ปักหมุดใหม่: ${name}`
+        : action === 'delete'
+        ? `ลบหมุด: ${name}`
+        : action === 'move'
+        ? `ย้ายพิกัด: ${name}`
+        : `แก้ไขข้อมูล: ${name}`;
+    const logAction =
+      action === 'add'
+        ? 'spot_add'
+        : action === 'delete'
+        ? 'spot_delete'
+        : action === 'move'
+        ? 'spot_move'
+        : 'spot_update';
+
+    logActivity(this.session.memberName, logAction, details, this.session.gangId);
+    void syncActivityLogToServer(this.session, {
+      action: 'append',
+      entry: {
+        id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        memberName: this.session.memberName,
+        action: logAction,
+        details,
+        timestamp: Date.now(),
+      },
+    });
 
     this.notifyListeners();
   }
@@ -469,74 +491,132 @@ class GangPresenceManager {
     this.notifyListeners();
   }
 
-  private connectWebSocket() {
+  private connectRealtime() {
     if (typeof window === 'undefined' || !this.session) return;
 
-    try {
-      this.client = mqtt.connect(MQTT_BROKER_URL, {
-        clientId: this.clientId,
-        keepalive: 30,
-        reconnectPeriod: 3000,
-        clean: true,
-      });
+    const supabase = getSupabaseClient();
+    if (this.channel) {
+      try {
+        void supabase.removeChannel(this.channel);
+      } catch {}
+      this.channel = null;
+    }
 
-      this.client.on('connect', () => {
-        this.isConnected = true;
-        this.client?.subscribe([this.getMqttTopic(), this.getSpotsRetainedTopic(), this.getCooldownsRetainedTopic()], { qos: 1 }, (err) => {
-          if (!err) {
-            this.sendHeartbeat();
-            this.flushOutgoingQueue();
-            this.requestSync();
-          }
-        });
-      });
+    const channel = supabase.channel(this.getRealtimeChannelName(), {
+      config: {
+        presence: { key: this.clientId },
+        broadcast: { self: false },
+      },
+    });
+    this.channel = channel;
 
-      this.client.on('message', (topic, payload) => {
+    channel
+      .on('broadcast', { event: 'gang_event' }, (msg) => {
         try {
-          const raw = payload.toString();
-          const data = decryptPayload(raw, this.getChannelSecret());
+          const enc = typeof msg?.payload?.enc === 'string' ? msg.payload.enc : null;
+          if (!enc) return;
+          const data = decryptPayload(enc, this.getChannelSecret());
           if (data) {
-            if (topic === this.getSpotsRetainedTopic()) {
-              this.handleRetainedSpotsMessage(data);
-            } else if (topic === this.getCooldownsRetainedTopic()) {
-              this.handleRetainedCooldownsMessage(data);
-            } else {
-              this.handleMessage(data);
-            }
+            this.handleMessage(data);
           }
         } catch {
-          // Ignore parse errors
+          // Ignore malformed broadcast payload
+        }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState<OnlineMember>();
+        const nextMap = new Map<string, OnlineMember>();
+        const now = Date.now();
+
+        Object.values(state).forEach((entries) => {
+          entries.forEach((m) => {
+            if (!m || !m.clientId || !m.memberName) return;
+            nextMap.set(m.clientId, {
+              ...m,
+              lastSeen: now,
+            });
+          });
+        });
+
+        // Always keep self present
+        const selfExisting = this.membersMap.get(this.clientId);
+        nextMap.set(this.clientId, {
+          clientId: this.clientId,
+          memberName: this.session?.memberName || 'สมาชิก',
+          isMaster: Boolean(this.session?.isMaster),
+          role: this.session ? getSessionRole(this.session) : 'member',
+          joinedAt: selfExisting?.joinedAt || now,
+          lastSeen: now,
+          device: navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop',
+        });
+
+        this.membersMap = nextMap;
+        this.notifyListeners();
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        const now = Date.now();
+        newPresences.forEach((p) => {
+          const m = p as unknown as OnlineMember;
+          if (!m || m.clientId === this.clientId || !m.memberName) return;
+          const normName = m.memberName.toLowerCase().trim();
+          const prev = this.memberSessions.get(normName);
+          const isNewJoin = !prev || now - prev.lastSeen > 15 * 60 * 1000;
+          this.memberSessions.set(normName, {
+            firstJoined: prev?.firstJoined || m.joinedAt || now,
+            lastSeen: now,
+            lastNotifiedJoin: isNewJoin ? now : prev?.lastNotifiedJoin || now,
+          });
+          if (isNewJoin) {
+            logActivity(m.memberName, 'login', 'ออนไลน์เปิดใช้งานแผนที่', this.getGangId());
+            this.triggerNotification({
+              type: 'member_join',
+              title: `${m.memberName} เข้าสู่ระบบ`,
+              subtitle: `ออนไลน์จาก ${m.device || 'อุปกรณ์'}`,
+              icon: '🟢',
+            });
+            this.syncRequestListeners.forEach((cb) => cb());
+          }
+        });
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          this.isConnected = true;
+          const self = this.membersMap.get(this.clientId);
+          void channel.track({
+            clientId: this.clientId,
+            memberName: this.session?.memberName || 'สมาชิก',
+            isMaster: Boolean(this.session?.isMaster),
+            role: this.session ? getSessionRole(this.session) : 'member',
+            joinedAt: self?.joinedAt || Date.now(),
+            lastSeen: Date.now(),
+            device: navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop',
+          });
+          this.flushOutgoingQueue();
+          this.requestSync();
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          this.isConnected = false;
         }
       });
-
-      this.client.on('close', () => {
-        this.isConnected = false;
-      });
-
-      this.client.on('error', () => {
-        this.isConnected = false;
-      });
-    } catch {
-      this.isConnected = false;
-    }
   }
 
   private flushOutgoingQueue() {
-    if (!this.client || !this.client.connected) return;
+    if (!this.channel || !this.isConnected) return;
     while (this.outgoingQueue.length > 0) {
       const item = this.outgoingQueue.shift();
       if (item) {
         try {
-          this.client.publish(item.topic, item.payload, item.options || { qos: 1 });
+          void this.channel.send({
+            type: 'broadcast',
+            event: 'gang_event',
+            payload: { enc: item.payload },
+          });
         } catch {}
       }
     }
   }
 
-  private publish(data: object, targetTopic?: string, options: mqtt.IClientPublishOptions = { qos: 1 }) {
-    const topic = targetTopic || this.getMqttTopic();
-    // ส่งในแท็บเครื่องเดียวกันผ่าน BroadcastChannel
-    if (this.bc && topic === this.getMqttTopic()) {
+  private publish(data: object) {
+    if (this.bc) {
       try {
         this.bc.postMessage(data);
       } catch {
@@ -545,28 +625,19 @@ class GangPresenceManager {
     }
 
     const encrypted = encryptPayload(data, this.getChannelSecret());
-    if (this.client && this.client.connected) {
+    if (this.channel && this.isConnected) {
       try {
-        this.client.publish(topic, encrypted, options);
+        void this.channel.send({
+          type: 'broadcast',
+          event: 'gang_event',
+          payload: { enc: encrypted },
+        });
       } catch {
         // Ignore
       }
     } else {
-      this.outgoingQueue.push({ topic, payload: encrypted, options });
+      this.outgoingQueue.push({ payload: encrypted });
     }
-  }
-
-
-  private handleRetainedSpotsMessage(data: any) {
-    if (!data || !Array.isArray(data.customSpots)) return;
-    this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'คลาวด์กลุ่ม'));
-  }
-
-  private handleRetainedCooldownsMessage(data: any) {
-    if (!data || !Array.isArray(data.cooldowns)) return;
-    const now = Date.now();
-    const valid = data.cooldowns.filter((c: ActiveCooldown) => c && c.expiresAt > now - 60000);
-    this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'คลาวด์กลุ่ม'));
   }
 
   private sendHeartbeat() {
@@ -857,6 +928,9 @@ class GangPresenceManager {
   // ล้างประวัติกิจกรรมทั้งหมด และแจ้งเตือน UI ให้รีเฟรชทันที
   public clearLogs() {
     clearActivityLogs(this.session?.gangId);
+    if (this.session) {
+      void syncActivityLogToServer(this.session, { action: 'clear' });
+    }
     this.notifyListeners();
   }
 
@@ -868,7 +942,7 @@ class GangPresenceManager {
       timestamp: Date.now(),
       clientId: this.clientId,
     };
-    this.publish(payload, this.getMqttTopic(), { qos: 1 });
+    this.publish(payload);
   }
 
   public broadcastGroupRename() {
@@ -877,7 +951,7 @@ class GangPresenceManager {
       timestamp: Date.now(),
       clientId: this.clientId,
     };
-    this.publish(payload, this.getMqttTopic(), { qos: 0 });
+    this.publish(payload);
   }
 
   private notifyListeners() {

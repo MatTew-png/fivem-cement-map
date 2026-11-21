@@ -26,6 +26,7 @@ interface ExportImportModalProps {
   onResetDefault: () => void;
   isMaster?: boolean;
   gangId?: string;
+  serverBackups?: SpotBackupSnapshot[] | null;
 }
 
 export const ExportImportModal = ({
@@ -36,6 +37,7 @@ export const ExportImportModal = ({
   onResetDefault,
   isMaster = false,
   gangId,
+  serverBackups,
 }: ExportImportModalProps) => {
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua' | 'euclid' | 'backups'>(
     isMaster ? 'euclid' : 'import'
@@ -573,14 +575,14 @@ export const ExportImportModal = ({
                 ระบบจะสำรองชุดหมุดบนเครื่องให้อัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล หากเผลอลบหรือล้างหมุดผิด สามารถกดกู้คืนจุดเวลาเดิมได้ทันที
               </div>
 
-              {backups.length === 0 ? (
+              {(serverBackups && serverBackups.length > 0 ? serverBackups : backups).length === 0 ? (
                 <div className="py-10 text-center text-slate-500 text-xs">
                   <History className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p>ยังไม่มีประวัติสำรองข้อมูลสำหรับกลุ่มนี้</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {backups.map((snap) => (
+                  {(serverBackups && serverBackups.length > 0 ? serverBackups : backups).map((snap) => (
                     <div
                       key={snap.id}
                       className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-emerald-500/40 transition-colors"

@@ -27,8 +27,8 @@ export default defineConfig({
                 if (moduleId.includes('node_modules/leaflet') || moduleId.includes('node_modules\\leaflet')) {
                   return 'vendor-leaflet';
                 }
-                if (moduleId.includes('node_modules/mqtt') || moduleId.includes('node_modules\\mqtt')) {
-                  return 'vendor-mqtt';
+                if (moduleId.includes('node_modules/@supabase') || moduleId.includes('node_modules\\@supabase')) {
+                  return 'vendor-supabase';
                 }
                 if (moduleId.includes('node_modules/lucide-react') || moduleId.includes('node_modules\\lucide-react')) {
                   return 'vendor-icons';
