@@ -655,11 +655,21 @@ function createClusterPopupNode(
     onFocusSpot?: (spot: CementSpot) => void;
     activeCooldowns?: ActiveCooldown[];
     spotsById?: Map<string, CementSpot>;
+    activeLayer?: MapTileLayer;
   }>,
-  marker: L.Marker
+  marker: L.Marker,
+  activeMiniMapRef: React.MutableRefObject<L.Map | null>
 ): HTMLElement {
+  // Ensure any previous mini-map instance is cleanly destroyed
+  if (activeMiniMapRef.current) {
+    try {
+      activeMiniMapRef.current.remove();
+    } catch {}
+    activeMiniMapRef.current = null;
+  }
+
   const container = document.createElement('div');
-  container.className = 'p-0.5 text-slate-200 text-xs font-sans w-[265px] max-w-[84vw] max-h-[calc(100vh-140px)] overflow-y-auto';
+  container.className = 'p-0.5 text-slate-200 text-xs font-sans w-[275px] max-w-[84vw] max-h-[calc(100vh-140px)] overflow-y-auto';
   L.DomEvent.disableClickPropagation(container);
   L.DomEvent.disableScrollPropagation(container);
 
@@ -667,13 +677,9 @@ function createClusterPopupNode(
 
   // Sort spatially: Top-to-Bottom (North -> South, higher Y first), then Left-to-Right (West -> East, lower X first)
   const ys = liveSpots.map((s) => s.y);
-  const xs = liveSpots.map((s) => s.x);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
   const spanY = Math.max(1, maxY - minY);
-  const spanX = Math.max(1, maxX - minX);
   const rowTolerance = spanY * 0.14;
 
   const sortedSpots = [...liveSpots].sort((a, b) => {
@@ -683,48 +689,9 @@ function createClusterPopupNode(
     return a.x - b.x;
   });
 
-  // Compute aspect-preserving relative positions inside a 240x96 mini-radar box
-  const boxW = 240;
-  const boxH = 96;
-  const usableW = 192;
-  const usableH = 64;
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const pxScale = Math.min(usableW / spanX, usableH / spanY);
-
-  const radarPoints = sortedSpots.map((spot, idx) => {
-    let px = boxW / 2 + (spot.x - centerX) * pxScale;
-    let py = boxH / 2 + (centerY - spot.y) * pxScale;
-    px = Math.max(18, Math.min(boxW - 18, px));
-    py = Math.max(14, Math.min(boxH - 14, py));
-    return {
-      spot,
-      num: idx + 1,
-      px,
-      py,
-    };
-  });
-
-  // Lightly separate overlapping dots if two spots sit almost on top of each other
-  for (let i = 0; i < radarPoints.length; i++) {
-    for (let j = i + 1; j < radarPoints.length; j++) {
-      const dx = radarPoints[j].px - radarPoints[i].px;
-      const dy = radarPoints[j].py - radarPoints[i].py;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 18) {
-        const angle = dist > 0.1 ? Math.atan2(dy, dx) : (j * Math.PI) / 3;
-        const push = (18 - dist) / 2 + 1;
-        radarPoints[i].px = Math.max(18, Math.min(boxW - 18, radarPoints[i].px - Math.cos(angle) * push));
-        radarPoints[i].py = Math.max(14, Math.min(boxH - 14, radarPoints[i].py - Math.sin(angle) * push));
-        radarPoints[j].px = Math.max(18, Math.min(boxW - 18, radarPoints[j].px + Math.cos(angle) * push));
-        radarPoints[j].py = Math.max(14, Math.min(boxH - 14, radarPoints[j].py + Math.sin(angle) * push));
-      }
-    }
-  }
-
   const now = Date.now();
   const count = sortedSpots.length;
-  const showRadar = count <= 12;
+  const showMiniMap = count <= 12;
 
   container.innerHTML = `
     <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/80 mb-1.5 pr-5">
@@ -737,45 +704,13 @@ function createClusterPopupNode(
       </span>
     </div>
 
-    ${showRadar ? `
+    ${showMiniMap ? `
       <div class="flex items-center justify-between text-[9px] font-mono text-slate-400 px-0.5 mb-1 select-none">
-        <span>🗺️ ผังตำแหน่งจริง (กดที่เลขได้)</span>
+        <span>🗺️ มินิแมพซูมจุดจริง (กดเลขบนแมพได้เลย)</span>
         <span class="font-bold text-slate-500">N ▲</span>
       </div>
-      <div class="relative w-full h-[96px] rounded-xl bg-slate-950/95 border border-slate-700/80 mb-2 overflow-hidden shadow-inner select-none" aria-label="แผนผังตำแหน่งหมุดย่อยในกลุ่ม">
-        <div class="absolute inset-0 opacity-20 pointer-events-none" style="background-image: linear-gradient(to right, #334155 1px, transparent 1px), linear-gradient(to bottom, #334155 1px, transparent 1px); background-size: 24px 24px;"></div>
-        ${radarPoints
-          .map(({ spot, num, px, py }) => {
-            const safeId = escapeHtml(spot.id);
-            const safeName = escapeHtml(spot.name);
-            const activeCd = callbacksRef.current.activeCooldowns?.find((c) => c.spotId === spot.id);
-            const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : -1;
-            const isUrgent = remSec > 0 && remSec <= 180;
-            const isReady = remSec === 0;
-            const isCd = remSec > 0;
-            const dotClass = isUrgent
-              ? 'bg-red-500 text-white border-yellow-200 shadow-[0_0_10px_#ef4444]'
-              : isReady
-              ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_8px_#10b981]'
-              : isCd
-              ? 'bg-amber-500 text-slate-950 border-amber-200'
-              : 'bg-amber-400 text-slate-950 border-white/80 hover:bg-amber-300';
-            const leftPct = ((px / boxW) * 100).toFixed(2);
-            const topPct = ((py / boxH) * 100).toFixed(2);
-            return `
-              <button
-                type="button"
-                data-cluster-spot-id="${safeId}"
-                data-radar-dot="${num}"
-                style="left: ${leftPct}%; top: ${topPct}%;"
-                class="absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 font-mono font-black text-[10px] flex items-center justify-center shadow-md transition-all duration-150 hover:scale-125 cursor-pointer z-10 ${dotClass}"
-                title="${num}. ${safeName}"
-              >
-                ${num}
-              </button>
-            `;
-          })
-          .join('')}
+      <div class="relative w-full h-[132px] rounded-xl overflow-hidden border border-slate-700/90 mb-2 shadow-inner bg-slate-950">
+        <div data-cluster-minimap class="w-full h-full"></div>
       </div>
     ` : `
       <p class="text-[10px] text-slate-400 mb-1.5">
@@ -783,9 +718,10 @@ function createClusterPopupNode(
       </p>
     `}
 
-    <div class="max-h-48 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
-      ${radarPoints
-        .map(({ spot, num }) => {
+    <div class="max-h-44 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+      ${sortedSpots
+        .map((spot, idx) => {
+          const num = idx + 1;
           const cat = getSpotCategoryInfo(spot);
           const icon = spot.icon || cat?.icon || '🧱';
           const safeId = escapeHtml(spot.id);
@@ -839,24 +775,135 @@ function createClusterPopupNode(
     </div>
   `;
 
-  // Sync hover highlight between mini-radar dots and list rows
-  container.querySelectorAll('[data-cluster-row]').forEach((row) => {
-    const num = row.getAttribute('data-cluster-row');
-    const dot = num ? (container.querySelector(`[data-radar-dot="${num}"]`) as HTMLElement | null) : null;
-    if (!dot) return;
-    row.addEventListener('mouseenter', () => {
-      dot.classList.add('scale-125', 'ring-2', 'ring-white', 'z-20');
-    });
-    row.addEventListener('mouseleave', () => {
-      dot.classList.remove('scale-125', 'ring-2', 'ring-white', 'z-20');
-    });
-    dot.addEventListener('mouseenter', () => {
-      row.classList.add('border-amber-400', 'bg-slate-900');
-    });
-    dot.addEventListener('mouseleave', () => {
-      row.classList.remove('border-amber-400', 'bg-slate-900');
-    });
-  });
+  // Mount real zoomed-in Leaflet mini-map once popup DOM is attached
+  if (showMiniMap) {
+    const miniEl = container.querySelector('[data-cluster-minimap]') as HTMLElement | null;
+    if (miniEl) {
+      requestAnimationFrame(() => {
+        if (!miniEl.isConnected) return;
+        const layerConfig =
+          MAP_LAYERS.find((l) => l.id === callbacksRef.current.activeLayer) || MAP_LAYERS[0];
+        miniEl.style.backgroundColor = layerConfig.bgColor;
+        L.DomEvent.disableClickPropagation(miniEl);
+        L.DomEvent.disableScrollPropagation(miniEl);
+
+        const miniMap = L.map(miniEl, {
+          crs: customGTA_CRS,
+          minZoom: 4,
+          maxZoom: 9,
+          zoom: 7,
+          center: gameCoordsToLatLng(sortedSpots[0].x, sortedSpots[0].y),
+          maxBounds: MAP_MAX_BOUNDS,
+          attributionControl: false,
+          zoomControl: false,
+          dragging: false,
+          scrollWheelZoom: false,
+          doubleClickZoom: false,
+          boxZoom: false,
+          keyboard: false,
+          touchZoom: false,
+        });
+
+        L.tileLayer(layerConfig.url, {
+          noWrap: true,
+          tms: layerConfig.tms,
+          minZoom: layerConfig.minZoom,
+          maxZoom: 9,
+          maxNativeZoom: layerConfig.maxNativeZoom || 7,
+          bounds: MAP_BOUNDS,
+          className: layerConfig.className || '',
+        }).addTo(miniMap);
+
+        const latlngs = sortedSpots.map((s) => gameCoordsToLatLng(s.x, s.y));
+        const bounds = L.latLngBounds(latlngs);
+        miniMap.invalidateSize(false);
+        if (sortedSpots.length === 1 || !bounds.isValid() || bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 0.005) {
+          miniMap.setView(latlngs[0], 9, { animate: false });
+        } else {
+          miniMap.fitBounds(bounds, {
+            padding: [24, 24],
+            maxZoom: 9,
+            animate: false,
+          });
+          if (miniMap.getZoom() < 5) {
+            miniMap.setZoom(5, { animate: false });
+          }
+        }
+
+        const miniMarkerEls = new Map<number, HTMLElement>();
+
+        sortedSpots.forEach((spot, idx) => {
+          const num = idx + 1;
+          const activeCd = callbacksRef.current.activeCooldowns?.find((c) => c.spotId === spot.id);
+          const remSec = activeCd ? Math.max(0, Math.floor((activeCd.expiresAt - now) / 1000)) : -1;
+          const isUrgent = remSec > 0 && remSec <= 180;
+          const isReady = remSec === 0;
+          const isCd = remSec > 0;
+          const dotClass = isUrgent
+            ? 'bg-red-500 text-white border-yellow-200 shadow-[0_0_10px_#ef4444]'
+            : isReady
+            ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_8px_#10b981]'
+            : isCd
+            ? 'bg-amber-500 text-slate-950 border-amber-200'
+            : 'bg-amber-400 text-slate-950 border-white shadow-[0_2px_8px_rgba(0,0,0,0.85)]';
+
+          const pinIcon = L.divIcon({
+            className: 'custom-leaflet-div-icon',
+            html: `
+              <div data-minimap-pin="${num}" class="w-5 h-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-mono font-black text-[10px] flex items-center justify-center transition-transform duration-150 hover:scale-125 cursor-pointer ${dotClass}">
+                ${num}
+              </div>
+            `,
+            iconSize: [0, 0],
+          });
+
+          const miniPin = L.marker(gameCoordsToLatLng(spot.x, spot.y), {
+            icon: pinIcon,
+            zIndexOffset: 500 + num,
+          }).addTo(miniMap);
+
+          miniPin.on('click', (ev) => {
+            L.DomEvent.stop(ev);
+            soundEffects.playPinPlaced();
+            // Defer popup close & spot focus until after DOM click event finishes bubbling
+            window.setTimeout(() => {
+              marker.closePopup();
+              callbacksRef.current.onFocusSpot?.(spot);
+            }, 0);
+          });
+
+          const row = container.querySelector(`[data-cluster-row="${num}"]`) as HTMLElement | null;
+          const pinEl = miniPin.getElement()?.querySelector(`[data-minimap-pin="${num}"]`) as HTMLElement | null;
+          if (pinEl) {
+            miniMarkerEls.set(num, pinEl);
+            if (row) {
+              pinEl.addEventListener('mouseenter', () => {
+                row.classList.add('border-amber-400', 'bg-slate-900');
+              });
+              pinEl.addEventListener('mouseleave', () => {
+                row.classList.remove('border-amber-400', 'bg-slate-900');
+              });
+            }
+          }
+        });
+
+        // Link list row hover -> mini-map numbered pin highlight
+        container.querySelectorAll('[data-cluster-row]').forEach((row) => {
+          const num = parseInt(row.getAttribute('data-cluster-row') || '0', 10);
+          const pinEl = miniMarkerEls.get(num);
+          if (!pinEl) return;
+          row.addEventListener('mouseenter', () => {
+            pinEl.classList.add('scale-125', 'ring-2', 'ring-white');
+          });
+          row.addEventListener('mouseleave', () => {
+            pinEl.classList.remove('scale-125', 'ring-2', 'ring-white');
+          });
+        });
+
+        activeMiniMapRef.current = miniMap;
+      });
+    }
+  }
 
   // Attach click listeners using data attribute (safe for any spot id characters)
   const spotMap = new Map(sortedSpots.map((s) => [s.id, s]));
@@ -923,6 +970,7 @@ export const MapView = memo(({
   const pingsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const ghostMoveMarkerRef = useRef<L.Marker | null>(null);
   const rubberbandPolylineRef = useRef<L.Polyline | null>(null);
+  const activeMiniMapRef = useRef<L.Map | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(3);
@@ -958,6 +1006,7 @@ export const MapView = memo(({
     onStartMoveSpot,
     onSendTacticalPing,
     activeCooldowns,
+    activeLayer,
     spotsById: new Map<string, CementSpot>(),
   });
 
@@ -989,6 +1038,7 @@ export const MapView = memo(({
       onStartMoveSpot,
       onSendTacticalPing,
       activeCooldowns,
+      activeLayer,
       spotsById: spotsMap,
     };
   });
@@ -1182,6 +1232,12 @@ export const MapView = memo(({
       if (ghostMoveMarkerRef.current && map.hasLayer(ghostMoveMarkerRef.current)) {
         map.removeLayer(ghostMoveMarkerRef.current);
         ghostMoveMarkerRef.current = null;
+      }
+      if (activeMiniMapRef.current) {
+        try {
+          activeMiniMapRef.current.remove();
+        } catch {}
+        activeMiniMapRef.current = null;
       }
       markersMap.clear();
       clusterMarkersMap.clear();
@@ -1501,7 +1557,7 @@ export const MapView = memo(({
           existingCluster.setZIndexOffset(zIndexOffset);
 
           if (existingCluster.isPopupOpen()) {
-            existingCluster.setPopupContent(createClusterPopupNode(cluster, callbacksRef, existingCluster));
+            existingCluster.setPopupContent(createClusterPopupNode(cluster, callbacksRef, existingCluster, activeMiniMapRef));
           }
         } else {
           const clusterMarker = L.marker(cluster.latlng, {
@@ -1512,11 +1568,11 @@ export const MapView = memo(({
           clusterMarker.bindPopup(
             () => {
               const liveCluster = clustersByIdRef.current.get(cluster.id) ?? cluster;
-              return createClusterPopupNode(liveCluster, callbacksRef, clusterMarker);
+              return createClusterPopupNode(liveCluster, callbacksRef, clusterMarker, activeMiniMapRef);
             },
             {
               maxWidth: 300,
-              minWidth: 255,
+              minWidth: 265,
               className: 'custom-fivem-popup',
               autoClose: false,
               closeOnClick: true,
@@ -1561,6 +1617,15 @@ export const MapView = memo(({
                 otherCMarker.closePopup();
               }
             });
+          });
+
+          clusterMarker.on('popupclose', () => {
+            if (activeMiniMapRef.current) {
+              try {
+                activeMiniMapRef.current.remove();
+              } catch {}
+              activeMiniMapRef.current = null;
+            }
           });
 
           group.addLayer(clusterMarker);
