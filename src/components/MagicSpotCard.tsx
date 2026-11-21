@@ -1,20 +1,17 @@
 import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import {
   Clock,
-  Crosshair,
   Edit2,
   Trash2,
   Package,
   Flame,
   X,
-  Copy,
-  Check,
   Compass,
+  MapPin,
 } from 'lucide-react';
 import type { CementSpot, ActiveCooldown } from '../types/map';
 import { isCementSpot } from '../utils/spotCategories';
 import { renderSpotIcon } from '../utils/spotIcons';
-import { formatSpotToEuclidObject, copyToClipboard } from '../utils/spotExport';
 
 interface MagicSpotCardProps {
   spot: CementSpot;
@@ -55,14 +52,11 @@ export const MagicSpotCard = memo(({
 }: MagicSpotCardProps) => {
   const [mousePos, setMousePos] = useState({ x: -999, y: -999 });
   const [isHovered, setIsHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const copyTimerRef = useRef<number | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
-      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
       if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
     };
   }, []);
@@ -236,18 +230,20 @@ export const MagicSpotCard = memo(({
           ) : null}
 
 
-          {/* Quick Cooldown Trigger */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleCooldownPicker(spot.id);
-            }}
-            className="p-1 rounded text-slate-400 hover:text-amber-400 hover:bg-slate-800"
-            title="ตั้งเวลานับถอยหลัง"
-          >
-            <Clock className="w-3 h-3" />
-          </button>
+          {/* Quick Cooldown Trigger (Cement spots only, or if already active) */}
+          {(isCement || isCooldown || isReady) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCooldownPicker(spot.id);
+              }}
+              className="p-1 rounded text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+              title="ตั้งเวลานับถอยหลัง"
+            >
+              <Clock className="w-3 h-3" />
+            </button>
+          )}
 
           {/* Quick Move Trigger when Selected */}
           {isSelected && onStartMoveSpot && (
@@ -300,20 +296,24 @@ export const MagicSpotCard = memo(({
 
       {/* Urgent / Active Countdown Banner */}
       {isUrgent ? (
-        <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold text-[11px] mb-2 shadow-md">
-          <span className="flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5 text-yellow-300" />
-            <span>ใกล้เกิดแล้ว! ต่ำกว่า 3 นาที</span>
+        <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold text-[11px] mb-2 shadow-md gap-1">
+          <span className="flex items-center gap-1.5 truncate">
+            <Flame className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+            <span className="truncate">
+              ใกล้เกิดแล้ว!{activeCooldown?.startedBy ? ` (โดย ${activeCooldown.startedBy})` : ''}
+            </span>
           </span>
-          <span className="font-mono font-black text-xs">{cdTimeStr}</span>
+          <span className="font-mono font-black text-xs shrink-0">{cdTimeStr}</span>
         </div>
       ) : isCooldown ? (
-        <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[10px] mb-2">
-          <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
-            <span>กำลังคูลดาวน์</span>
+        <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[10px] mb-2 gap-1">
+          <span className="flex items-center gap-1 truncate font-sans">
+            <Clock className="w-3 h-3 text-amber-400 animate-spin shrink-0" style={{ animationDuration: '6s' }} />
+            <span className="truncate">
+              กำลังคูลดาวน์{activeCooldown?.startedBy ? ` • โดย ${activeCooldown.startedBy}` : ''}
+            </span>
           </span>
-          <span className="font-bold text-xs">{cdTimeStr}</span>
+          <span className="font-bold text-xs shrink-0">{cdTimeStr}</span>
         </div>
       ) : isReady ? (
         <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-bold text-[11px] mb-2 shadow-md animate-pulse">
@@ -413,68 +413,44 @@ export const MagicSpotCard = memo(({
         </div>
       )}
 
-      {/* Bottom Bar: Coordinates & Action Buttons */}
+      {/* Bottom Bar: Location hint & Action Buttons */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/80 font-mono text-[11px] text-slate-400">
-        <span className="flex items-center gap-1 text-slate-400">
-          <Crosshair className="w-3 h-3 text-slate-500" />
-          <span>
-            {spot.x.toFixed(0)}, {spot.y.toFixed(0)}
+        <span className="flex items-center gap-1 text-slate-400 truncate min-w-0 pr-2">
+          <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+          <span className="truncate font-sans text-[10px]">
+            {spot.postal ? `Postal #${spot.postal}` : badgeInfo.label}
           </span>
         </span>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
 
-          {/* Cooldown Button / Picker Toggle */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleCooldownPicker(spot.id);
-            }}
-            title={activeCooldown ? 'ปรับเวลาหรือยกเลิกคูลดาวน์' : 'เลือกเวลาคูลดาวน์'}
-            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all border cursor-pointer ${
-              isUrgent
-                ? 'bg-red-600 text-white border-yellow-300 font-black shadow-md shadow-red-600/50'
-                : activeCooldown
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            {isUrgent ? (
-              <Flame className="w-3 h-3 text-yellow-300" />
-            ) : (
-              <Clock className="w-3 h-3 text-amber-400" />
-            )}
-            <span>
-              {isUrgent ? cdTimeStr : isCooldown ? cdTimeStr : `${spot.cooldownMinutes || 10}น.`}
-            </span>
-          </button>
-
-          {/* Copy Spot Button (for epic-euclid) */}
-          <button
-            type="button"
-            onClick={async (e) => {
-              e.stopPropagation();
-              const json = JSON.stringify(formatSpotToEuclidObject(spot), null, 2);
-              await copyToClipboard(json);
-              setCopied(true);
-              if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-              copyTimerRef.current = window.setTimeout(() => setCopied(false), 1800);
-            }}
-            title="คัดลอกข้อมูลหมุด (สำหรับโปรเจกต์ epic-euclid)"
-            aria-label="คัดลอกข้อมูลหมุด JSON"
-            className={`p-1 rounded-lg transition-colors cursor-pointer ${
-              copied
-                ? 'text-emerald-400 bg-emerald-500/15'
-                : 'text-slate-400 hover:text-amber-300 hover:bg-slate-750'
-            }`}
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
+          {/* Cooldown Button / Picker Toggle (Cement spots only, or if already active) */}
+          {(isCement || isCooldown || isReady) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCooldownPicker(spot.id);
+              }}
+              title={activeCooldown ? 'ปรับเวลาหรือยกเลิกคูลดาวน์' : 'เลือกเวลาคูลดาวน์'}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all border cursor-pointer ${
+                isUrgent
+                  ? 'bg-red-600 text-white border-yellow-300 font-black shadow-md shadow-red-600/50'
+                  : activeCooldown
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              {isUrgent ? (
+                <Flame className="w-3 h-3 text-yellow-300" />
+              ) : (
+                <Clock className="w-3 h-3 text-amber-400" />
+              )}
+              <span>
+                {isUrgent ? cdTimeStr : isCooldown ? cdTimeStr : `${spot.cooldownMinutes || 10}น.`}
+              </span>
+            </button>
+          )}
 
           {/* Move Spot Button */}
           {onStartMoveSpot && (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles, ShieldAlert, Timer, Building2 } from 'lucide-react';
+import { Lock, ShieldCheck, User, KeyRound, AlertCircle, Sparkles, ShieldAlert, Timer, Building2, Eye, EyeOff } from 'lucide-react';
 import { verifyPIN, AVAILABLE_BRANCHES, parseBranch, type BranchInfo, type GangSession } from '../utils/gangAuth';
 
 interface GangAuthModalProps {
@@ -30,6 +30,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
     return localStorage.getItem('runthukverb_last_member_name') || '';
   });
   const [pin, setPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [remainingSec, setRemainingSec] = useState<number>(0);
@@ -212,18 +213,29 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
               </label>
               <span className="text-[10px] text-slate-400">เปลี่ยนทุก 00:00 น.</span>
             </div>
-            <input
-              id="auth-daily-pin"
-              type="password"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={16}
-              disabled={isLocked || isSubmitting}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="รหัสผ่าน 6 หลัก"
-              className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 tracking-widest font-mono text-center font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-base disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+            <div className="relative">
+              <input
+                id="auth-daily-pin"
+                type={showPin ? 'text' : 'password'}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={16}
+                disabled={isLocked || isSubmitting}
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="รหัสผ่าน 6 หลัก"
+                className="w-full px-11 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 tracking-widest font-mono text-center font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-base disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin((prev) => !prev)}
+                aria-label={showPin ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                title={showPin ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-700/60 transition-colors cursor-pointer"
+              >
+                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button

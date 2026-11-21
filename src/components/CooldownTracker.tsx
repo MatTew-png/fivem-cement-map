@@ -9,6 +9,7 @@ interface CooldownTrackerProps {
   spots: CementSpot[];
   onCancelCooldown: (spotId: string) => void;
   onFocusSpot: (spot: CementSpot) => void;
+  isDistanceOpen?: boolean;
 }
 
 export const CooldownTracker = memo(({
@@ -16,6 +17,7 @@ export const CooldownTracker = memo(({
   spots,
   onCancelCooldown,
   onFocusSpot,
+  isDistanceOpen = false,
 }: CooldownTrackerProps) => {
   const [now, setNow] = useState(() => Date.now());
   const notifiedKeysRef = useRef<Set<string>>(new Set());
@@ -64,24 +66,68 @@ export const CooldownTracker = memo(({
 
   if (cooldowns.length === 0) return null;
 
+  const positionClass = isDistanceOpen
+    ? 'hidden sm:flex top-20 sm:right-[22.5rem]'
+    : 'flex top-20 right-4';
+
+  const topCd = sortedCooldowns[0];
+  const topSpot = topCd ? spots.find((s) => s.id === topCd.spotId) : undefined;
+  const topRemSec = topCd ? Math.max(0, Math.floor((topCd.expiresAt - now) / 1000)) : 0;
+  const topMin = Math.floor(topRemSec / 60);
+  const topSec = topRemSec % 60;
+  const topTimeStr = `${topMin}:${topSec.toString().padStart(2, '0')}`;
+
+  const mobileGpsPill = isDistanceOpen && topCd ? (
+    <div className="sm:hidden fixed bottom-16 right-4 z-[850] pointer-events-none">
+      <button
+        type="button"
+        onClick={() => topSpot && onFocusSpot(topSpot)}
+        className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md border font-mono font-bold text-xs shadow-xl cursor-pointer transition-all active:scale-95 ${
+          topRemSec === 0
+            ? 'bg-emerald-950/95 border-emerald-400 text-emerald-300'
+            : topRemSec <= 180
+            ? 'bg-red-950/95 border-red-500 text-red-200 animate-pulse'
+            : 'bg-slate-900/95 border-amber-500/60 text-amber-300'
+        }`}
+        title="คลิกเพื่อดูจุดที่ใกล้เกิดที่สุด"
+      >
+        <Clock className="w-3.5 h-3.5" />
+        <span className="max-w-[110px] truncate font-sans">
+          {topSpot?.name || topCd.spotName || 'จุดปูน'}
+        </span>
+        <span>{topRemSec === 0 ? 'เกิดแล้ว!' : topTimeStr}</span>
+        {cooldowns.length > 1 && (
+          <span className="px-1 rounded bg-slate-800 text-[10px] text-slate-300">
+            +{cooldowns.length - 1}
+          </span>
+        )}
+      </button>
+    </div>
+  ) : null;
+
   if (isMinimized) {
     return (
-      <div className="absolute top-20 right-4 z-[850] flex flex-col gap-2 pointer-events-none">
-        <button
-          type="button"
-          onClick={() => setIsMinimized(false)}
-          className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 backdrop-blur-md border border-amber-500/50 text-amber-300 hover:text-white hover:border-amber-400 font-mono font-bold text-xs shadow-xl transition-all active:scale-95 cursor-pointer"
-        >
-          <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-          <span>คูลดาวน์ ({cooldowns.length})</span>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-        </button>
-      </div>
+      <>
+        {mobileGpsPill}
+        <div className={`absolute ${positionClass} z-[850] flex-col gap-2 pointer-events-none transition-all duration-200`}>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(false)}
+            className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 backdrop-blur-md border border-amber-500/50 text-amber-300 hover:text-white hover:border-amber-400 font-mono font-bold text-xs shadow-xl transition-all active:scale-95 cursor-pointer"
+          >
+            <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+            <span>คูลดาวน์ ({cooldowns.length})</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="absolute top-20 right-4 z-[850] w-72 max-w-[calc(100vw-2rem)] flex flex-col gap-2 pointer-events-none">
+    <>
+      {mobileGpsPill}
+      <div className={`absolute ${positionClass} z-[850] w-72 max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none transition-all duration-200`}>
       <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl pointer-events-auto">
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
@@ -171,11 +217,16 @@ export const CooldownTracker = memo(({
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center justify-between text-[11px] mb-1 font-mono">
-                      <span className={isUrgent ? 'text-yellow-300 font-bold flex items-center gap-1' : 'text-slate-400'}>
-                        {isUrgent ? '🔥 ใกล้เกิดแล้ว!' : 'เหลือเวลา'}
+                    <div className="flex items-center justify-between text-[11px] mb-1 font-mono gap-1">
+                      <span className={`truncate ${isUrgent ? 'text-yellow-300 font-bold flex items-center gap-1' : 'text-slate-400'}`}>
+                        {isUrgent ? '🔥 ใกล้เกิด!' : 'เหลือเวลา'}
+                        {cd.startedBy && (
+                          <span className="text-[10px] text-slate-400 font-sans ml-1">
+                            • โดย {cd.startedBy}
+                          </span>
+                        )}
                       </span>
-                      <span className={`font-bold ${isUrgent ? 'text-white text-xs font-black' : 'text-amber-400'}`}>
+                      <span className={`font-bold shrink-0 ${isUrgent ? 'text-white text-xs font-black' : 'text-amber-400'}`}>
                         {timeStr}
                       </span>
                     </div>
@@ -198,5 +249,6 @@ export const CooldownTracker = memo(({
         </div>
       </div>
     </div>
+    </>
   );
 });

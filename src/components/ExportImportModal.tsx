@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { X, Download, Upload, Copy, Check, FileJson, Code2, RefreshCw, AlertCircle, Lock, Sparkles } from 'lucide-react';
+import { X, Download, Upload, Copy, Check, FileJson, Code2, RefreshCw, AlertCircle, Lock, Sparkles, History } from 'lucide-react';
 import type { CementSpot } from '../types/map';
 import {
   exportSpotsToJSON,
   parseImportedSpots,
   formatFiveMLuaTable,
+  getBackupSnapshots,
+  restoreBackupSnapshot,
+  type SpotBackupSnapshot,
 } from '../utils/storage';
 import {
   formatSpotsToEuclidJSON,
@@ -22,6 +25,7 @@ interface ExportImportModalProps {
   onImport: (importedSpots: CementSpot[]) => void;
   onResetDefault: () => void;
   isMaster?: boolean;
+  gangId?: string;
 }
 
 export const ExportImportModal = ({
@@ -31,10 +35,12 @@ export const ExportImportModal = ({
   onImport,
   onResetDefault,
   isMaster = false,
+  gangId,
 }: ExportImportModalProps) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua' | 'euclid'>(
+  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'lua' | 'euclid' | 'backups'>(
     isMaster ? 'euclid' : 'import'
   );
+  const [backups, setBackups] = useState<SpotBackupSnapshot[]>([]);
   const [euclidFormat, setEuclidFormat] = useState<'json' | 'astro' | 'vector3'>('json');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [copiedEuclid, setCopiedEuclid] = useState(false);
@@ -49,8 +55,9 @@ export const ExportImportModal = ({
     if (!isOpen) return;
     setConfirmReset(false);
     setImportError(null);
+    setBackups(getBackupSnapshots(gangId));
     if (!isMaster) {
-      setActiveTab('import');
+      setActiveTab((prev) => (prev === 'backups' ? 'backups' : 'import'));
     }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -60,7 +67,7 @@ export const ExportImportModal = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isMaster, onClose]);
+  }, [isOpen, isMaster, gangId, onClose]);
 
   useEffect(() => {
     return () => {
@@ -236,6 +243,7 @@ export const ExportImportModal = ({
               <span>นำเข้า</span>
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('lua')}
               className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'lua'
@@ -245,6 +253,21 @@ export const ExportImportModal = ({
             >
               <Code2 className="w-3.5 h-3.5" />
               <span>FiveM Lua</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBackups(getBackupSnapshots(gangId));
+                setActiveTab('backups');
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'backups'
+                  ? 'bg-slate-800 text-emerald-400 shadow-sm border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>กู้คืน ({backups.length})</span>
             </button>
           </div>
         </div>
@@ -540,6 +563,55 @@ export const ExportImportModal = ({
                     {luaContent}
                   </pre>
                 </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'backups' && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-slate-300 leading-relaxed">
+                ระบบจะสำรองชุดหมุดบนเครื่องให้อัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล หากเผลอลบหรือล้างหมุดผิด สามารถกดกู้คืนจุดเวลาเดิมได้ทันที
+              </div>
+
+              {backups.length === 0 ? (
+                <div className="py-10 text-center text-slate-500 text-xs">
+                  <History className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p>ยังไม่มีประวัติสำรองข้อมูลสำหรับสาขานี้</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {backups.map((snap) => (
+                    <div
+                      key={snap.id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-emerald-500/40 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                          <span>{snap.dateStr || new Date(snap.timestamp).toLocaleString('th-TH')}</span>
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono text-[10px]">
+                            {snap.spotsCount} จุด
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                          สำรองข้อมูลอัตโนมัติในเครื่อง
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const restored = restoreBackupSnapshot(snap.id, gangId);
+                          if (restored) {
+                            onImport(restored);
+                            onClose();
+                          }
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                      >
+                        กู้คืนชุดนี้
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

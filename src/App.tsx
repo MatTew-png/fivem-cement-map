@@ -7,7 +7,7 @@ import { DistanceTool, type RouteSegment } from './components/DistanceTool';
 import { MapQuickFilters } from './components/MapQuickFilters';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Volume2, VolumeX, Check, X, Crosshair } from 'lucide-react';
-import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode } from './types/map';
+import type { CementSpot, MapTileLayer, ActiveCooldown, DistancePoint, RoutingMode, TacticalPing } from './types/map';
 import { gtaRoadRouter } from './utils/gtaRouter';
 import { DEFAULT_SPOTS, MAP_LAYERS } from './data/defaultSpots';
 import {
@@ -215,9 +215,17 @@ export function App() {
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [selectedSpot, setSelectedSpot] = useState<CementSpot | null>(null);
   const [movingSpot, setMovingSpot] = useState<CementSpot | null>(null);
+  const moveOriginRef = useRef<CementSpot | null>(null);
+  const movingSpotRef = useRef<CementSpot | null>(null);
+  useEffect(() => {
+    movingSpotRef.current = movingSpot;
+  }, [movingSpot]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('fivem_map_sidebar_collapsed') === 'true';
+      const saved = localStorage.getItem('fivem_map_sidebar_collapsed');
+      if (saved !== null) return saved === 'true';
+      if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
+      return false;
     } catch {
       return false;
     }
@@ -252,6 +260,22 @@ export function App() {
   const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [notifications, setNotifications] = useState<GangNotification[]>([]);
+  const [tacticalPings, setTacticalPings] = useState<TacticalPing[]>([]);
+  const [focusTargetCoords, setFocusTargetCoords] = useState<{ x: number; y: number; key: number } | null>(null);
+  const [showOnboardingHint, setShowOnboardingHint] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fivem_map_onboarding_dismissed_v1') !== 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleDismissOnboarding = useCallback(() => {
+    setShowOnboardingHint(false);
+    try {
+      localStorage.setItem('fivem_map_onboarding_dismissed_v1', 'true');
+    } catch {}
+  }, []);
 
   // Effect: When gang session changes, sync spots & cooldowns for this specific gang
   useEffect(() => {
@@ -419,7 +443,17 @@ export function App() {
         const expiresAt = now + durationSeconds * 1000;
         setActiveCooldowns((prev) => {
           const filtered = prev.filter((c) => c.spotId !== syncData.spotId);
-          return [...filtered, { spotId: syncData.spotId, spotName: syncData.spotName, startedAt: now, expiresAt, durationSeconds }];
+          return [
+            ...filtered,
+            {
+              spotId: syncData.spotId,
+              spotName: syncData.spotName,
+              startedBy: syncData.memberName,
+              startedAt: now,
+              expiresAt,
+              durationSeconds,
+            },
+          ];
         });
         soundEffects.playCooldownStarted();
       } else if (syncData.action === 'cancel') {
@@ -429,6 +463,10 @@ export function App() {
 
     const unsubNotification = gangPresence.subscribeNotification((notification) => {
       setNotifications((prev) => [notification, ...prev.slice(0, 6)]);
+    });
+
+    const unsubPing = gangPresence.subscribeTacticalPing((ping) => {
+      setTacticalPings((prev) => [ping, ...prev.slice(0, 7)]);
     });
 
     const unsubSpotSync = gangPresence.subscribeSpotSync((event) => {
@@ -558,6 +596,7 @@ export function App() {
       unsubPresence();
       unsubCdSync();
       unsubNotification();
+      unsubPing();
       unsubSpotSync();
       unsubManifest();
       unsubCdManifest();
@@ -565,6 +604,19 @@ export function App() {
       gangPresence.stop();
     };
   }, [gangSession]);
+
+  // Auto-expire tactical pings after 15 seconds
+  useEffect(() => {
+    if (tacticalPings.length === 0) return;
+    const timer = window.setInterval(() => {
+      const cutoff = Date.now() - 15000;
+      setTacticalPings((prev) => {
+        const next = prev.filter((p) => p.timestamp > cutoff);
+        return next.length === prev.length ? prev : next;
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [tacticalPings.length]);
 
 
   // State: Distance Measuring & Farming Route Tool
@@ -778,26 +830,65 @@ export function App() {
     setSpots(nextSpots);
     setSelectedSpot((prev) => (prev?.id === spotId ? movedSpot! : prev));
     setMovingSpot((prev) => (prev?.id === spotId ? movedSpot! : prev));
-    gangPresence.broadcastSpotChange('move', movedSpot);
-    const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
-    const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
-    gangPresence.broadcastSpotManifest(customSpots);
+
+    // In interactive move mode, defer gang broadcast until user clicks "เสร็จสิ้น"
+    // so accidental clicks can be reverted cleanly with "ยกเลิก".
+    if (movingSpotRef.current?.id !== spotId) {
+      gangPresence.broadcastSpotChange('move', movedSpot);
+      const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+      const customSpots = nextSpots.filter((s) => !defaultIds.has(s.id));
+      gangPresence.broadcastSpotManifest(customSpots);
+    }
   }, []);
 
   const handleStartMoveSpot = useCallback((spot: CementSpot) => {
-    setMovingSpot(spot);
-    setSelectedSpot(spot);
+    const liveSpot = spotsRef.current.find((s) => s.id === spot.id) ?? spot;
+    moveOriginRef.current = { ...liveSpot };
+    movingSpotRef.current = liveSpot;
+    setMovingSpot(liveSpot);
+    setSelectedSpot(liveSpot);
     soundEffects.playPinPlaced();
   }, []);
 
   const handleFinishMovingSpot = useCallback(() => {
-    if (movingSpot) {
+    const activeMove = movingSpotRef.current;
+    const origin = moveOriginRef.current;
+    if (activeMove) {
+      const latestSpot = spotsRef.current.find((s) => s.id === activeMove.id) ?? activeMove;
+      const changed =
+        !origin || origin.x !== latestSpot.x || origin.y !== latestSpot.y;
+      if (changed) {
+        gangPresence.broadcastSpotChange('move', latestSpot);
+        const defaultIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
+        const customSpots = spotsRef.current.filter((s) => !defaultIds.has(s.id));
+        gangPresence.broadcastSpotManifest(customSpots);
+      }
       soundEffects.playPinPlaced();
     }
+    moveOriginRef.current = null;
+    movingSpotRef.current = null;
     setMovingSpot(null);
-  }, [movingSpot]);
+  }, []);
 
   const handleCancelMovingSpot = useCallback(() => {
+    const origin = moveOriginRef.current;
+    if (origin) {
+      const restoredSpots = spotsRef.current.map((s) =>
+        s.id === origin.id
+          ? { ...s, x: origin.x, y: origin.y, updatedAt: origin.updatedAt }
+          : s
+      );
+      spotsRef.current = restoredSpots;
+      setSpots(restoredSpots);
+      setSelectedSpot((prev) =>
+        prev?.id === origin.id
+          ? { ...prev, x: origin.x, y: origin.y, updatedAt: origin.updatedAt }
+          : prev
+      );
+      soundEffects.playUnlock();
+    }
+    moveOriginRef.current = null;
+    movingSpotRef.current = null;
     setMovingSpot(null);
   }, []);
 
@@ -833,26 +924,38 @@ export function App() {
     }
   }, [lockedCoords, handleMapClickToCreatePin]);
 
-  // Spacebar hotkey to toggle coordinate lock & Escape to cancel moving
+  // Hotkeys: Escape (cancel moving), Space (lock coords), G (jump to soonest active cooldown)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && movingSpot) {
-        setMovingSpot(null);
+        handleCancelMovingSpot();
+        return;
+      }
+      const activeEl = document.activeElement;
+      const tag = activeEl?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || isPinModalOpen || isExportImportOpen) {
         return;
       }
       if (e.code === 'Space') {
-        const activeEl = document.activeElement;
-        const tag = activeEl?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || isPinModalOpen || isExportImportOpen) {
-          return;
-        }
         e.preventDefault();
         handleToggleLockCoords();
+        return;
+      }
+      if ((e.key === 'g' || e.key === 'G') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (activeCooldowns.length === 0) return;
+        const sorted = [...activeCooldowns].sort((a, b) => a.expiresAt - b.expiresAt);
+        const soonest = sorted[0];
+        const target = spotsRef.current.find((s) => s.id === soonest.spotId);
+        if (target) {
+          e.preventDefault();
+          setSelectedSpot(target);
+          soundEffects.playPinPlaced();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleLockCoords, isPinModalOpen, isExportImportOpen, movingSpot]);
+  }, [handleToggleLockCoords, handleCancelMovingSpot, isPinModalOpen, isExportImportOpen, movingSpot, activeCooldowns]);
 
   // Cooldown handlers
   const handleStartCooldown = useCallback((spot: CementSpot, customMinutes?: number) => {
@@ -862,16 +965,43 @@ export function App() {
     const durationSeconds = mins * 60;
     const now = Date.now();
     const expiresAt = now + durationSeconds * 1000;
+    const starterName = gangSession?.memberName;
 
     setActiveCooldowns((prev) => {
       const filtered = prev.filter((c) => c.spotId !== spot.id);
-      const updated = [...filtered, { spotId: spot.id, spotName: spot.name, startedAt: now, expiresAt, durationSeconds }];
+      const updated = [
+        ...filtered,
+        {
+          spotId: spot.id,
+          spotName: spot.name,
+          startedBy: starterName,
+          startedAt: now,
+          expiresAt,
+          durationSeconds,
+        },
+      ];
       gangPresence.broadcastCooldownManifest(updated);
       return updated;
     });
 
     gangPresence.broadcastCooldown(spot.id, spot.name, mins, 'start');
     soundEffects.playCooldownStarted();
+  }, [gangSession?.memberName]);
+
+  const handleSendTacticalPing = useCallback((spot: CementSpot) => {
+    gangPresence.broadcastTacticalPing({ x: spot.x, y: spot.y }, spot.name, spot.id);
+    soundEffects.playPinPlaced();
+  }, []);
+
+  const handleFocusPing = useCallback((ping: { x: number; y: number; spotId?: string }) => {
+    if (ping.spotId) {
+      const matched = spotsRef.current.find((s) => s.id === ping.spotId);
+      if (matched) {
+        setSelectedSpot(matched);
+        return;
+      }
+    }
+    setFocusTargetCoords({ x: ping.x, y: ping.y, key: Date.now() });
   }, []);
 
   const handleCancelCooldown = useCallback((spotId: string) => {
@@ -1090,9 +1220,9 @@ export function App() {
           sidebarCollapsed={sidebarCollapsed}
         />
 
-        {/* Floating Moving Spot HUD Banner */}
+        {/* Floating Moving Spot HUD Banner (Bottom-Center so it never overlaps top filter/tool bars) */}
         {movingSpot && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-slate-900/95 border border-amber-500/80 shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-4 select-none">
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1010] max-w-[calc(100vw-2rem)] flex flex-wrap items-center justify-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/95 border border-amber-500/80 shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-2 select-none">
             <div className="flex items-center gap-2 shrink-0">
               <span className="flex h-3 w-3 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
@@ -1131,10 +1261,11 @@ export function App() {
               <button
                 type="button"
                 onClick={handleCancelMovingSpot}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition-all cursor-pointer"
-                title="ยกเลิกการย้ายตำแหน่ง (Esc)"
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-medium flex items-center gap-1 transition-all cursor-pointer"
+                title="ยกเลิกและคืนค่าตำแหน่งเดิม (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
+                <span>ยกเลิก</span>
               </button>
             </div>
           </div>
@@ -1178,6 +1309,9 @@ export function App() {
             isClusteringEnabled={isClusteringEnabled}
             onFocusSpot={handleFocusSpot}
             onClearSelection={handleClearSelection}
+            tacticalPings={tacticalPings}
+            onSendTacticalPing={handleSendTacticalPing}
+            focusTargetCoords={focusTargetCoords}
           />
         </Suspense>
 
@@ -1241,7 +1375,24 @@ export function App() {
           spots={spots}
           onCancelCooldown={handleCancelCooldown}
           onFocusSpot={handleFocusSpot}
+          isDistanceOpen={isDistanceMode}
         />
+
+        {/* Dismissible 1-Line Onboarding Hint */}
+        {showOnboardingHint && !movingSpot && (
+          <div className="hidden sm:flex absolute bottom-16 left-4 z-[950] items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/80 text-[11px] text-slate-300 shadow-lg pointer-events-auto select-none animate-in fade-in">
+            <span>💡 ดับเบิ้ลคลิกแผนที่เพื่อปักหมุด • กด <kbd className="px-1 rounded bg-slate-800 border border-slate-700 text-amber-300 font-mono text-[10px]">/</kbd> ค้นหา • กด <kbd className="px-1 rounded bg-slate-800 border border-slate-700 text-amber-300 font-mono text-[10px]">G</kbd> ไปจุดใกล้เกิดสุด</span>
+            <button
+              type="button"
+              onClick={handleDismissOnboarding}
+              aria-label="ปิดคำแนะนำถาวร"
+              title="ปิดคำแนะนำนี้ถาวร"
+              className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Bottom Left: Coordinates HUD */}
         <CoordinatesHUD
@@ -1289,6 +1440,7 @@ export function App() {
       <GangToast
         notifications={notifications}
         onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+        onFocusPing={handleFocusPing}
       />
 
       {isExportImportOpen && (
@@ -1300,6 +1452,7 @@ export function App() {
             onImport={handleImport}
             onResetDefault={handleResetDefault}
             isMaster={gangSession.isMaster}
+            gangId={gangSession.gangId}
           />
         </Suspense>
       )}

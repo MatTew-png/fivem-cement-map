@@ -1,5 +1,5 @@
 import mqtt, { type MqttClient } from 'mqtt';
-import type { CementSpot, ActiveCooldown } from '../types/map';
+import type { CementSpot, ActiveCooldown, TacticalPing } from '../types/map';
 import type { GangSession, ActivityLog } from './gangAuth';
 import {
   logActivity,
@@ -33,11 +33,20 @@ export type SpotSyncListener = (event: SpotSyncEvent) => void;
 
 export interface GangNotification {
   id: string;
-  type: 'member_join' | 'cooldown_start' | 'cooldown_cancel' | 'spot_add' | 'spot_update' | 'spot_delete' | 'spot_move';
+  type:
+    | 'member_join'
+    | 'cooldown_start'
+    | 'cooldown_cancel'
+    | 'spot_add'
+    | 'spot_update'
+    | 'spot_delete'
+    | 'spot_move'
+    | 'tactical_ping';
   title: string;
   subtitle?: string;
   timestamp: number;
   icon?: string;
+  pingCoords?: { x: number; y: number; spotId?: string };
 }
 
 export type NotificationListener = (notification: GangNotification) => void;
@@ -46,6 +55,7 @@ export type CooldownSyncListener = (data: { spotId: string; spotName: string; du
 export type SpotManifestListener = (customSpots: CementSpot[], senderName: string) => void;
 export type CooldownManifestListener = (activeCooldowns: ActiveCooldown[], senderName: string) => void;
 export type SyncRequestListener = () => void;
+export type TacticalPingListener = (ping: TacticalPing) => void;
 
 const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
 
@@ -116,6 +126,7 @@ class GangPresenceManager {
   private manifestListeners: Set<SpotManifestListener> = new Set();
   private cdManifestListeners: Set<CooldownManifestListener> = new Set();
   private syncRequestListeners: Set<SyncRequestListener> = new Set();
+  private pingListeners: Set<TacticalPingListener> = new Set();
   private outgoingQueue: Array<{ topic: string; payload: string; options?: mqtt.IClientPublishOptions }> = [];
   private isConnected: boolean = false;
 
@@ -258,6 +269,34 @@ class GangPresenceManager {
   public subscribeSyncRequest(callback: SyncRequestListener): () => void {
     this.syncRequestListeners.add(callback);
     return () => this.syncRequestListeners.delete(callback);
+  }
+
+  public subscribeTacticalPing(callback: TacticalPingListener): () => void {
+    this.pingListeners.add(callback);
+    return () => this.pingListeners.delete(callback);
+  }
+
+  // ส่งสัญญาณ Ping เรียกเพื่อนในสาขามาดูจุดบนแผนที่แบบ Real-time
+  public broadcastTacticalPing(coords: { x: number; y: number }, label: string, spotId?: string) {
+    if (!this.session) return;
+    const ping: TacticalPing = {
+      id: `ping_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      x: coords.x,
+      y: coords.y,
+      label,
+      spotId,
+      memberName: this.session.memberName,
+      timestamp: Date.now(),
+    };
+    const payload = {
+      type: 'tactical_ping',
+      clientId: this.clientId,
+      ...ping,
+    };
+    this.publish(payload, this.getMqttTopic(), { qos: 1 });
+    this.pingListeners.forEach((cb) => cb(ping));
+    logActivity(this.session.memberName, 'spot_update', `ปิงเรียกแก๊งที่จุด: ${label}`, this.session.gangId);
+    this.notifyListeners();
   }
 
   // ส่งสัญญาณขอซิงค์ข้อมูลหมุดจากเพื่อนที่ออนไลน์อยู่
@@ -743,7 +782,31 @@ class GangPresenceManager {
         this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกแก๊ง'));
       }
     }
-    // 8. Verified Session Check / Force Logout (ตรวจสอบสิทธิ์กับ Worker API ก่อนออกจากระบบ)
+    // 8. Tactical Ping (เรียกเพื่อนมาดูจุดบนแผนที่)
+    else if (data.type === 'tactical_ping') {
+      if (data.clientId === this.clientId) return;
+      if (!Number.isFinite(Number(data.x)) || !Number.isFinite(Number(data.y))) return;
+      const ping: TacticalPing = {
+        id: String(data.id || `ping_${Date.now()}`),
+        x: Number(data.x),
+        y: Number(data.y),
+        label: String(data.label || 'จุดปิงบนแผนที่'),
+        spotId: data.spotId ? String(data.spotId) : undefined,
+        memberName: String(data.memberName || 'สมาชิกแก๊ง'),
+        timestamp: Number(data.timestamp) || Date.now(),
+      };
+      this.pingListeners.forEach((cb) => cb(ping));
+      logActivity(ping.memberName, 'spot_update', `ปิงเรียกแก๊ง: ${ping.label}`, this.getGangId());
+      this.notifyListeners();
+      this.triggerNotification({
+        type: 'tactical_ping',
+        title: `📣 ${ping.memberName} เรียกดูจุด!`,
+        subtitle: ping.label,
+        icon: '📣',
+        pingCoords: { x: ping.x, y: ping.y, spotId: ping.spotId },
+      });
+    }
+    // 9. Verified Session Check / Force Logout (ตรวจสอบสิทธิ์กับ Worker API ก่อนออกจากระบบ)
     else if (data.type === 'force_logout' || data.type === 'session_check') {
       const currentSession = this.session;
       if (!currentSession || currentSession.isMaster) return;

@@ -1,5 +1,5 @@
-import { useState, useEffect, memo } from 'react';
-import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Compass } from 'lucide-react';
+import { useState, useEffect, useRef, memo } from 'react';
+import { Crosshair, Copy, Check, Layers, Target, Lock, Unlock, Compass, SlidersHorizontal } from 'lucide-react';
 import { coordsBus } from '../utils/coordsBus';
 import type { CementSpot } from '../types/map';
 
@@ -49,13 +49,52 @@ export const CoordinatesHUD = memo(({
   onStartMoveSpot,
 }: CoordinatesHUDProps) => {
   const [copied, setCopied] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [showRawCoords, setShowRawCoords] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fivem_map_show_raw_coords') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toolsRef = useRef<HTMLDivElement>(null);
   const [liveCoords, setLiveCoords] = useState<{ x: number; y: number } | null>(() => coordsBus.getCoords());
+
+  const handleToggleRawCoords = () => {
+    setShowRawCoords((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fivem_map_show_raw_coords', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     return coordsBus.subscribe((coords) => {
       setLiveCoords(coords);
     });
   }, []);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setToolsOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setToolsOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [toolsOpen]);
+
+  const activeToolsCount = Number(showCrosshair) + Number(Boolean(isGhostMode)) + Number(!isCompactMode) + Number(!showCementSpots);
 
   const activeCoords = isCoordsLocked && lockedCoords ? lockedCoords : (propCoords || liveCoords);
 
@@ -75,80 +114,83 @@ export const CoordinatesHUD = memo(({
           : 'border-slate-700/80'
       }`}
     >
-      {/* 1. Fixed-Width GPS / Locked Coordinates Slot (Zero Layout Shift & Jitter) */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div
-          className={`flex items-center gap-1 font-semibold shrink-0 transition-colors ${
-            isCoordsLocked ? 'text-cyan-400' : 'text-amber-400'
-          }`}
-        >
-          {isCoordsLocked ? (
-            <Lock className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-          ) : (
-            <Crosshair className="w-3.5 h-3.5 animate-pulse" />
-          )}
-          <span>{isCoordsLocked ? 'LOCKED:' : 'GPS:'}</span>
-        </div>
-
-        <div className="flex items-center gap-2 tabular-nums">
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-[11px]">X:</span>
-            <span
-              className={`inline-block w-[64px] font-bold text-left transition-colors ${
-                isCoordsLocked
-                  ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
-                  : 'text-emerald-400'
+      {/* 1. Optional Raw GPS / Locked Coordinates (Hidden by default for regular players) */}
+      {(showRawCoords || isCoordsLocked) && (
+        <>
+          <div className="flex items-center gap-2 shrink-0">
+            <div
+              className={`flex items-center gap-1 font-semibold shrink-0 transition-colors ${
+                isCoordsLocked ? 'text-cyan-400' : 'text-amber-400'
               }`}
             >
-              {activeCoords ? activeCoords.x.toFixed(1) : '---.-'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-[11px]">Y:</span>
-            <span
-              className={`inline-block w-[64px] font-bold text-left transition-colors ${
-                isCoordsLocked
-                  ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
-                  : 'text-emerald-400'
+              {isCoordsLocked ? (
+                <Lock className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+              ) : (
+                <Crosshair className="w-3.5 h-3.5 animate-pulse" />
+              )}
+              <span>{isCoordsLocked ? 'LOCKED:' : 'GPS:'}</span>
+            </div>
+
+            <div className="flex items-center gap-2 tabular-nums">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400 text-[11px]">X:</span>
+                <span
+                  className={`inline-block w-[64px] font-bold text-left transition-colors ${
+                    isCoordsLocked
+                      ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                      : 'text-emerald-400'
+                  }`}
+                >
+                  {activeCoords ? activeCoords.x.toFixed(1) : '---.-'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400 text-[11px]">Y:</span>
+                <span
+                  className={`inline-block w-[64px] font-bold text-left transition-colors ${
+                    isCoordsLocked
+                      ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                      : 'text-emerald-400'
+                  }`}
+                >
+                  {activeCoords ? activeCoords.y.toFixed(1) : '---.-'}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCopy}
+              disabled={!activeCoords}
+              title={
+                activeCoords
+                  ? `คลิกเพื่อคัดลอกพิกัด X, Y (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
+                  : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'
+              }
+              className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
+                activeCoords
+                  ? isCoordsLocked
+                    ? 'bg-cyan-950/80 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border-cyan-500/50 cursor-pointer shadow-sm'
+                    : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-slate-700 cursor-pointer'
+                  : 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed'
               }`}
             >
-              {activeCoords ? activeCoords.y.toFixed(1) : '---.-'}
-            </span>
+              {copied ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-400" />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>พิกัด</span>
+                </>
+              )}
+            </button>
           </div>
-        </div>
 
-        {/* Copy Coordinates button */}
-        <button
-          onClick={handleCopy}
-          disabled={!activeCoords}
-          title={
-            activeCoords
-              ? `คลิกเพื่อคัดลอกพิกัด X, Y (${isCoordsLocked ? 'พิกัดที่ล็อคไว้' : 'พิกัดปัจจุบัน'})`
-              : 'เลื่อนเมาส์บนแผนที่เพื่อดูพิกัด'
-          }
-          className={`flex items-center justify-center gap-1 px-2 py-0.5 rounded transition-colors text-[11px] border shrink-0 ${
-            activeCoords
-              ? isCoordsLocked
-                ? 'bg-cyan-950/80 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border-cyan-500/50 cursor-pointer shadow-sm'
-                : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-slate-700 cursor-pointer'
-              : 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed'
-          }`}
-        >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3 text-emerald-400" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" />
-              <span>พิกัด</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      <div className="h-3 w-[1px] bg-slate-700 mx-0.5 hidden sm:block shrink-0" />
+          <div className="h-3 w-[1px] bg-slate-700 mx-0.5 hidden sm:block shrink-0" />
+        </>
+      )}
 
       {/* 2. Map Info (Layer & Zoom) */}
       <div className="hidden sm:flex items-center gap-1 text-slate-400 shrink-0">
@@ -181,8 +223,8 @@ export const CoordinatesHUD = memo(({
           </button>
         )}
 
-        {/* Lock Coordinates Toggle (Space Shortcut) */}
-        {onToggleLockCoords && (
+        {/* Lock Coordinates Toggle (Only shown when raw coords mode or locked) */}
+        {(showRawCoords || isCoordsLocked) && onToggleLockCoords && (
           <button
             onClick={onToggleLockCoords}
             title={
@@ -190,7 +232,7 @@ export const CoordinatesHUD = memo(({
                 ? 'คลิกเพื่อปลดล็อค หรือกด [Space]'
                 : 'ล็อคพิกัดตรงนี้ ไม่ให้เลื่อนตามเมาส์ (กด Space)'
             }
-            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] font-medium transition-all cursor-pointer ${
               isCoordsLocked
                 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/70 shadow-md shadow-cyan-500/30 font-bold'
                 : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
@@ -222,79 +264,133 @@ export const CoordinatesHUD = memo(({
           </button>
         )}
 
-        {/* Crosshair Toggle */}
-        <button
-          onClick={onToggleCrosshair}
-          title="เปิด/ปิด เป้ากากบาท GTA V กลางแผนที่"
-          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
-            showCrosshair
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold'
-              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-          }`}
-        >
-          <Target className="w-3 h-3" />
-          <span>เป้าเล็ง</span>
-        </button>
-
         {/* Pin at Crosshair Center */}
         {showCrosshair && onPinAtCrosshair && (
           <button
             onClick={onPinAtCrosshair}
             title="สร้างมาร์คใหม่ตรงจุดตัดเป้าเล็งกลางจอ (แม่นยำ 100%)"
-            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] transition-all shadow-md shadow-amber-500/30 animate-in fade-in"
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] transition-all shadow-md shadow-amber-500/30 animate-in fade-in cursor-pointer"
           >
             <Crosshair className="w-3 h-3" />
-            <span>🎯 ปักตรงเป้า</span>
+            <span>ปักตรงเป้า</span>
           </button>
         )}
 
-        {/* Toggle Cement Spots Filter */}
-        {onToggleCementSpots && (
+        {/* Map View Tools Popover (Keeps bottom HUD compact on all screens) */}
+        <div className="relative" ref={toolsRef}>
           <button
-            onClick={onToggleCementSpots}
-            title="เปิด/ปิดการแสดงจุดปูนบนแผนที่ (เพื่อไม่ให้บังแลนด์มาร์ค)"
-            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[11px] transition-colors ${
-              showCementSpots
-                ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 font-bold shadow-sm'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+            type="button"
+            onClick={() => setToolsOpen((prev) => !prev)}
+            aria-expanded={toolsOpen}
+            title="ตั้งค่าเป้าเล็ง รูปแบบหมุด และโหมดโปร่งแสง"
+            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+              toolsOpen || activeToolsCount > 0
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
             }`}
           >
-            <span>🧱</span>
-            <span>{showCementSpots ? `จุดปูน (${cementCount ?? ''})` : 'จุดปูน (ซ่อน)'}</span>
+            <SlidersHorizontal className="w-3 h-3" />
+            <span className="hidden sm:inline">เครื่องมือแมพ</span>
+            {activeToolsCount > 0 && (
+              <span className="px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black leading-tight">
+                {activeToolsCount}
+              </span>
+            )}
           </button>
-        )}
 
-        {/* Compact / Radar Blip Mode Toggle */}
-        {onToggleCompactMode && (
-          <button
-            onClick={onToggleCompactMode}
-            title="สลับโหมดไอคอน: เรดาร์ GTA (Blip แท้ไร้กรอบวงกลมแบบในเกม) หรือ หมุดปัก (Pin)"
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
-              isCompactMode
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <span>{isCompactMode ? '🎯' : '📍'}</span>
-            <span>{isCompactMode ? 'เรดาร์ GTA (Blip)' : 'หมุดปัก (Pin)'}</span>
-          </button>
-        )}
+          {toolsOpen && (
+            <div className="absolute bottom-full left-0 sm:left-auto sm:right-0 mb-2 w-60 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-2 space-y-1.5 z-[1100] animate-in fade-in slide-in-from-top-2">
+              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                การแสดงผลบนแผนที่
+              </div>
 
-        {/* Ghost Mode Toggle */}
-        {onToggleGhostMode && (
-          <button
-            onClick={onToggleGhostMode}
-            title="ทำให้หมุดอื่นโปร่งแสง เพื่อให้ดับเบิ้ลคลิกปักจุดใหม่ที่อยู่ติดกันได้โดยไม่ติดหมุดเดิม"
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] transition-colors ${
-              isGhostMode
-                ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 font-bold'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-            }`}
-          >
-            <span>👻</span>
-            <span>{isGhostMode ? 'โปร่งแสง (เปิด)' : 'โปร่งแสง'}</span>
-          </button>
-        )}
+              <button
+                type="button"
+                onClick={onToggleCrosshair}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] transition-colors cursor-pointer ${
+                  showCrosshair
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold'
+                    : 'bg-slate-800/70 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5" />
+                  <span>เป้าเล็งกลางจอ (Crosshair)</span>
+                </span>
+                <span className="text-[10px] font-mono">{showCrosshair ? 'ON' : 'OFF'}</span>
+              </button>
+
+              {onToggleCompactMode && (
+                <button
+                  type="button"
+                  onClick={onToggleCompactMode}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] transition-colors cursor-pointer ${
+                    isCompactMode
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold'
+                      : 'bg-slate-800/70 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>{isCompactMode ? '🎯' : '📍'}</span>
+                    <span>{isCompactMode ? 'ไอคอน: เรดาร์ (Blip)' : 'ไอคอน: หมุดปัก (Pin)'}</span>
+                  </span>
+                </button>
+              )}
+
+              {onToggleGhostMode && (
+                <button
+                  type="button"
+                  onClick={onToggleGhostMode}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] transition-colors cursor-pointer ${
+                    isGhostMode
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 font-bold'
+                      : 'bg-slate-800/70 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>👻</span>
+                    <span>โหมดโปร่งแสง (ปักซ้อน)</span>
+                  </span>
+                  <span className="text-[10px] font-mono">{isGhostMode ? 'ON' : 'OFF'}</span>
+                </button>
+              )}
+
+              {onToggleCementSpots && (
+                <button
+                  type="button"
+                  onClick={onToggleCementSpots}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] transition-colors cursor-pointer ${
+                    showCementSpots
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold'
+                      : 'bg-slate-800/70 text-slate-400 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>🧱</span>
+                    <span>แสดงจุดปูน ({cementCount ?? 0})</span>
+                  </span>
+                  <span className="text-[10px] font-mono">{showCementSpots ? 'ON' : 'OFF'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleToggleRawCoords}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] transition-colors cursor-pointer ${
+                  showRawCoords
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 font-bold'
+                    : 'bg-slate-800/70 text-slate-400 border-slate-700/60 hover:bg-slate-800'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Crosshair className="w-3.5 h-3.5" />
+                  <span>แสดงเลขพิกัด X, Y (แอดมิน)</span>
+                </span>
+                <span className="text-[10px] font-mono">{showRawCoords ? 'ON' : 'OFF'}</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

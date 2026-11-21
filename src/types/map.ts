@@ -33,9 +33,20 @@ export interface CementSpot {
 export interface ActiveCooldown {
   spotId: string;
   spotName?: string;
+  startedBy?: string;
   startedAt: number;
   expiresAt: number;
   durationSeconds: number;
+}
+
+export interface TacticalPing {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  spotId?: string;
+  memberName: string;
+  timestamp: number;
 }
 
 export type MapTileLayer = 'gtalens_game' | 'gtalens_satellite' | 'gtalens_print';

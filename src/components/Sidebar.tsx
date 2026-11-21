@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, memo } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import {
   Search,
   Plus,
@@ -77,6 +77,14 @@ export const Sidebar = memo(({
   const [viewMode, setViewMode] = useState<'comfortable' | 'compact'>('comfortable');
   const [openCooldownSpotId, setOpenCooldownSpotId] = useState<string | null>(null);
   const [customMinutesInput, setCustomMinutesInput] = useState<string>('10');
+  const filterDockRef = useRef<HTMLDivElement>(null);
+
+  const scrollFilterDock = (direction: 'left' | 'right') => {
+    filterDockRef.current?.scrollBy({
+      left: direction === 'left' ? -150 : 150,
+      behavior: 'smooth',
+    });
+  };
 
   // Accordion open/collapse state
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -310,6 +318,15 @@ export const Sidebar = memo(({
 
   return (
     <>
+      {/* Mobile Backdrop Scrim (Tap outside drawer to close on small screens) */}
+      {!isCollapsed && (
+        <div
+          onClick={onToggleCollapse}
+          aria-hidden="true"
+          className="md:hidden fixed inset-0 z-[1040] bg-slate-950/60 backdrop-blur-[2px] animate-in fade-in duration-150"
+        />
+      )}
+
       {/* Sidebar Container */}
       <aside
         className={`fixed top-0 left-0 bottom-0 z-[1050] bg-slate-900/95 backdrop-blur-2xl border-r border-slate-800 shadow-2xl flex flex-col transition-all duration-300 ${
@@ -471,7 +488,17 @@ export const Sidebar = memo(({
           {/* ======================================================== */}
           {/* 2. MAGIC SEGMENTED FILTER DOCK                           */}
           {/* ======================================================== */}
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-0.5">
+          <div className="relative flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => scrollFilterDock('left')}
+              aria-label="เลื่อนหมวดหมู่ไปทางซ้าย"
+              className="shrink-0 w-5 h-6 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-400 hover:text-amber-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="เลื่อนหมวดหมู่ไปทางซ้าย"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <div ref={filterDockRef} className="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar pt-0.5 pr-2">
             {/* All */}
             <button
               type="button"
@@ -634,6 +661,16 @@ export const Sidebar = memo(({
               <span>👑</span>
               <span>บริการ ({counts.landmarks})</span>
             </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => scrollFilterDock('right')}
+              aria-label="เลื่อนหมวดหมู่ไปทางขวา"
+              className="shrink-0 w-5 h-6 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-400 hover:text-amber-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="เลื่อนหมวดหมู่ไปทางขวา"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
@@ -661,9 +698,33 @@ export const Sidebar = memo(({
                 </button>
               </div>
             ) : (
-              <div className="text-center py-12 text-slate-500 text-xs">
-                <MapPin className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
-                <p>ไม่พบจุดที่ตรงกับเงื่อนไขการค้นหา</p>
+              <div className="text-center py-12 px-4 text-slate-500 text-xs flex flex-col items-center gap-2.5">
+                <MapPin className="w-8 h-8 opacity-40 text-slate-400" />
+                <p>
+                  {selectedFilter !== 'all'
+                    ? 'ไม่พบจุดในหมวดหมู่ที่เลือกอยู่'
+                    : 'ไม่พบจุดที่ตรงกับคำค้นหานี้'}
+                </p>
+                <div className="flex items-center gap-2">
+                  {selectedFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFilter('all')}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px] transition-colors cursor-pointer"
+                    >
+                      ค้นหาในทั้งหมด
+                    </button>
+                  )}
+                  {searchQuery.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-[11px] transition-colors cursor-pointer"
+                    >
+                      ล้างคำค้นหา
+                    </button>
+                  )}
+                </div>
               </div>
             )
           ) : selectedFilter === 'all' ? (

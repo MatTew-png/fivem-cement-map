@@ -5,13 +5,14 @@ import type { GangNotification } from '../utils/presence';
 interface GangToastProps {
   notifications: GangNotification[];
   onDismiss: (id: string) => void;
+  onFocusPing?: (ping: { x: number; y: number; spotId?: string }) => void;
 }
 
-export const GangToast: React.FC<GangToastProps> = ({ notifications, onDismiss }) => {
+export const GangToast: React.FC<GangToastProps> = ({ notifications, onDismiss, onFocusPing }) => {
   return (
     <div className="fixed bottom-4 right-4 z-[9995] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-3">
       {notifications.map((notif) => (
-        <ToastItem key={notif.id} notif={notif} onDismiss={onDismiss} />
+        <ToastItem key={notif.id} notif={notif} onDismiss={onDismiss} onFocusPing={onFocusPing} />
       ))}
     </div>
   );
@@ -20,7 +21,8 @@ export const GangToast: React.FC<GangToastProps> = ({ notifications, onDismiss }
 const ToastItem: React.FC<{
   notif: GangNotification;
   onDismiss: (id: string) => void;
-}> = ({ notif, onDismiss }) => {
+  onFocusPing?: (ping: { x: number; y: number; spotId?: string }) => void;
+}> = ({ notif, onDismiss, onFocusPing }) => {
   const [isLeaving, setIsLeaving] = useState(false);
   const [progressWidth, setProgressWidth] = useState('100%');
   const closeTimerRef = useRef<number | null>(null);
@@ -62,6 +64,8 @@ const ToastItem: React.FC<{
         return 'border-sky-500/50 shadow-sky-500/10';
       case 'spot_delete':
         return 'border-red-500/50 shadow-red-500/10';
+      case 'tactical_ping':
+        return 'border-cyan-400/70 shadow-cyan-500/20';
       default:
         return 'border-slate-700/80 shadow-slate-900/50';
     }
@@ -100,15 +104,29 @@ const ToastItem: React.FC<{
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={handleManualClose}
-        aria-label="ปิดการแจ้งเตือน"
-        className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition-colors shrink-0 cursor-pointer"
-        title="ปิดการแจ้งเตือน"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        {notif.pingCoords && onFocusPing && (
+          <button
+            type="button"
+            onClick={() => {
+              onFocusPing(notif.pingCoords!);
+              handleManualClose();
+            }}
+            className="px-2 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[10px] transition-colors cursor-pointer"
+          >
+            ไปดูจุดนี้
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleManualClose}
+          aria-label="ปิดการแจ้งเตือน"
+          className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition-colors shrink-0 cursor-pointer"
+          title="ปิดการแจ้งเตือน"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 };

@@ -56,6 +56,7 @@ export const PinModal = ({
   const [coordsPasteStatus, setCoordsPasteStatus] = useState<string | null>(null);
   const [copiedSpot, setCopiedSpot] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showAdvancedCoords, setShowAdvancedCoords] = useState(false);
 
   const pasteTimerRef = useRef<number | null>(null);
   const copyTimerRef = useRef<number | null>(null);
@@ -313,7 +314,7 @@ export const PinModal = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-sm">
+        <form id="pin-modal-form" onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-4 text-sm">
           {/* 1. หมวดหมู่ / ประเภทมาร์ค (Marker Category) */}
           <div className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
@@ -549,18 +550,32 @@ export const PinModal = ({
             </div>
           </div>
 
-          {/* 5. พิกัด X, Y, Z และ Postal */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <span>5. ตำแหน่งพิกัดในเกม FiveM</span>
-                {coordsLocked && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 normal-case">
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>ล็อคพิกัด</span>
-                  </span>
-                )}
-              </label>
+          {/* 5. Postal Code & พิกัดขั้นสูง */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5 text-amber-400" />
+                  <span>5. เลข Postal บนแผนที่ (ถ้ามี)</span>
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedCoords((prev) => !prev)}
+                className="text-[11px] font-medium text-slate-400 hover:text-amber-300 underline cursor-pointer"
+              >
+                {showAdvancedCoords ? 'ซ่อนพิกัด X, Y, Z' : 'ระบุพิกัด X, Y, Z (สำหรับแอดมิน)'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="เช่น 8042 (เลขโซนในเกม)"
+                value={postal}
+                onChange={(e) => setPostal(e.target.value)}
+                className="w-full sm:w-56 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-amber-300 font-mono text-xs focus:outline-none focus:border-amber-400"
+              />
               {coordsPasteStatus && (
                 <span className="text-[11px] text-emerald-400 font-bold animate-pulse flex items-center gap-1">
                   <Check className="w-3 h-3" />
@@ -569,141 +584,147 @@ export const PinModal = ({
               )}
             </div>
 
-            {/* Quick Paste Vector3 / Coords Bar */}
-            <div className={`mb-2.5 p-2 rounded-xl border flex items-center gap-2 ${coordsLocked ? 'bg-slate-900/40 border-slate-800 opacity-60' : 'bg-slate-900/90 border-slate-700/80'}`}>
-              <ClipboardPaste className="w-4 h-4 text-amber-400 shrink-0" />
-              <input
-                type="text"
-                disabled={coordsLocked}
-                value={coordsPasteInput}
-                onChange={(e) => handleCoordsPaste(e.target.value)}
-                placeholder={coordsLocked ? 'พิกัดจุดหลักถูกล็อคไว้ (เฉพาะหัวหน้าแก๊งที่แก้ไขพิกัดได้)' : 'วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(-154.2, -1035.8, 30.5)...'}
-                className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none disabled:cursor-not-allowed"
-              />
-              {coordsPasteInput && !coordsLocked && (
-                <button
-                  type="button"
-                  onClick={() => setCoordsPasteInput('')}
-                  className="text-slate-400 hover:text-white p-1 text-xs cursor-pointer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  พิกัด X (East/West)
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  disabled={coordsLocked}
-                  value={xInput}
-                  onPaste={handleFieldPaste}
-                  onChange={(e) => setXInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
+            {showAdvancedCoords && (
+              <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                    <span>ตำแหน่งพิกัดในเกม FiveM</span>
+                    {coordsLocked && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>ล็อคพิกัด</span>
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Quick Paste Vector3 / Coords Bar */}
+                <div className={`p-2 rounded-xl border flex items-center gap-2 ${coordsLocked ? 'bg-slate-900/40 border-slate-800 opacity-60' : 'bg-slate-900/90 border-slate-700/80'}`}>
+                  <ClipboardPaste className="w-4 h-4 text-amber-400 shrink-0" />
+                  <input
+                    type="text"
+                    disabled={coordsLocked}
+                    value={coordsPasteInput}
+                    onChange={(e) => handleCoordsPaste(e.target.value)}
+                    placeholder={coordsLocked ? 'พิกัดจุดหลักถูกล็อคไว้ (เฉพาะหัวหน้าแก๊งที่แก้ไขพิกัดได้)' : 'วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(...)'}
+                    className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none disabled:cursor-not-allowed"
+                  />
+                  {coordsPasteInput && !coordsLocked && (
+                    <button
+                      type="button"
+                      onClick={() => setCoordsPasteInput('')}
+                      className="text-slate-400 hover:text-white p-1 text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      พิกัด X
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      disabled={coordsLocked}
+                      value={xInput}
+                      onPaste={handleFieldPaste}
+                      onChange={(e) => setXInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      พิกัด Y
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      disabled={coordsLocked}
+                      value={yInput}
+                      onPaste={handleFieldPaste}
+                      onChange={(e) => setYInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      พิกัด Z
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={coordsLocked}
+                      value={zInput}
+                      onPaste={handleFieldPaste}
+                      onChange={(e) => setZInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  พิกัด Y (North/South)
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  disabled={coordsLocked}
-                  value={yInput}
-                  onPaste={handleFieldPaste}
-                  onChange={(e) => setYInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-emerald-400 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  พิกัด Z (ความสูง)
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  disabled={coordsLocked}
-                  value={zInput}
-                  onPaste={handleFieldPaste}
-                  onChange={(e) => setZInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-300 font-mono text-xs focus:outline-none focus:border-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
-                  <Hash className="w-3 h-3 text-amber-400" />
-                  <span>Postal Code</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="เช่น 8042"
-                  value={postal}
-                  onChange={(e) => setPostal(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-amber-300 font-mono text-xs focus:outline-none focus:border-amber-400"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* 6. เวลาคูลดาวน์ (Cooldown) */}
-          <div className="pt-2 border-t border-slate-800">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>6. เวลาคูลดาวน์: <strong className="text-amber-300 font-mono">{cooldownMinutes} นาที</strong></span>
-              </span>
-              <span className="text-[10px] text-slate-500">ปรับเวลาด่วน (-5, -1, สไลเดอร์, +1, +5 สูงสุด 60น.)</span>
-            </label>
-            <div className="flex items-center gap-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setCooldownMinutes((c) => Math.max(0, c - 5))}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
-                title="ลด 5 นาที"
-              >
-                -5
-              </button>
-              <button
-                type="button"
-                onClick={() => setCooldownMinutes((c) => Math.max(0, c - 1))}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
-                title="ลด 1 นาที"
-              >
-                -1
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="60"
-                step="1"
-                value={cooldownMinutes}
-                onChange={(e) => setCooldownMinutes(Math.min(60, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                className="flex-1 accent-amber-400 cursor-pointer h-2 bg-slate-800 rounded-lg"
-              />
-              <button
-                type="button"
-                onClick={() => setCooldownMinutes((c) => Math.min(60, c + 1))}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
-                title="เพิ่ม 1 นาที"
-              >
-                +1
-              </button>
-              <button
-                type="button"
-                onClick={() => setCooldownMinutes((c) => Math.min(60, c + 5))}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
-                title="เพิ่ม 5 นาที"
-              >
-                +5
-              </button>
+          {/* 6. เวลาคูลดาวน์ (Cooldown - แสดงเฉพาะหมุดปูน) */}
+          {category === 'cement_mine' && (
+            <div className="pt-2 border-t border-slate-800">
+              <label className="block text-[11px] font-medium text-slate-400 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>6. เวลาคูลดาวน์: <strong className="text-amber-300 font-mono">{cooldownMinutes} นาที</strong></span>
+                </span>
+                <span className="text-[10px] text-slate-500">ปรับเวลาด่วน (-5, -1, สไลเดอร์, +1, +5 สูงสุด 60น.)</span>
+              </label>
+              <div className="flex items-center gap-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setCooldownMinutes((c) => Math.max(0, c - 5))}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
+                  title="ลด 5 นาที"
+                >
+                  -5
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCooldownMinutes((c) => Math.max(0, c - 1))}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
+                  title="ลด 1 นาที"
+                >
+                  -1
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="1"
+                  value={cooldownMinutes}
+                  onChange={(e) => setCooldownMinutes(Math.min(60, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                  className="flex-1 accent-amber-400 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCooldownMinutes((c) => Math.min(60, c + 1))}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
+                  title="เพิ่ม 1 นาที"
+                >
+                  +1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCooldownMinutes((c) => Math.min(60, c + 5))}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono text-xs font-bold border border-slate-700 cursor-pointer"
+                  title="เพิ่ม 5 นาที"
+                >
+                  +5
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 7. โน้ต ไอเทมที่ได้ และแท็ก */}
           <div className="pt-2 border-t border-slate-800 space-y-2.5">
@@ -751,53 +772,55 @@ export const PinModal = ({
               />
             </div>
           </div>
+        </form>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-800 gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              {initialSpot?.id && onDelete ? (
-                coordsLocked ? (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
-                    <Lock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
-                  </div>
-                ) : confirmDelete ? (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
-                        onDelete(initialSpot.id!);
-                        onClose();
-                      }}
-                      className="px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl transition-colors cursor-pointer"
-                    >
-                      ยืนยันลบหมุด
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(false)}
-                      className="px-2.5 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl cursor-pointer"
-                    >
-                      ยกเลิก
-                    </button>
-                  </div>
-                ) : (
+        {/* Sticky Modal Footer */}
+        <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-950/90 gap-2 flex-wrap shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {initialSpot?.id && onDelete ? (
+              coordsLocked ? (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
+                </div>
+              ) : confirmDelete ? (
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
-                      setConfirmDelete(true);
                       if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
-                      deleteTimerRef.current = window.setTimeout(() => setConfirmDelete(false), 3500);
+                      onDelete(initialSpot.id!);
+                      onClose();
                     }}
-                    className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl transition-colors cursor-pointer"
                   >
-                    {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
-                    <span>ลบหมุดนี้</span>
+                    ยืนยันลบหมุด
                   </button>
-                )
-              ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-2.5 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDelete(true);
+                    if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                    deleteTimerRef.current = window.setTimeout(() => setConfirmDelete(false), 3500);
+                  }}
+                  className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors border border-red-500/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isOfficial && isMaster && <Crown className="w-3.5 h-3.5 text-red-400" />}
+                  <span>ลบหมุดนี้</span>
+                </button>
+              )
+            ) : null}
 
+            {isMaster && (
               <button
                 type="button"
                 onClick={async () => {
@@ -847,47 +870,48 @@ export const PinModal = ({
                   </>
                 )}
               </button>
+            )}
 
-              {initialSpot?.id && onStartMoveSpot && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const currentSpotData = {
-                      ...(initialSpot as CementSpot),
-                      name: name.trim() || initialSpot.name || 'หมุดไม่มีชื่อ',
-                      category,
-                      icon,
-                      color,
-                    };
-                    onClose();
-                    onStartMoveSpot(currentSpotData);
-                  }}
-                  className="px-3 py-2 text-xs font-semibold rounded-xl transition-all border flex items-center gap-1.5 cursor-pointer bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-sm"
-                  title="ปิดหน้าต่างนี้และย้ายตำแหน่งบนแผนที่ด้วยการคลิกหรือลาก"
-                >
-                  <Compass className="w-3.5 h-3.5 text-amber-400" />
-                  <span>ย้ายตำแหน่งบนแผนที่</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
+            {initialSpot?.id && onStartMoveSpot && (
               <button
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                onClick={() => {
+                  const currentSpotData = {
+                    ...(initialSpot as CementSpot),
+                    name: name.trim() || initialSpot.name || 'หมุดไม่มีชื่อ',
+                    category,
+                    icon,
+                    color,
+                  };
+                  onClose();
+                  onStartMoveSpot(currentSpotData);
+                }}
+                className="px-3 py-2 text-xs font-semibold rounded-xl transition-all border flex items-center gap-1.5 cursor-pointer bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-sm"
+                title="ปิดหน้าต่างนี้และย้ายตำแหน่งบนแผนที่ด้วยการคลิกหรือลาก"
               >
-                ยกเลิก
+                <Compass className="w-3.5 h-3.5 text-amber-400" />
+                <span>ย้ายตำแหน่งบนแผนที่</span>
               </button>
-              <button
-                type="submit"
-                className="px-6 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
-              >
-                บันทึกหมุด
-              </button>
-            </div>
+            )}
           </div>
-        </form>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              form="pin-modal-form"
+              className="px-6 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
+            >
+              บันทึกหมุด
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
