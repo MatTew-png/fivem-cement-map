@@ -11,11 +11,11 @@ export type BranchId = (typeof BRANCH_IDS)[number];
 export const MASTER_GANG_ID = 'master_boss';
 
 export const BRANCH_NAMES: Record<string, string> = {
-  branch_1: 'กลุ่ม 1',
-  branch_2: 'กลุ่ม 2',
-  branch_3: 'กลุ่ม 3',
-  branch_4: 'กลุ่ม 4',
-  branch_5: 'กลุ่ม 5',
+  branch_1: 'พื้นที่ #1',
+  branch_2: 'พื้นที่ #2',
+  branch_3: 'พื้นที่ #3',
+  branch_4: 'พื้นที่ #4',
+  branch_5: 'พื้นที่ #5',
   master_boss: 'ผู้ดูแลระบบสูงสุด (Master Boss)',
 };
 

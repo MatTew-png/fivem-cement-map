@@ -31,6 +31,7 @@ import {
   getBranchMemberForceLogoutAfter,
   getConfiguredWebhookUrl,
   getForceLogoutAfter,
+  getGroupNames,
   getLeaderPinEpoch,
   getLeaderPinEpochs,
   getMemberPinEpoch,
@@ -46,6 +47,7 @@ import {
   setBranchLeaderForceLogoutAfter,
   setBranchMemberForceLogoutAfter,
   setForceLogoutAfter,
+  setGroupName,
   setStoredWebhookUrl,
   type KvStoreLike,
 } from './store.ts';
@@ -130,6 +132,34 @@ async function authenticateRequest(
   return payload;
 }
 
+function filterGroupNamesForRole(
+  groupNames: Partial<Record<BranchId, string>>,
+  role: UserRole,
+  branchId: string
+): Partial<Record<BranchId, string>> {
+  if (role === 'super_admin') return groupNames;
+  if (isValidBranchId(branchId)) {
+    const custom = groupNames[branchId as BranchId];
+    return custom ? { [branchId]: custom } : {};
+  }
+  return {};
+}
+
+function resolvePublicGangName(
+  role: UserRole,
+  branchId: string,
+  groupNames: Partial<Record<BranchId, string>>
+): string {
+  if (role === 'super_admin') {
+    return BRANCH_NAMES[MASTER_GANG_ID] ?? 'Master Boss';
+  }
+  if (isValidBranchId(branchId)) {
+    const custom = groupNames[branchId as BranchId];
+    if (custom) return custom;
+  }
+  return role === 'group_leader' ? 'หัวหน้ากลุ่ม' : 'แผนที่กลุ่ม';
+}
+
 async function buildPinDashboardData(
   secretSeed: string,
   masterPin: string,
@@ -138,9 +168,10 @@ async function buildPinDashboardData(
   kv?: KvStoreLike
 ) {
   const todayStr = getBangkokDateString();
-  const [leaderEpochs, memberEpochs] = await Promise.all([
+  const [leaderEpochs, memberEpochs, groupNames] = await Promise.all([
     getLeaderPinEpochs(kv),
     getMemberPinEpochs(todayStr, kv),
+    getGroupNames(kv),
   ]);
   const leaderPins = await deriveAllLeaderPins(secretSeed, leaderEpochs, new Set([masterPin]));
   const reservedPins = new Set<string>([masterPin, ...Object.values(leaderPins)]);
@@ -162,12 +193,14 @@ async function buildPinDashboardData(
     })
   );
 
+  const scopedGroupNames = filterGroupNamesForRole(groupNames, role, branchId);
   if (role === 'super_admin') {
-    return { schedule, leaderPins, memberEpochs, leaderEpochs };
+    return { schedule, leaderPins, memberEpochs, leaderEpochs, groupNames: scopedGroupNames };
   }
   return {
     schedule,
     memberEpoch: isValidBranchId(branchId) ? memberEpochs[branchId as BranchId] : 0,
+    groupNames: scopedGroupNames,
   };
 }
 
@@ -379,11 +412,9 @@ export async function handleApiRequest(
     const role: UserRole = credentials.role;
     const isMaster = role === 'super_admin';
     const gangId = credentials.branchId;
-    const gangName = isMaster
-      ? (BRANCH_NAMES[MASTER_GANG_ID] ?? 'Master Boss')
-      : role === 'group_leader'
-      ? 'หัวหน้ากลุ่ม'
-      : 'สมาชิกกลุ่ม';
+    const groupNames = await getGroupNames(kv);
+    const gangName = resolvePublicGangName(role, gangId, groupNames);
+    const scopedGroupNames = filterGroupNamesForRole(groupNames, role, gangId);
     const nowMs = Date.now();
     const sessionSecret = getSessionSecret(env);
     const ipHash = await hashIdentifier(sessionSecret, clientIp);
@@ -425,6 +456,7 @@ export async function handleApiRequest(
         success: true,
         token,
         channelKey,
+        groupNames: scopedGroupNames,
         session: {
           gangId,
           gangName,
@@ -433,6 +465,7 @@ export async function handleApiRequest(
           authenticatedAt: nowMs,
           isMaster,
           role,
+          groupNames: scopedGroupNames,
           token,
           channelKey,
         },
@@ -459,23 +492,28 @@ export async function handleApiRequest(
 
     const secretSeed = env.GANG_SECRET_SEED?.trim() ?? '';
     const todayStr = getBangkokDateString();
-    const channelKey = secretSeed
-      ? await deriveDailyChannelKey(secretSeed, todayStr)
-      : undefined;
+    const [channelKey, groupNames] = await Promise.all([
+      secretSeed ? deriveDailyChannelKey(secretSeed, todayStr) : Promise.resolve(undefined),
+      getGroupNames(kv),
+    ]);
     const role = resolvePayloadRole(payload);
+    const freshGangName = resolvePublicGangName(role, payload.sub, groupNames);
+    const scopedGroupNames = filterGroupNamesForRole(groupNames, role, payload.sub);
 
     return jsonResponse(
       {
         valid: true,
         channelKey,
+        groupNames: scopedGroupNames,
         session: {
           gangId: payload.sub,
-          gangName: payload.gangName,
+          gangName: freshGangName,
           memberName: payload.memberName,
           authDate: payload.authDate,
           authenticatedAt: payload.iat,
           isMaster: payload.isMaster,
           role,
+          groupNames: scopedGroupNames,
           channelKey,
         },
       },
@@ -614,6 +652,45 @@ export async function handleApiRequest(
         leaderEpoch: nextLeaderEpoch,
         newLeaderPin: dashboardData.leaderPins?.[targetBranch as BranchId] ?? '',
         ...dashboardData,
+      },
+      200,
+      headers
+    );
+  }
+
+  if (url.pathname === '/api/group/rename' && request.method === 'POST') {
+    const payload = await authenticateRequest(request, env);
+    if (!payload) {
+      return jsonResponse({ error: 'Unauthorized' }, 401, headers);
+    }
+    const role = resolvePayloadRole(payload);
+    if (role === 'member') {
+      return jsonResponse({ error: 'Forbidden: Leader or Master access only' }, 403, headers);
+    }
+
+    const body = await parseJsonBody<{ branchId?: string; name?: string }>(request);
+    if (!body || typeof body.name !== 'string') {
+      return jsonResponse({ error: 'กรุณาระบุชื่อกลุ่ม' }, 400, headers);
+    }
+
+    const requestedBranch = sanitizeText(body.branchId, 24);
+    if (role === 'group_leader' && requestedBranch && requestedBranch !== payload.sub) {
+      return jsonResponse({ error: 'Forbidden: Cannot rename another group' }, 403, headers);
+    }
+
+    const targetBranch = role === 'super_admin' ? requestedBranch : payload.sub;
+    if (!isValidBranchId(targetBranch)) {
+      return jsonResponse({ error: 'ไม่พบกลุ่มที่ต้องการตั้งชื่อ' }, 400, headers);
+    }
+
+    const cleanName = sanitizeText(body.name, 28);
+    const updatedNames = await setGroupName(targetBranch as BranchId, cleanName, kv);
+    return jsonResponse(
+      {
+        ok: true,
+        branchId: targetBranch,
+        name: cleanName,
+        groupNames: filterGroupNamesForRole(updatedNames, role, targetBranch),
       },
       200,
       headers

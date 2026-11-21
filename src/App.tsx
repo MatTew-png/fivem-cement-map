@@ -397,7 +397,9 @@ export function App() {
       if (
         result.session &&
         (result.session.channelKey !== gangSession.channelKey ||
-          result.session.isMaster !== gangSession.isMaster)
+          result.session.isMaster !== gangSession.isMaster ||
+          result.session.gangName !== gangSession.gangName ||
+          result.session.role !== gangSession.role)
       ) {
         setGangSession(result.session);
       }
@@ -423,6 +425,7 @@ export function App() {
         (!gangSession ||
           active.gangId !== gangSession.gangId ||
           active.isMaster !== gangSession.isMaster ||
+          active.gangName !== gangSession.gangName ||
           active.token !== gangSession.token)
       ) {
         setGangSession(active);
@@ -1178,7 +1181,7 @@ export function App() {
       {/* Subtle Dynamic Watermark Overlay (Anti-Screenshot/Leak) */}
       <GangWatermark
         memberName={gangSession.memberName}
-        gangName={gangSession.isMaster ? gangSession.gangName : 'COOLDOWN MAP'}
+        gangName={gangSession.gangName || 'COOLDOWN MAP'}
         authDate={gangSession.authDate}
       />
 
@@ -1212,12 +1215,10 @@ export function App() {
           memberName={gangSession.memberName}
           gangId={gangSession.gangId}
           gangName={
-            gangSession.isMaster
-              ? gangSession.gangName || 'กลุ่ม 1 (Master)'
-              : getSessionRole(gangSession) === 'group_leader'
-              ? 'หัวหน้ากลุ่ม'
-              : 'สมาชิกกลุ่ม'
+            gangSession.gangName ||
+            (getSessionRole(gangSession) === 'group_leader' ? 'หัวหน้ากลุ่ม' : 'แผนที่กลุ่ม')
           }
+          groupNames={gangSession.groupNames}
           onCopyGangLink={handleCopyGangLink}
           isMaster={gangSession.isMaster}
           onSwitchMasterBranch={gangSession.isMaster ? handleSwitchMasterBranch : undefined}
@@ -1489,6 +1490,7 @@ export function App() {
             activityLogs={activityLogs}
             currentSession={gangSession}
             onSwitchMasterBranch={gangSession.isMaster ? handleSwitchMasterBranch : undefined}
+            onSessionUpdated={setGangSession}
             onLogout={() => {
               logoutGang(gangSession.gangId);
               gangPresence.stop();

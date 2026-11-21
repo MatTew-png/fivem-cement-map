@@ -42,6 +42,7 @@ interface SidebarProps {
   memberName?: string;
   gangId?: string;
   gangName?: string;
+  groupNames?: Record<string, string>;
   onCopyGangLink?: () => void;
   isMaster?: boolean;
   onSwitchMasterBranch?: (branchId: string) => void;
@@ -71,7 +72,8 @@ export const Sidebar = memo(({
   onOpenBento,
   memberName,
   gangId = 'branch_1',
-  gangName = 'สมาชิกกลุ่ม',
+  gangName = 'แผนที่กลุ่ม',
+  groupNames,
   onCopyGangLink,
   isMaster = false,
   onSwitchMasterBranch,
@@ -402,23 +404,24 @@ export const Sidebar = memo(({
 
           {isMaster && onSwitchMasterBranch && (
             <div className="flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-xl bg-amber-950/30 border border-amber-500/30">
-              <span className="text-[10px] font-bold text-amber-300 shrink-0">👑 สลับกลุ่ม:</span>
-              <div className="flex items-center gap-1">
+              <span className="text-[10px] font-bold text-amber-300 shrink-0">👑 สลับพื้นที่:</span>
+              <div className="flex items-center gap-1 flex-wrap justify-end">
                 {AVAILABLE_BRANCHES.map((branch) => {
                   const isCurrent = parseBranch(gangId).id === branch.id;
+                  const customLabel = groupNames?.[branch.id]?.trim();
                   return (
                     <button
                       key={branch.id}
                       type="button"
                       onClick={() => onSwitchMasterBranch(branch.id)}
-                      title={`สลับดูแผนที่ ${branch.name}`}
-                      className={`w-6 h-6 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                      title={`สลับดูแผนที่ ${customLabel || `#${branch.num}`}`}
+                      className={`px-1.5 min-w-[24px] h-6 rounded-lg text-[10px] font-black transition-all cursor-pointer truncate max-w-[74px] ${
                         isCurrent
                           ? 'bg-amber-500 text-slate-950 shadow-sm'
                           : 'bg-slate-900/80 text-slate-400 hover:text-amber-300 hover:bg-slate-800 border border-slate-700/80'
                       }`}
                     >
-                      {branch.num}
+                      {customLabel || branch.num}
                     </button>
                   );
                 })}

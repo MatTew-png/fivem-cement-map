@@ -225,7 +225,7 @@ test('Worker API handles health, lockout, branch vs master auth, pins, bans, and
     session: { gangId: string; gangName: string; isMaster: boolean };
   };
   assert.equal(autoRouteData.session.gangId, 'branch_4');
-  assert.equal(autoRouteData.session.gangName, 'สมาชิกกลุ่ม');
+  assert.equal(autoRouteData.session.gangName, 'แผนที่กลุ่ม');
   assert.equal(autoRouteData.session.isMaster, false);
 
   const deniedUpcoming = await worker.fetch(
@@ -561,4 +561,126 @@ test('3-tier RBAC enforces permissions and scoped PIN rotation without cross-gro
     dummyCtx
   );
   assert.equal(oldLeaderCheck.status, 401);
+});
+
+test('Custom group names work per-role without leaking other groups', async () => {
+  const kv = createMemoryKv();
+  const env = createTestEnv(kv);
+
+  const masterLogin = await worker.fetch(
+    new Request('https://example.workers.dev/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '198.51.100.10' },
+      body: JSON.stringify({ memberName: 'Boss', pin: env.MASTER_PIN }),
+    }),
+    env,
+    dummyCtx
+  );
+  const masterData = (await masterLogin.json()) as { token: string };
+
+  const pinsRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/pins/upcoming', {
+      headers: { Authorization: `Bearer ${masterData.token}`, 'cf-connecting-ip': '198.51.100.10' },
+    }),
+    env,
+    dummyCtx
+  );
+  const pinsData = (await pinsRes.json()) as {
+    leaderPins: Record<string, string>;
+    schedule: Array<{ pins: Record<string, string> }>;
+  };
+
+  // Master names branch_1 "ทีมฟ้า", Group 2 Leader names branch_2 "ทีมแดง"
+  const masterRenameRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/group/rename', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${masterData.token}`,
+        'cf-connecting-ip': '198.51.100.10',
+      },
+      body: JSON.stringify({ branchId: 'branch_1', name: 'ทีมฟ้า' }),
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(masterRenameRes.status, 200);
+
+  const leader2Login = await worker.fetch(
+    new Request('https://example.workers.dev/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '198.51.100.11' },
+      body: JSON.stringify({ memberName: 'Leader2', pin: pinsData.leaderPins.branch_2 }),
+    }),
+    env,
+    dummyCtx
+  );
+  const leader2Json = (await leader2Login.json()) as { token: string };
+
+  // Leader 2 cannot rename branch_1 (403), only their own branch_2 (200)
+  const crossRenameRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/group/rename', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${leader2Json.token}`,
+        'cf-connecting-ip': '198.51.100.11',
+      },
+      body: JSON.stringify({ branchId: 'branch_1', name: 'Hacked' }),
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(crossRenameRes.status, 403);
+
+  const selfRenameRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/group/rename', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${leader2Json.token}`,
+        'cf-connecting-ip': '198.51.100.11',
+      },
+      body: JSON.stringify({ name: 'ทีมแดง' }),
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(selfRenameRes.status, 200);
+  const selfRenameJson = (await selfRenameRes.json()) as {
+    groupNames: Record<string, string>;
+  };
+  assert.deepEqual(selfRenameJson.groupNames, { branch_2: 'ทีมแดง' });
+
+  // Member 2 logs in -> sees ONLY gangName: "ทีมแดง" (and cannot rename, 403)
+  const member2Login = await worker.fetch(
+    new Request('https://example.workers.dev/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '198.51.100.12' },
+      body: JSON.stringify({ memberName: 'Mem2', pin: pinsData.schedule[0].pins.branch_2 }),
+    }),
+    env,
+    dummyCtx
+  );
+  const member2Json = (await member2Login.json()) as {
+    token: string;
+    session: { gangName: string; groupNames: Record<string, string> };
+  };
+  assert.equal(member2Json.session.gangName, 'ทีมแดง');
+  assert.deepEqual(member2Json.session.groupNames, { branch_2: 'ทีมแดง' });
+
+  const memberRenameRes = await worker.fetch(
+    new Request('https://example.workers.dev/api/group/rename', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${member2Json.token}`,
+        'cf-connecting-ip': '198.51.100.12',
+      },
+      body: JSON.stringify({ name: 'NoPerm' }),
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(memberRenameRes.status, 403);
 });

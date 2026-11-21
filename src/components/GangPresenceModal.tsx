@@ -28,6 +28,7 @@ import {
   isGroupLeaderOrBoss,
   logoutGang,
   parseBranch,
+  renameGroupOnServer,
   rotateLeaderPinOnServer,
   rotateMemberPinOnServer,
   triggerServerForceLogout,
@@ -50,6 +51,7 @@ interface GangPresenceModalProps {
   currentSession: GangSession | null;
   onLogout: () => void;
   onSwitchMasterBranch?: (branchId: string) => void;
+  onSessionUpdated?: (session: GangSession) => void;
 }
 
 export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
@@ -60,13 +62,13 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   currentSession,
   onLogout,
   onSwitchMasterBranch,
+  onSessionUpdated,
 }) => {
   const role = getSessionRole(currentSession);
   const isMaster = role === 'super_admin';
   const isGroupLeader = role === 'group_leader';
   const canManagePins = isGroupLeaderOrBoss(currentSession);
   const gangId = currentSession?.gangId || 'branch_1';
-  const activeBranch = useMemo(() => parseBranch(gangId), [gangId]);
 
   const [activeTab, setActiveTab] = useState<'online' | 'logs' | 'boss' | 'ip_logs'>('online');
   const [now, setNow] = useState(() => Date.now());
@@ -78,6 +80,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
   const [leaderPins, setLeaderPins] = useState<Record<string, string>>({});
   const [memberEpochs, setMemberEpochs] = useState<Record<string, number>>({});
   const [leaderEpochs, setLeaderEpochs] = useState<Record<string, number>>({});
+  const [groupNamesMap, setGroupNamesMap] = useState<Record<string, string>>(
+    () => currentSession?.groupNames ?? {}
+  );
+  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [renamingGroup, setRenamingGroup] = useState(false);
   const [pinsLoading, setPinsLoading] = useState(false);
   const [pinsError, setPinsError] = useState<string | null>(null);
   const [pinsNotice, setPinsNotice] = useState<string | null>(null);
@@ -125,7 +132,10 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     setConfirmRotateMemberPin(false);
     setConfirmRotateLeaderPin(false);
     setPinsNotice(null);
+    const initialNames = currentSession?.groupNames ?? {};
+    setGroupNamesMap(initialNames);
     setPinPreviewBranchId(gangId);
+    setGroupNameDraft(initialNames[gangId] ?? '');
     if (!canManagePins && activeTab === 'boss') {
       setActiveTab('online');
     } else if (!isMaster && activeTab === 'ip_logs') {
@@ -143,7 +153,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       window.clearInterval(timer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, isMaster, canManagePins, gangId, activeTab, onClose]);
+  }, [isOpen, isMaster, canManagePins, gangId, activeTab, currentSession?.groupNames, onClose]);
 
   useEffect(() => {
     if (!isOpen || !currentSession) return;
@@ -154,6 +164,11 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
         .then((data) => {
           setUpcomingPins(data.schedule);
           if (data.leaderPins) setLeaderPins(data.leaderPins);
+          if (data.groupNames) {
+            setGroupNamesMap(data.groupNames);
+            const targetKey = isMaster ? gangId : currentSession.gangId;
+            setGroupNameDraft(data.groupNames[targetKey] ?? '');
+          }
           if (data.memberEpochs) {
             setMemberEpochs(data.memberEpochs);
           } else if (typeof data.memberEpoch === 'number') {
@@ -207,9 +222,44 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
 
   const targetBranchForPins = isMaster ? previewBranch.id : gangId;
 
+  const getSlotDisplayName = (branchId: string) => {
+    const custom = groupNamesMap[branchId]?.trim();
+    if (custom) return custom;
+    if (isMaster) return `พื้นที่ #${parseBranch(branchId).num}`;
+    return isGroupLeader ? 'หัวหน้ากลุ่ม' : 'แผนที่กลุ่ม';
+  };
+
+  const handleRenameGroup = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!currentSession || !canManagePins) return;
+    setRenamingGroup(true);
+    setPinsError(null);
+    setPinsNotice(null);
+    try {
+      const targetId = isMaster ? previewBranch.id : undefined;
+      const res = await renameGroupOnServer(currentSession, groupNameDraft, targetId);
+      setGroupNamesMap(res.groupNames);
+      setGroupNameDraft(res.name);
+      onSessionUpdated?.(res.updatedSession);
+      if (res.branchId === gangId) {
+        gangPresence.broadcastGroupRename();
+      }
+      setPinsNotice(
+        res.name
+          ? `ตั้งชื่อกลุ่มเป็น "${res.name}" เรียบร้อยแล้ว`
+          : 'ล้างชื่อกลุ่มแบบกำหนดเองแล้ว'
+      );
+    } catch (err) {
+      setPinsError(err instanceof Error ? err.message : 'ไม่สามารถบันทึกชื่อกลุ่มได้');
+    } finally {
+      setRenamingGroup(false);
+    }
+  };
+
   const handleCopyDiscord = async () => {
     if (upcomingPins.length === 0) return;
     const text = formatPINsForDiscord(targetBranchForPins, upcomingPins, {
+      customGroupName: groupNamesMap[targetBranchForPins]?.trim(),
       hideGroupNumber: !isMaster,
     });
     await copyToClipboard(text);
@@ -246,7 +296,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       setConfirmRotateMemberPin(false);
       setPinsNotice(
         isMaster
-          ? `รีเซ็ตรหัสสมาชิกของ ${parseBranch(res.branchId).name} เป็น ${res.newTodayPin} และเตะสมาชิกเดิมออกแล้ว`
+          ? `รีเซ็ตรหัสสมาชิกของ ${getSlotDisplayName(res.branchId)} เป็น ${res.newTodayPin} และเตะสมาชิกเดิมออกแล้ว`
           : `ออกรหัสสมาชิกใหม่ (${res.newTodayPin}) และเตะสมาชิกที่ถือรหัสเดิมออกจากแผนที่แล้ว`
       );
       if (res.branchId === gangId) {
@@ -272,7 +322,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       if (res.leaderEpochs) setLeaderEpochs(res.leaderEpochs);
       setConfirmRotateLeaderPin(false);
       setPinsNotice(
-        `เปลี่ยนรหัสหัวหน้า ${previewBranch.name} เป็น ${res.newLeaderPin} แล้ว (หัวหน้าคนเดิมถูกตัด Session ทันที)`
+        `เปลี่ยนรหัสหัวหน้า ${getSlotDisplayName(previewBranch.id)} เป็น ${res.newLeaderPin} แล้ว (หัวหน้าคนเดิมถูกตัด Session ทันที)`
       );
     } catch (err) {
       setPinsError(err instanceof Error ? err.message : 'ไม่สามารถเปลี่ยนรหัสหัวหน้ากลุ่มได้');
@@ -293,7 +343,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
       setConfirmForceLogout(false);
       setPinsNotice(
         branchId
-          ? `สั่งเตะสมาชิกของ ${parseBranch(branchId).name} ออกจากระบบแล้ว`
+          ? `สั่งเตะสมาชิกของ ${getSlotDisplayName(branchId)} ออกจากระบบแล้ว`
           : isMaster
           ? 'สั่งเตะสมาชิกทั่วไปทั้งหมดออกจากระบบแล้ว'
           : 'สั่งเตะสมาชิกกลุ่มออกจากระบบแล้ว'
@@ -408,7 +458,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 id="presence-modal-title" className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>{isMaster ? `กลุ่ม ${activeBranch.num}` : isGroupLeader ? 'หัวหน้ากลุ่ม' : 'สมาชิกกลุ่ม'}</span>
+                  <span>{getSlotDisplayName(gangId)}</span>
                 </h3>
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
                   <span className="relative flex h-2 w-2">
@@ -505,7 +555,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                 }`}
               >
                 {isMaster ? <Crown className="w-3.5 h-3.5" /> : <KeyRound className="w-3.5 h-3.5" />}
-                <span>{isMaster ? 'จัดการรหัส 5 กลุ่ม' : 'จัดการรหัสกลุ่ม'}</span>
+                <span>{isMaster ? 'จัดการพื้นที่ & รหัส' : 'จัดการรหัสกลุ่ม'}</span>
               </button>
             )}
 
@@ -713,7 +763,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                     <div className="flex items-center gap-2">
                       <Crown className="w-4 h-4 text-amber-400" />
                       <span className="text-xs font-bold text-white uppercase tracking-wider">
-                        รหัสวันนี้ทั้ง 5 กลุ่ม & ตาราง 7 วัน ({previewBranch.name})
+                        รหัสวันนี้ & ตาราง 7 วัน ({getSlotDisplayName(previewBranch.id)})
                       </span>
                     </div>
 
@@ -724,7 +774,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                           onClick={() => onSwitchMasterBranch(previewBranch.id)}
                           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-[11px] transition-all cursor-pointer"
                         >
-                          สลับดูแผนที่ {previewBranch.name}
+                          สลับดูแผนที่ {getSlotDisplayName(previewBranch.id)}
                         </button>
                       )}
                       <button
@@ -734,12 +784,12 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                         className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 active:scale-95 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
                       >
                         {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copied ? 'คัดลอกแล้ว!' : `คัดลอก ${previewBranch.name} ลง Discord`}</span>
+                        <span>{copied ? 'คัดลอกแล้ว!' : `คัดลอก ${getSlotDisplayName(previewBranch.id)} ลง Discord`}</span>
                       </button>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    สมาชิกใส่แค่ชื่อ + PIN 6 หลัก ระบบจะส่งเข้ากลุ่มให้ตรงอัตโนมัติ (รหัสสมาชิกเปลี่ยนทุก 00:00 น. • รหัสหัวหน้ากลุ่มใช้ยาวจนกว่าคุณจะกดรีเซ็ต)
+                    สมาชิกใส่แค่ชื่อ + PIN 6 หลัก ระบบจะส่งเข้าพื้นที่ให้ตรงอัตโนมัติ (ตั้งชื่อแต่ละพื้นที่ได้เองเพื่อไม่ให้ระบุเป็นหมายเลข)
                   </p>
 
                   {/* All 5 Groups Quick Selector + Today Member PINs */}
@@ -750,11 +800,13 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                         const isSelected = previewBranch.id === branch.id;
                         const isCopiedPin = copiedPinBranch === `member:${branch.id}`;
                         const epochCount = memberEpochs[branch.id] ?? 0;
+                        const slotLabel = getSlotDisplayName(branch.id);
                         return (
                           <div
                             key={branch.id}
                             onClick={() => {
                               setPinPreviewBranchId(branch.id);
+                              setGroupNameDraft(groupNamesMap[branch.id] ?? '');
                               setConfirmRotateMemberPin(false);
                               setConfirmRotateLeaderPin(false);
                             }}
@@ -764,6 +816,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 setPinPreviewBranchId(branch.id);
+                                setGroupNameDraft(groupNamesMap[branch.id] ?? '');
                               }
                             }}
                             className={`p-2 rounded-xl border text-left transition-all cursor-pointer select-none ${
@@ -773,8 +826,8 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                             }`}
                           >
                             <div className="flex items-center justify-between gap-1">
-                              <span className={`text-[10px] font-bold ${isSelected ? 'text-amber-300' : 'text-slate-300'}`}>
-                                {branch.name}
+                              <span className={`text-[10px] font-bold truncate ${isSelected ? 'text-amber-300' : 'text-slate-300'}`}>
+                                {slotLabel}
                                 {epochCount > 0 && (
                                   <span className="ml-1 text-[9px] text-emerald-400">v{epochCount + 1}</span>
                                 )}
@@ -785,8 +838,8 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                                   e.stopPropagation();
                                   void handleCopySinglePin(`member:${branch.id}`, todayPin);
                                 }}
-                                title={`คัดลอกรหัสสมาชิกวันนี้ของ ${branch.name}`}
-                                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
+                                title={`คัดลอกรหัสสมาชิกวันนี้ของ ${slotLabel}`}
+                                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer shrink-0"
                               >
                                 {isCopiedPin ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
                               </button>
@@ -800,6 +853,25 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                     </div>
                   )}
 
+                  {/* Custom Group Name Editor (Super Admin) */}
+                  <form onSubmit={(e) => void handleRenameGroup(e)} className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <input
+                      type="text"
+                      maxLength={28}
+                      value={groupNameDraft}
+                      onChange={(e) => setGroupNameDraft(e.target.value)}
+                      placeholder={`ตั้งชื่อกลุ่มสำหรับพื้นที่ #${previewBranch.num} (เช่น ทีมสายฟ้า)...`}
+                      className="flex-1 min-w-[180px] px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-700/90 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={renamingGroup}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-bold text-[11px] cursor-pointer disabled:opacity-50"
+                    >
+                      {renamingGroup ? 'กำลังบันทึก...' : 'บันทึกชื่อกลุ่ม'}
+                    </button>
+                  </form>
+
                   {/* Selected Group Persistent Leader PIN + Emergency Rotation Controls */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-500/20">
                     {/* Persistent Leader PIN box */}
@@ -807,7 +879,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                       <div>
                         <div className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
                           <KeyRound className="w-3 h-3" />
-                          <span>รหัสหัวหน้า {previewBranch.name}</span>
+                          <span>รหัสหัวหน้า ({getSlotDisplayName(previewBranch.id)})</span>
                           {(leaderEpochs[previewBranch.id] ?? 0) > 0 && (
                             <span className="px-1 rounded bg-cyan-500/20 text-[9px] font-mono">
                               #{(leaderEpochs[previewBranch.id] ?? 0) + 1}
@@ -826,7 +898,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                                 leaderPins[previewBranch.id] || ''
                               )
                             }
-                            title={`คัดลอกรหัสหัวหน้า ${previewBranch.name}`}
+                            title={`คัดลอกรหัสหัวหน้า ${getSlotDisplayName(previewBranch.id)}`}
                             className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 cursor-pointer"
                           >
                             {copiedPinBranch === `leader:${previewBranch.id}` ? (
@@ -872,7 +944,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                     <div className="p-2.5 rounded-xl bg-slate-950/70 border border-rose-500/30 flex items-center justify-between gap-2">
                       <div>
                         <div className="text-[10px] font-bold text-rose-300">
-                          รหัสสมาชิกวันนี้ ({previewBranch.name})
+                          รหัสสมาชิกวันนี้ ({getSlotDisplayName(previewBranch.id)})
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
                           ใช้กรณีรหัสสมาชิกหลุด (เตะเดิมทันที)
@@ -923,7 +995,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                           onClick={() => void handleForceLogoutAll(previewBranch.id)}
                           className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] cursor-pointer"
                         >
-                          เตะเฉพาะ {previewBranch.name}
+                          เตะเฉพาะ {getSlotDisplayName(previewBranch.id)}
                         </button>
                         <button
                           type="button"
@@ -931,7 +1003,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                           onClick={() => void handleForceLogoutAll()}
                           className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] cursor-pointer"
                         >
-                          {forceLogoutBusy ? 'กำลังส่ง...' : 'เตะทั้ง 5 กลุ่ม!'}
+                          {forceLogoutBusy ? 'กำลังส่ง...' : 'เตะทั้งระบบ!'}
                         </button>
                         <button
                           type="button"
@@ -953,13 +1025,13 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                   </div>
                 </div>
               ) : (
-                /* GROUP LEADER SELF-SERVICE VIEW (Zero mention of 5 groups) */
+                /* GROUP LEADER SELF-SERVICE VIEW (Zero mention of 5 slots; custom group name allowed) */
                 <div className="p-3.5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <KeyRound className="w-4 h-4 text-cyan-400" />
                       <span className="text-xs font-bold text-white uppercase tracking-wider">
-                        จัดการรหัสผ่านเข้ากลุ่ม (เฉพาะหัวหน้ากลุ่ม)
+                        จัดการชื่อกลุ่ม & รหัสผ่านเข้ากลุ่ม (เฉพาะหัวหน้ากลุ่ม)
                       </span>
                     </div>
 
@@ -973,6 +1045,25 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
                       <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอกตารางลง Discord'}</span>
                     </button>
                   </div>
+
+                  {/* Custom Group Name Editor (Group Leader) */}
+                  <form onSubmit={(e) => void handleRenameGroup(e)} className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="text"
+                      maxLength={28}
+                      value={groupNameDraft}
+                      onChange={(e) => setGroupNameDraft(e.target.value)}
+                      placeholder="ตั้งชื่อกลุ่มของคุณเอง (เช่น ทีมสายฟ้า, บ้านเหนือ)..."
+                      className="flex-1 min-w-[180px] px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-700/90 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={renamingGroup}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 font-bold text-[11px] cursor-pointer disabled:opacity-50"
+                    >
+                      {renamingGroup ? 'กำลังบันทึก...' : 'ตั้งชื่อกลุ่ม'}
+                    </button>
+                  </form>
 
                   {todayPinEntry && (
                     <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3">

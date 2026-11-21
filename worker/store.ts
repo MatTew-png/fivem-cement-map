@@ -39,6 +39,7 @@ const KEY_LOGS = 'security:logs';
 const KEY_BANS = 'security:bans';
 const KEY_WEBHOOK = 'security:discord_webhook';
 const KEY_FORCE_LOGOUT = 'security:force_logout_after';
+const KEY_GROUP_NAMES = 'security:group_names';
 
 const memoryStore = new Map<string, { value: string; expiresAt?: number }>();
 
@@ -317,6 +318,37 @@ export async function rotateLeaderPinEpoch(branchId: string, kv?: KvStoreLike): 
   const nextEpoch = current + 1;
   await writeKey(kv, `leader_epoch:${branchId}`, String(nextEpoch));
   return nextEpoch;
+}
+
+export async function getGroupNames(
+  kv?: KvStoreLike
+): Promise<Partial<Record<BranchId, string>>> {
+  const raw = await readJson<Record<string, unknown> | null>(kv, KEY_GROUP_NAMES, null);
+  if (!raw || typeof raw !== 'object') return {};
+  const result: Partial<Record<BranchId, string>> = {};
+  for (const branchId of BRANCH_IDS) {
+    const val = raw[branchId];
+    if (typeof val === 'string' && val.trim()) {
+      result[branchId] = val.trim();
+    }
+  }
+  return result;
+}
+
+export async function setGroupName(
+  branchId: BranchId,
+  name: string,
+  kv?: KvStoreLike
+): Promise<Partial<Record<BranchId, string>>> {
+  const current = await getGroupNames(kv);
+  const cleanName = name.trim();
+  if (cleanName) {
+    current[branchId] = cleanName;
+  } else {
+    delete current[branchId];
+  }
+  await writeKey(kv, KEY_GROUP_NAMES, JSON.stringify(current));
+  return current;
 }
 
 export async function getConfiguredWebhookUrl(

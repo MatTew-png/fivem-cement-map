@@ -871,6 +871,15 @@ class GangPresenceManager {
     this.publish(payload, this.getMqttTopic(), { qos: 1 });
   }
 
+  public broadcastGroupRename() {
+    const payload = {
+      type: 'session_check',
+      timestamp: Date.now(),
+      clientId: this.clientId,
+    };
+    this.publish(payload, this.getMqttTopic(), { qos: 0 });
+  }
+
   private notifyListeners() {
     const members = this.getOnlineMembers();
     const logs = getActivityLogs(this.session?.gangId);

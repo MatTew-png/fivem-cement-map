@@ -10,6 +10,7 @@ export interface GangSession {
   authenticatedAt: number;
   isMaster: boolean;
   role?: UserRole;
+  groupNames?: Record<string, string>;
   token?: string;
   channelKey?: string;
 }
@@ -92,11 +93,27 @@ export const AVAILABLE_BRANCHES: BranchInfo[] = [
   { id: 'branch_5', num: 5, name: 'กลุ่ม 5' },
 ];
 
-export function getGroupDisplayLabel(role: UserRole, branchId?: string): string {
+export function getCustomGroupName(
+  branchId?: string,
+  groupNames?: Record<string, string>
+): string {
+  if (!branchId || !groupNames) return '';
+  const val = groupNames[parseBranch(branchId).id];
+  return typeof val === 'string' ? val.trim() : '';
+}
+
+export function getGroupDisplayLabel(
+  role: UserRole,
+  branchId?: string,
+  groupNames?: Record<string, string>
+): string {
+  const branch = parseBranch(branchId);
+  const custom = getCustomGroupName(branch.id, groupNames);
   if (role === 'super_admin') {
-    return `${parseBranch(branchId).name} (Master Boss)`;
+    return custom ? `${custom} (Master Boss)` : `พื้นที่ #${branch.num} (Master Boss)`;
   }
-  return role === 'group_leader' ? 'หัวหน้ากลุ่ม' : 'สมาชิกกลุ่ม';
+  if (custom) return custom;
+  return role === 'group_leader' ? 'หัวหน้ากลุ่ม' : 'แผนที่กลุ่ม';
 }
 
 export function parseBranch(input?: string | null): BranchInfo {
@@ -210,6 +227,7 @@ export async function verifyPIN(
       remainingAttempts?: number;
       token?: string;
       channelKey?: string;
+      groupNames?: Record<string, string>;
       session?: GangSession;
     };
 
@@ -221,13 +239,15 @@ export async function verifyPIN(
         role === 'super_admin'
           ? parseBranch(explicitBranch?.id || savedMasterBranch || 'branch_1')
           : parseBranch(data.session.gangId);
+      const groupNames = data.groupNames ?? data.session.groupNames ?? {};
 
       const session: GangSession = {
         ...data.session,
         role,
         isMaster: role === 'super_admin',
+        groupNames,
         gangId: targetBranch.id,
-        gangName: getGroupDisplayLabel(role, targetBranch.id),
+        gangName: getGroupDisplayLabel(role, targetBranch.id, groupNames),
         token: data.token,
         channelKey: data.channelKey,
       };
@@ -300,6 +320,7 @@ export async function verifySessionWithServer(
       banned?: boolean;
       banReason?: string;
       channelKey?: string;
+      groupNames?: Record<string, string>;
       session?: GangSession;
     };
 
@@ -311,11 +332,15 @@ export async function verifySessionWithServer(
       return { valid: false };
     }
 
+    const role = getSessionRole(data.session ?? session);
+    const mergedGroupNames = data.groupNames ?? data.session?.groupNames ?? session.groupNames ?? {};
     const updated: GangSession = {
       ...session,
       ...(data.session ?? {}),
+      role,
+      groupNames: mergedGroupNames,
       gangId: session.gangId,
-      gangName: session.gangName,
+      gangName: getGroupDisplayLabel(role, session.gangId, mergedGroupNames),
       token: session.token,
       channelKey: data.channelKey ?? session.channelKey,
     };
@@ -333,6 +358,7 @@ export interface PinsDashboardResponse {
   memberEpochs?: Record<string, number>;
   leaderEpochs?: Record<string, number>;
   memberEpoch?: number;
+  groupNames?: Record<string, string>;
 }
 
 function mapScheduleDays(
@@ -373,6 +399,7 @@ export async function fetchPinsDashboard(session: GangSession): Promise<PinsDash
     memberEpochs?: Record<string, number>;
     leaderEpochs?: Record<string, number>;
     memberEpoch?: number;
+    groupNames?: Record<string, string>;
   };
 
   return {
@@ -381,6 +408,7 @@ export async function fetchPinsDashboard(session: GangSession): Promise<PinsDash
     memberEpochs: data.memberEpochs,
     leaderEpochs: data.leaderEpochs,
     memberEpoch: data.memberEpoch,
+    groupNames: data.groupNames,
   };
 }
 
@@ -475,10 +503,72 @@ export async function rotateLeaderPinOnServer(
   };
 }
 
+export async function renameGroupOnServer(
+  session: GangSession,
+  name: string,
+  branchId?: string
+): Promise<{
+  branchId: string;
+  name: string;
+  groupNames: Record<string, string>;
+  updatedSession: GangSession;
+}> {
+  if (!isGroupLeaderOrBoss(session) || !session.token) {
+    throw new Error('ไม่มีสิทธิ์ตั้งชื่อกลุ่ม');
+  }
+
+  const res = await fetch(getApiEndpoint('/api/group/rename'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.token}`,
+    },
+    body: JSON.stringify({
+      name: name.trim(),
+      ...(branchId ? { branchId } : {}),
+    }),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    branchId?: string;
+    name?: string;
+    groupNames?: Record<string, string>;
+  };
+
+  if (!res.ok) {
+    throw new Error(data.error || 'ไม่สามารถบันทึกชื่อกลุ่มได้');
+  }
+
+  const resolvedBranchId = data.branchId || branchId || session.gangId;
+  const mergedGroupNames = {
+    ...(session.groupNames ?? {}),
+    ...(data.groupNames ?? {}),
+  };
+  if (!data.name) {
+    delete mergedGroupNames[resolvedBranchId];
+  }
+
+  const role = getSessionRole(session);
+  const updatedSession: GangSession = {
+    ...session,
+    groupNames: mergedGroupNames,
+    gangName: getGroupDisplayLabel(role, session.gangId, mergedGroupNames),
+  };
+  saveGangSession(updatedSession);
+
+  return {
+    branchId: resolvedBranchId,
+    name: data.name || '',
+    groupNames: mergedGroupNames,
+    updatedSession,
+  };
+}
+
 export function formatPINsForDiscord(
   branchInput: string,
   upcomingDays: UpcomingPinDay[],
-  options: { hideGroupNumber?: boolean } = {}
+  options: { customGroupName?: string; hideGroupNumber?: boolean } = {}
 ): string {
   const branch = parseBranch(branchInput);
   const origin =
@@ -486,7 +576,8 @@ export function formatPINsForDiscord(
       ? window.location.origin
       : 'https://runthukverb-cement-cooldown.pages.dev';
 
-  const headerLabel = options.hideGroupNumber ? 'แผนที่ COOLDOWN' : `${branch.name} - แผนที่ COOLDOWN`;
+  const customLabel = options.customGroupName?.trim();
+  const headerLabel = customLabel ? `${customLabel} - แผนที่ COOLDOWN` : 'แผนที่ COOLDOWN';
   let text = `👑 **[${headerLabel}] - ตารางรหัสผ่านประจำวัน** 🔒\n`;
   text += `> ⚠️ ห้ามส่งต่อให้คนนอกกลุ่มเด็ดขาด รหัสจะเปลี่ยนอัตโนมัติทุก 00:00 น.\n\n`;
 
@@ -585,8 +676,9 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
           const branch = targetBranch || parseBranch(masterSession.gangId || masterSession.gangName);
           const nextMaster: GangSession = {
             ...masterSession,
+            role: 'super_admin',
             gangId: branch.id,
-            gangName: `${branch.name} (Master Boss)`,
+            gangName: getGroupDisplayLabel('super_admin', branch.id, masterSession.groupNames),
           };
           saveGangSession(nextMaster);
           return nextMaster;
@@ -607,7 +699,7 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
               ...bSession,
               role: bRole,
               gangId: targetBranch.id,
-              gangName: getGroupDisplayLabel(bRole, targetBranch.id),
+              gangName: getGroupDisplayLabel(bRole, targetBranch.id, bSession.groupNames),
             };
           }
         } catch {
@@ -627,7 +719,7 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
                 ...mainSession,
                 role: mainRole,
                 gangId: targetBranch.id,
-                gangName: getGroupDisplayLabel(mainRole, targetBranch.id),
+                gangName: getGroupDisplayLabel(mainRole, targetBranch.id, mainSession.groupNames),
               };
             }
           }
@@ -653,7 +745,7 @@ export function getGangSession(targetBranchInput?: string | null): GangSession |
       ...session,
       role,
       gangId: branch.id,
-      gangName: getGroupDisplayLabel(role, branch.id),
+      gangName: getGroupDisplayLabel(role, branch.id, session.groupNames),
     };
   } catch {
     return null;
@@ -669,7 +761,7 @@ export function switchMasterBranchSession(
   const updated: GangSession = {
     ...currentSession,
     gangId: target.id,
-    gangName: `${target.name} (Master Boss)`,
+    gangName: getGroupDisplayLabel('super_admin', target.id, currentSession.groupNames),
   };
   saveGangSession(updated);
   try {
