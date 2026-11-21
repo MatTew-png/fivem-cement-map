@@ -316,3 +316,32 @@ test('Worker API handles health, lockout, branch vs master auth, pins, bans, and
   );
   assert.equal(revokedBranchSession.status, 401);
 });
+
+test('Worker edge guard blocks scanner paths and scraper User-Agents while permitting health checks', async () => {
+  const kv = createMemoryKv();
+  const env = createTestEnv(kv);
+
+  const blockedPaths = ['/.env', '/.git/config', '/wp-login.php', '/assets/index.js.map', '/xmlrpc.php'];
+  for (const path of blockedPaths) {
+    const res = await worker.fetch(new Request(`https://example.pages.dev${path}`), env, dummyCtx);
+    assert.equal(res.status, 403, `Expected 403 for ${path}`);
+  }
+
+  const scraperRes = await worker.fetch(
+    new Request('https://example.pages.dev/', {
+      headers: { 'User-Agent': 'HTTrack/3.0x' },
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(scraperRes.status, 403);
+
+  const healthWithCurl = await worker.fetch(
+    new Request('https://example.pages.dev/api/health', {
+      headers: { 'User-Agent': 'curl/8.7.1' },
+    }),
+    env,
+    dummyCtx
+  );
+  assert.equal(healthWithCurl.status, 200);
+});

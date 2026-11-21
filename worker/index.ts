@@ -131,7 +131,7 @@ export async function handleApiRequest(
     return jsonResponse(
       {
         ok: true,
-        service: 'runthukverb-auth-api',
+        service: 'runthukverb-cement-cooldown',
         configured: Boolean(env.MASTER_PIN?.trim() && env.GANG_SECRET_SEED?.trim()),
         kvBound: Boolean(kv),
         date: getBangkokDateString(),
@@ -582,9 +582,85 @@ export async function handleApiRequest(
   return jsonResponse({ error: 'API route not found' }, 404, headers);
 }
 
+const BLOCKED_PATH_PREFIXES = [
+  '/.env',
+  '/.git',
+  '/wp-',
+  '/wordpress',
+  '/vendor/phpunit',
+  '/cgi-bin/',
+  '/alfa_data',
+];
+
+const BLOCKED_PATH_SUBSTRINGS = [
+  'xmlrpc.php',
+  'phpmyadmin',
+  'adminer.php',
+  '/.env',
+  '/.git',
+];
+
+const BLOCKED_USER_AGENTS = [
+  'httrack',
+  'wget',
+  'curl/',
+  'libwww-perl',
+  'python-requests',
+  'python-urllib',
+  'aiohttp',
+  'httpx',
+  'go-http-client',
+  'scrapy',
+  'masscan',
+  'nikto',
+  'sqlmap',
+  'zgrab',
+  'petalbot',
+  'mj12bot',
+  'semrushbot',
+  'blexbot',
+  'yandexbot',
+  'zoominfobot',
+];
+
+function isBlockedEdgeRequest(request: Request, url: URL): boolean {
+  const pathLower = url.pathname.toLowerCase();
+
+  if (
+    pathLower.endsWith('.php') ||
+    pathLower.endsWith('.map') ||
+    BLOCKED_PATH_PREFIXES.some((prefix) => pathLower.startsWith(prefix)) ||
+    BLOCKED_PATH_SUBSTRINGS.some((part) => pathLower.includes(part))
+  ) {
+    return true;
+  }
+
+  if (pathLower === '/api/health') {
+    return false;
+  }
+
+  const ua = (request.headers.get('user-agent') || '').toLowerCase();
+  if (ua && BLOCKED_USER_AGENTS.some((bot) => ua.includes(bot))) {
+    return true;
+  }
+
+  return false;
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionCtxLike): Promise<Response> {
     const url = new URL(request.url);
+    if (isBlockedEdgeRequest(request, url)) {
+      return new Response('Forbidden', {
+        status: 403,
+        headers: {
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
+      });
+    }
+
     if (url.pathname.startsWith('/api/')) {
       return handleApiRequest(request, env, ctx);
     }
@@ -595,6 +671,10 @@ export default {
       patchedHeaders.set('X-Content-Type-Options', 'nosniff');
       patchedHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
       patchedHeaders.set('X-Frame-Options', 'SAMEORIGIN');
+      patchedHeaders.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+      patchedHeaders.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      patchedHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+      patchedHeaders.set('X-Robots-Tag', 'noindex, nofollow');
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,

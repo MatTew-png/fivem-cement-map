@@ -34,11 +34,17 @@ export interface UpcomingPinDay {
   isToday: boolean;
 }
 
-export const WORKER_API_BASE = 'https://runthukverb-auth-api.jansanga-new.workers.dev';
+export const WORKER_API_BASE = 'https://runthukverb-cement-cooldown.pages.dev';
 
 export function getApiEndpoint(path: string): string {
   if (typeof window !== 'undefined' && window.location) {
     const hostname = window.location.hostname;
+    if (
+      hostname === 'runthukverb-cement-cooldown.pages.dev' ||
+      hostname.endsWith('.runthukverb-cement-cooldown.pages.dev')
+    ) {
+      return path;
+    }
     if (
       hostname.endsWith('.pages.dev') ||
       hostname === 'localhost' ||
@@ -48,90 +54,6 @@ export function getApiEndpoint(path: string): string {
     }
   }
   return path;
-}
-
-const CLIENT_SECRET_SEED = 'RUNTHUKVERB_GANG_SECRET_KEY_2026';
-const CLIENT_MASTER_PIN = '222547';
-
-async function deriveClientDailyPin(branchId: string, dateStr: string): Promise<string> {
-  try {
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(CLIENT_SECRET_SEED),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    const sig = await crypto.subtle.sign(
-      'HMAC',
-      key,
-      encoder.encode(`pin:v2:${branchId}:${dateStr}`)
-    );
-    const digest = new Uint8Array(sig);
-    const value =
-      (((digest[0] & 0x7f) << 24) |
-        (digest[1] << 16) |
-        (digest[2] << 8) |
-        digest[3]) %
-      1_000_000;
-    return String(value).padStart(6, '0');
-  } catch {
-    return '';
-  }
-}
-
-async function verifyClientFallback(
-  cleanPin: string,
-  cleanName: string,
-  branch: BranchInfo
-): Promise<VerifyPinResult | null> {
-  const todayStr = getLocalDateString();
-  const isMaster = cleanPin === CLIENT_MASTER_PIN;
-  let isDaily = false;
-
-  if (!isMaster) {
-    const expectedDaily = await deriveClientDailyPin(branch.id, todayStr);
-    isDaily = Boolean(expectedDaily && cleanPin === expectedDaily);
-  }
-
-  if (isMaster || isDaily) {
-    let encodedName = 'user';
-    try {
-      encodedName = btoa(unescape(encodeURIComponent(cleanName)));
-    } catch {
-      encodedName = 'user';
-    }
-
-    const session: GangSession = {
-      gangId: branch.id,
-      gangName: isMaster ? `${branch.name} (Master Boss)` : branch.name,
-      memberName: cleanName,
-      authDate: todayStr,
-      authenticatedAt: Date.now(),
-      isMaster,
-      token: `client_fallback_${isMaster ? 'master' : 'member'}_${encodedName}.${Date.now()}`,
-      channelKey: `client_channel_${todayStr}`,
-    };
-
-    saveGangSession(session);
-    logActivity(
-      cleanName,
-      'login',
-      isMaster
-        ? `เข้าสู่ระบบด้วย Master PIN (${branch.name}) [Direct Mode]`
-        : `เข้าสู่ระบบด้วยรหัสผ่านประจำวัน (${branch.name}) [Direct Mode]`,
-      session.gangId
-    );
-
-    return {
-      success: true,
-      isMaster,
-      session,
-    };
-  }
-
-  return null;
 }
 
 const SESSION_STORAGE_KEY = 'runthukverb_gang_session_v6';
@@ -299,22 +221,12 @@ export async function verifyPIN(
       };
     }
 
-    const fallback = await verifyClientFallback(cleanPin, cleanName, branch);
-    if (fallback) {
-      return fallback;
-    }
-
     return {
       success: false,
       isMaster: false,
       error: data.error || `รหัสผ่านของ ${branch.name} ไม่ถูกต้อง`,
     };
   } catch {
-    const fallback = await verifyClientFallback(cleanPin, cleanName, branch);
-    if (fallback) {
-      return fallback;
-    }
-
     return {
       success: false,
       isMaster: false,
@@ -331,16 +243,8 @@ export async function verifySessionWithServer(
   banReason?: string;
   session?: GangSession;
 }> {
-  if (!session.token) {
+  if (!session.token || session.token.startsWith('client_fallback_')) {
     return { valid: false };
-  }
-
-  if (session.token.startsWith('client_fallback_')) {
-    const todayStr = getLocalDateString();
-    if (!session.isMaster && session.authDate !== todayStr) {
-      return { valid: false };
-    }
-    return { valid: true, session };
   }
 
   try {
@@ -389,55 +293,30 @@ export async function fetchUpcomingPINs(session: GangSession): Promise<UpcomingP
   const daysOfWeek = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
   const todayStr = getLocalDateString();
 
-  try {
-    const res = await fetch(getApiEndpoint('/api/pins/upcoming'), {
-      headers: { Authorization: `Bearer ${session.token}` },
-      cache: 'no-store',
-    });
+  const res = await fetch(getApiEndpoint('/api/pins/upcoming'), {
+    headers: { Authorization: `Bearer ${session.token}` },
+    cache: 'no-store',
+  });
 
-    if (res.ok) {
-      const data = (await res.json()) as {
-        schedule: Array<{ date: string; pins: Record<string, string> }>;
-      };
-
-      return (data.schedule || []).map((item) => {
-        const [year, month, day] = item.date.split('-').map(Number);
-        const utcDate = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
-        const dayName = daysOfWeek[utcDate.getUTCDay()] || '';
-        return {
-          dateStr: item.date,
-          dayName: `${dayName} (${day}/${month})`,
-          pins: item.pins || {},
-          isToday: item.date === todayStr,
-        };
-      });
-    }
-  } catch {
-    // Fall back to client schedule generation
+  if (!res.ok) {
+    throw new Error('ไม่สามารถดึงตารางรหัสผ่านจากเซิร์ฟเวอร์ได้');
   }
 
-  const schedule: UpcomingPinDay[] = [];
-  for (let offset = 0; offset < 7; offset += 1) {
-    const targetMs = Date.now() + 7 * 60 * 60 * 1000 + offset * 86_400_000;
-    const dateStr = new Date(targetMs).toISOString().slice(0, 10);
-    const [year, month, day] = dateStr.split('-').map(Number);
+  const data = (await res.json()) as {
+    schedule: Array<{ date: string; pins: Record<string, string> }>;
+  };
+
+  return (data.schedule || []).map((item) => {
+    const [year, month, day] = item.date.split('-').map(Number);
     const utcDate = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
     const dayName = daysOfWeek[utcDate.getUTCDay()] || '';
-
-    const pins: Record<string, string> = {};
-    for (const b of AVAILABLE_BRANCHES) {
-      pins[b.id] = await deriveClientDailyPin(b.id, dateStr);
-    }
-
-    schedule.push({
-      dateStr,
+    return {
+      dateStr: item.date,
       dayName: `${dayName} (${day}/${month})`,
-      pins,
-      isToday: dateStr === todayStr,
-    });
-  }
-
-  return schedule;
+      pins: item.pins || {},
+      isToday: item.date === todayStr,
+    };
+  });
 }
 
 export function formatPINsForDiscord(
@@ -448,7 +327,7 @@ export function formatPINsForDiscord(
   const origin =
     typeof window !== 'undefined' && window.location?.origin
       ? window.location.origin
-      : 'https://runthukverb-auth-api.workers.dev';
+      : 'https://runthukverb-cement-cooldown.pages.dev';
 
   let text = `👑 **[${branch.name} - แผนที่ COOLDOWN] - ตารางรหัสผ่านประจำวัน** 🔒\n`;
   text += `> ⚠️ ห้ามส่งต่อให้คนนอกสาขาเด็ดขาด รหัสจะเปลี่ยนอัตโนมัติทุก 00:00 น.\n\n`;
