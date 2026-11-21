@@ -11,12 +11,12 @@ export interface SupabaseConfig {
 export class SupabaseRestClient {
   private readonly baseUrl: string;
   private readonly serviceRoleKey: string;
-  private readonly fetchFn: typeof fetch;
+  private readonly customFetch?: typeof fetch;
 
   constructor(config: SupabaseConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
     this.serviceRoleKey = config.serviceRoleKey.trim();
-    this.fetchFn = config.fetchFn ?? fetch;
+    this.customFetch = config.fetchFn;
   }
 
   private async request<T>(
@@ -25,7 +25,8 @@ export class SupabaseRestClient {
     body?: unknown,
     extraHeaders?: Record<string, string>
   ): Promise<T> {
-    const res = await this.fetchFn(`${this.baseUrl}/rest/v1/${pathWithQuery}`, {
+    const url = `${this.baseUrl}/rest/v1/${pathWithQuery}`;
+    const init: RequestInit = {
       method,
       headers: {
         apikey: this.serviceRoleKey,
@@ -34,7 +35,10 @@ export class SupabaseRestClient {
         ...extraHeaders,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    };
+    const customFetch = this.customFetch;
+    // Call global fetch directly (never as a method on `this`) to avoid workerd Illegal invocation
+    const res = await (customFetch ? customFetch(url, init) : fetch(url, init));
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
