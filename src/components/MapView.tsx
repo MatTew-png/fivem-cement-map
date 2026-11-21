@@ -261,60 +261,60 @@ function createPopupNode(
       : '';
 
   const actionRowHtml = `
-      <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80">
-        <div class="flex flex-wrap items-center gap-1">
+      <div class="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/80">
+        <button
+          type="button"
+          data-popup-action="measure"
+          class="flex-1 py-1 px-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[10px] font-semibold transition-colors border border-amber-500/30 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
+          title="ตั้ง GPS นำทางจากจุดนี้"
+        >
+          <span>🧭</span>
+          <span>GPS</span>
+        </button>
+        <button
+          type="button"
+          data-popup-action="ping-gang"
+          class="flex-1 py-1 px-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[10px] font-semibold transition-colors border border-cyan-500/35 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
+          title="ปิงเรียกเพื่อนในสาขาให้มาดูจุดนี้"
+        >
+          <span>📣</span>
+          <span>ปิง</span>
+        </button>
+        <button
+          type="button"
+          data-popup-action="move-pin"
+          class="flex-1 py-1 px-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 hover:text-amber-200 text-[10px] font-semibold transition-colors border border-amber-500/35 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
+          title="ย้ายตำแหน่งหมุดนี้"
+        >
+          <span>📍</span>
+          <span>ย้าย</span>
+        </button>
+        ${
+          callbacksRef.current.isDistanceMode &&
+          callbacksRef.current.distancePoints &&
+          callbacksRef.current.distancePoints.length >= 1 &&
+          callbacksRef.current.distancePoints[0].spotId !== spot.id
+            ? `
           <button
             type="button"
-            data-popup-action="measure"
-            class="py-1 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/30 flex items-center gap-1 cursor-pointer"
-            title="ตั้ง GPS นำทางจากจุดนี้"
+            data-popup-action="nav-target"
+            class="flex-1 py-1 px-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[10px] font-semibold transition-colors border border-cyan-500/30 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
+            title="ตั้งเป็นจุดหมายปลายทาง"
           >
-            <span>🧭</span>
-            <span>ตั้ง GPS</span>
+            <span>🎯</span>
+            <span>นำทาง</span>
           </button>
-          <button
-            type="button"
-            data-popup-action="ping-gang"
-            class="py-1 px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold transition-colors border border-cyan-500/35 flex items-center gap-1 cursor-pointer"
-            title="ปิงเรียกเพื่อนในสาขาให้มาดูจุดนี้"
-          >
-            <span>📣</span>
-            <span>เรียกเพื่อน</span>
-          </button>
-          <button
-            type="button"
-            data-popup-action="move-pin"
-            class="py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors border border-amber-500/35 flex items-center gap-1 cursor-pointer"
-            title="ย้ายตำแหน่งหมุดนี้ไปยังจุดใหม่ (คลิกบนแผนที่หรือลากหมุด)"
-          >
-            <span>📍</span>
-            <span>ย้ายตำแหน่ง</span>
-          </button>
-          ${
-            callbacksRef.current.isDistanceMode &&
-            callbacksRef.current.distancePoints &&
-            callbacksRef.current.distancePoints.length >= 1 &&
-            callbacksRef.current.distancePoints[0].spotId !== spot.id
-              ? `
-            <button
-              type="button"
-              data-popup-action="nav-target"
-              class="py-1 px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 hover:text-cyan-200 text-[11px] font-semibold transition-colors border border-cyan-500/30 flex items-center gap-1 cursor-pointer"
-              title="ตั้งเป็นจุดหมายปลายทาง"
-            >
-              <span>🎯</span>
-              <span>นำทางมาที่นี่</span>
-            </button>
-          `
-              : ''
-          }
-        </div>
+        `
+            : ''
+        }
         <button
           type="button"
           data-popup-action="edit"
-          class="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[11px] transition-colors border border-slate-700 cursor-pointer ml-auto"
+          class="flex-1 py-1 px-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-[10px] transition-colors border border-slate-700 flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap"
+          title="แก้ไขข้อมูลหมุด"
         >
-          ✏️ แก้ไข
+          <span>✏️</span>
+          <span>แก้</span>
         </button>
       </div>
   `;
@@ -330,7 +330,7 @@ function createPopupNode(
   const cdTimeStr = `${cdMinutes}:${cdSeconds.toString().padStart(2, '0')}`;
 
   const popupNode = document.createElement('div');
-  popupNode.className = 'p-1 text-slate-200 text-xs font-sans min-w-[250px] max-w-[320px]';
+  popupNode.className = 'p-0.5 text-slate-200 text-xs font-sans w-[250px] max-w-[82vw] max-h-[calc(100vh-140px)] overflow-y-auto';
 
   // Prevent map drag/click when interacting inside popup
   L.DomEvent.disableClickPropagation(popupNode);
@@ -338,7 +338,7 @@ function createPopupNode(
 
   if (isCooldown || isReady) {
     popupNode.innerHTML = `
-      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80 mb-2">
+      <div class="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-700/80 mb-1.5 pr-5">
         <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${safeSpotColor}22; color: ${safeSpotColor}; border: 1px solid ${safeSpotColor}55;">
           ${renderSpotIconHtml(spotIcon, 'w-3.5 h-3.5')}
           <span>${safeCatName}</span>
@@ -397,73 +397,54 @@ function createPopupNode(
     `;
   } else {
     popupNode.innerHTML = `
-      <div class="flex items-center justify-between gap-1.5 pb-2 border-b border-slate-800/80 mb-2">
+      <div class="flex items-center justify-between gap-1.5 pb-1.5 border-b border-slate-800/80 mb-1.5 pr-5">
         <div class="flex items-center gap-1.5 min-w-0">
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style="background-color: ${safeSpotColor}22; color: ${safeSpotColor}; border: 1px solid ${safeSpotColor}55;">
-            ${renderSpotIconHtml(spotIcon, 'w-3 h-3')}
-            <span>${safeCatName}</span>
+          <span class="shrink-0 flex items-center justify-center">${renderSpotIconHtml(spotIcon, 'w-4 h-4')}</span>
+          <span class="font-bold text-xs text-white truncate">${safeSpotName}</span>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          ${safePostal ? `<span class="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-500/40">📮 ${safePostal}</span>` : ''}
+          <span class="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold" style="background-color: ${safeSpotColor}22; color: ${safeSpotColor}; border: 1px solid ${safeSpotColor}55;">
+            ${safeCatName}
           </span>
         </div>
-        ${safePostal ? `<span class="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/40 shrink-0">📮 ${safePostal}</span>` : ''}
       </div>
-
-      <h4 class="font-bold text-sm text-white mb-2 leading-snug flex items-center gap-1.5">
-        <span class="text-base flex items-center justify-center shrink-0">${renderSpotIconHtml(spotIcon, 'w-5 h-5')}</span>
-        <span class="break-words">${safeSpotName}</span>
-      </h4>
 
       ${metaHtml}
 
       ${isCement ? `
       <div data-popup-role="timer-panel">
-        <div class="grid grid-cols-4 gap-1 mb-2">
-          ${[3, 5, 10, 15].map((preset) => `
+        <div class="flex items-center justify-between bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-700/90 mb-1.5 shadow-inner gap-1">
+          <div class="flex items-baseline gap-1 min-w-0">
+            <span data-popup-role="numpad-display" class="text-lg font-mono font-black text-slate-600">_</span>
+            <span class="text-[11px] text-slate-400">นาที</span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            ${lastUsedMins ? `
+              <button
+                type="button"
+                data-preset-minutes="${lastUsedMins}"
+                class="preset-cd-btn text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-400 hover:text-slate-950 border border-amber-500/40 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                title="เริ่มจับเวลาซ้ำ ${lastUsedMins} นาทีทันที"
+              >
+                🔁 ${lastUsedMins}น.
+              </button>
+            ` : ''}
             <button
               type="button"
-              data-preset-minutes="${preset}"
-              class="preset-cd-btn py-1 rounded-lg font-mono font-bold text-[11px] border transition-all cursor-pointer ${
-                preset <= 3
-                  ? 'bg-red-500/15 text-red-300 border-red-500/35 hover:bg-red-500 hover:text-white'
-                  : 'bg-slate-800/90 text-amber-300 border-slate-700 hover:bg-amber-400 hover:text-slate-950'
-              }"
-              title="เริ่มจับเวลา ${preset} นาทีทันที"
+              data-popup-action="clear-numpad"
+              class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              ${preset}น.
+              ✕ ล้าง
             </button>
-          `).join('')}
-        </div>
-
-        ${lastUsedMins ? `
-          <button
-            type="button"
-            data-preset-minutes="${lastUsedMins}"
-            class="preset-cd-btn w-full py-1 px-2 mb-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 font-mono font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-            title="เริ่มจับเวลาซ้ำตามครั้งล่าสุดที่ใช้"
-          >
-            <span>🔁</span>
-            <span>เริ่มซ้ำล่าสุด (${lastUsedMins} นาที)</span>
-          </button>
-        ` : ''}
-
-        <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700/90 mb-2 shadow-inner">
-          <div class="flex items-baseline gap-1">
-            <span data-popup-role="numpad-display" class="text-xl font-mono font-black text-slate-600">_</span>
-            <span class="text-xs text-slate-400">นาที</span>
           </div>
-          <button
-            type="button"
-            data-popup-action="clear-numpad"
-            class="text-[10px] text-slate-400 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            ✕ ล้าง
-          </button>
         </div>
 
-        <div class="grid grid-cols-3 gap-1 mb-2 select-none">
+        <div class="grid grid-cols-3 gap-1 mb-1.5 select-none">
           ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => `
             <button
               type="button"
-              class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+              class="numpad-key py-1.5 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
               data-key="${num}"
             >
               ${num}
@@ -471,7 +452,7 @@ function createPopupNode(
           `).join('')}
           <button
             type="button"
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+            class="numpad-key py-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 active:scale-95 text-slate-400 font-mono font-bold text-[11px] border border-slate-700 transition-all cursor-pointer shadow-sm"
             data-key="C"
             title="ล้างตัวเลข"
           >
@@ -479,14 +460,14 @@ function createPopupNode(
           </button>
           <button
             type="button"
-            class="numpad-key py-2 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-sm border border-slate-700 transition-all cursor-pointer shadow-sm"
+            class="numpad-key py-1.5 rounded-lg bg-slate-800/90 hover:bg-amber-400 hover:text-slate-950 active:scale-95 text-white font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
             data-key="0"
           >
             0
           </button>
           <button
             type="button"
-            class="numpad-key py-2 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-sm"
+            class="numpad-key py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 active:scale-95 text-slate-400 font-mono font-bold text-[11px] border border-slate-700 transition-all cursor-pointer shadow-sm"
             data-key="BACK"
             title="ลบตัวล่าสุด"
           >
@@ -497,7 +478,7 @@ function createPopupNode(
         <button
           type="button"
           data-popup-action="start-numpad"
-          class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all mb-2 cursor-pointer"
+          class="w-full py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-[0.98] text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1 transition-all mb-1.5 cursor-pointer"
         >
           <span>⏱️</span>
           <span>เริ่มจับเวลา</span>
@@ -1305,12 +1286,14 @@ export const MapView = memo(({
               return createPopupNode(liveSpot, cd, callbacksRef, marker);
             },
             {
-              maxWidth: 320,
-              minWidth: 260,
+              maxWidth: 280,
+              minWidth: 235,
               className: 'custom-fivem-popup',
               autoClose: false,
               closeOnClick: true,
-              autoPan: false,
+              autoPan: true,
+              autoPanPaddingTopLeft: L.point(16, 84),
+              autoPanPaddingBottomRight: L.point(16, 72),
             }
           );
 
@@ -1397,12 +1380,14 @@ export const MapView = memo(({
           clusterMarker.bindPopup(
             () => createClusterPopupNode(cluster, callbacksRef, clusterMarker),
             {
-              maxWidth: 340,
-              minWidth: 280,
+              maxWidth: 320,
+              minWidth: 250,
               className: 'custom-fivem-popup',
               autoClose: false,
               closeOnClick: true,
-              autoPan: false,
+              autoPan: true,
+              autoPanPaddingTopLeft: L.point(16, 84),
+              autoPanPaddingBottomRight: L.point(16, 72),
             }
           );
 
@@ -1570,10 +1555,21 @@ export const MapView = memo(({
 
     if (Number.isFinite(selectedSpot.x) && Number.isFinite(selectedSpot.y)) {
       try {
-        if (!isSameSpotUpdate || !isMovingThisSpot) {
-          const latlng = gameCoordsToLatLng(selectedSpot.x, selectedSpot.y);
-          map.flyTo(latlng, Math.max(map.getZoom(), 4), {
-            duration: 0.6,
+        const latlng = gameCoordsToLatLng(selectedSpot.x, selectedSpot.y);
+        const currentZoom = map.getZoom();
+        const pt = map.latLngToContainerPoint(latlng);
+        const size = map.getSize();
+        const needsFly =
+          !isSameSpotUpdate &&
+          (currentZoom < 4 ||
+            pt.x < 60 ||
+            pt.x > size.x - 60 ||
+            pt.y < 140 ||
+            pt.y > size.y - 90);
+
+        if (needsFly) {
+          map.flyTo(latlng, Math.max(currentZoom, 4), {
+            duration: 0.45,
           });
         }
         lastFlewSpotIdRef.current = selectedSpot.id;
@@ -1586,7 +1582,7 @@ export const MapView = memo(({
           return;
         }
 
-        // Open popup of selected marker
+        // Open popup of selected marker (autoPan will keep it safely below top HUD)
         const openPopup = () => {
           if (callbacksRef.current.movingSpot?.id === selectedSpot.id) return;
           const marker = markersMapRef.current.get(selectedSpot.id);
@@ -1595,7 +1591,7 @@ export const MapView = memo(({
           }
         };
         openPopup();
-        const timer = setTimeout(openPopup, 300);
+        const timer = setTimeout(openPopup, needsFly ? 480 : 120);
         return () => clearTimeout(timer);
       } catch (err) {
         console.error('Failed to flyTo spot:', err);
