@@ -298,7 +298,7 @@ export const PinModal = ({
               </div>
               <p className="text-xs text-slate-400">
                 {coordsLocked
-                  ? 'หมุดหลักทางการของแก๊ง (คลิกปุ่มด้านบนเพื่อปลดล็อคพิกัด)'
+                  ? 'หมุดหลักทางการของกลุ่ม (คลิกปุ่มด้านบนเพื่อปลดล็อคพิกัด)'
                   : 'ตั้งชื่อหมุดและเลือกไอคอนตามต้องการได้อย่างอิสระ'}
               </p>
             </div>
@@ -355,11 +355,11 @@ export const PinModal = ({
             </div>
           </div>
 
-          {/* 2. ชื่อจุด / ชื่อเรียกในแก๊ง */}
+          {/* 2. ชื่อจุด / ชื่อเรียกในกลุ่ม */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
-                2. ชื่อจุด / ชื่อเรียกในแก๊ง *
+                2. ชื่อจุด / ชื่อเรียกในกลุ่ม *
               </label>
               {category === 'cement_mine' && (
                 <span className="text-[11px] text-amber-300 font-semibold bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-500/30">
@@ -385,7 +385,7 @@ export const PinModal = ({
             <p className="mt-1 text-[11px] text-slate-400">
               {category === 'cement_mine'
                 ? '💡 สามารถเปลี่ยนชื่อปูนให้เพื่อนรู้ตำแหน่งได้อิสระ (เช่น "ปูน 1", "ปูนสะพาน") โดยระบบจะยังนับเป็นจุดปูนเสมอ'
-                : '💡 ตั้งชื่อสถานที่ให้เพื่อนในแก๊งเข้าใจง่ายและเรียกพิกัดได้ถูกต้อง'}
+                : '💡 ตั้งชื่อสถานที่ให้สมาชิกกลุ่มเข้าใจง่ายและเรียกพิกัดได้ถูกต้อง'}
             </p>
           </div>
 
@@ -606,7 +606,7 @@ export const PinModal = ({
                     disabled={coordsLocked}
                     value={coordsPasteInput}
                     onChange={(e) => handleCoordsPaste(e.target.value)}
-                    placeholder={coordsLocked ? 'พิกัดจุดหลักถูกล็อคไว้ (เฉพาะหัวหน้าแก๊งที่แก้ไขพิกัดได้)' : 'วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(...)'}
+                    placeholder={coordsLocked ? 'พิกัดจุดหลักถูกล็อคไว้ (เฉพาะหัวหน้ากลุ่มที่แก้ไขพิกัดได้)' : 'วางพิกัดจาก FiveM เช่น 152.9 6637.7 หรือ vector3(...)'}
                     className="flex-1 bg-transparent text-xs font-mono text-emerald-400 placeholder:text-slate-500 focus:outline-none disabled:cursor-not-allowed"
                   />
                   {coordsPasteInput && !coordsLocked && (
@@ -761,13 +761,13 @@ export const PinModal = ({
             </div>
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                โน้ตสำหรับสมาชิกแก๊ง
+                โน้ตสำหรับสมาชิกกลุ่ม
               </label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="เช่น จุดจอดรถหลบหลังโกดัง / มีแก๊งคุม..."
+                placeholder="เช่น จุดจอดรถหลบหลังโกดัง / มีคนคุม..."
                 className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
               />
             </div>
@@ -781,7 +781,7 @@ export const PinModal = ({
               coordsLocked ? (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 select-none">
                   <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>จุดหลักของแก๊ง (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
+                  <span>จุดหลักของกลุ่ม (เฉพาะหัวหน้าที่มีสิทธิ์ลบ)</span>
                 </div>
               ) : confirmDelete ? (
                 <div className="flex items-center gap-1.5">

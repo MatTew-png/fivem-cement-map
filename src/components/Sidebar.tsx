@@ -367,7 +367,7 @@ export const Sidebar = memo(({
                     type="button"
                     onClick={onOpenPresence}
                     className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold hover:underline cursor-pointer group mt-0.5"
-                    title="คลิกเพื่อดูสมาชิกแก๊งออนไลน์"
+                    title="คลิกเพื่อดูสมาชิกกลุ่มออนไลน์"
                   >
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -419,7 +419,7 @@ export const Sidebar = memo(({
                   ? 'bg-slate-850 hover:bg-slate-800 text-slate-200 border-slate-700/80 shadow-sm'
                   : 'bg-slate-900/60 hover:bg-slate-850 text-slate-400 border-slate-800'
               }`}
-              title={isMaster ? 'ส่งออก / นำเข้าพิกัด' : 'การส่งออกพิกัดถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊ง'}
+              title={isMaster ? 'ส่งออก / นำเข้าพิกัด' : 'การส่งออกพิกัดถูกจำกัดสิทธิ์เฉพาะหัวหน้ากลุ่ม'}
             >
               {isMaster ? <Download className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-amber-500/70" />}
               <span>{isMaster ? 'ส่งออก' : 'นำเข้า'}</span>

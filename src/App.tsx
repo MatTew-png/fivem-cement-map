@@ -521,7 +521,7 @@ export function App() {
           soundEffects.playPinPlaced();
           gangPresence.triggerNotification({
             type: 'spot_add',
-            title: 'ซิงค์จุดจากเพื่อนในแก๊ง',
+            title: 'ซิงค์จุดจากสมาชิกกลุ่ม',
             subtitle: `ได้รับ ${addedCount} จุดเพิ่มเติมจาก ${senderName}`,
             icon: '🔄',
           });
@@ -556,8 +556,8 @@ export function App() {
         if (hasChange && newCount > 0) {
           gangPresence.triggerNotification({
             type: 'cooldown_start',
-            title: 'ซิงค์คูลดาวน์จากเพื่อนในแก๊ง',
-            subtitle: `พบ ${newCount} จุดกำลังนับถอยหลังอยู่ในแก๊ง (จาก ${senderName})`,
+            title: 'ซิงค์คูลดาวน์จากสมาชิกกลุ่ม',
+            subtitle: `พบ ${newCount} จุดกำลังนับถอยหลังอยู่ในกลุ่ม (จาก ${senderName})`,
             icon: '⏳',
           });
         }
@@ -569,7 +569,7 @@ export function App() {
       });
     });
 
-    // ตอบสนองเมื่อมีเพื่อนในแก๊งร้องขอซิงค์ข้อมูล หรือมีคนเพิ่งต่อเน็ตเข้ามาใหม่
+    // ตอบสนองเมื่อมีสมาชิกกลุ่มร้องขอซิงค์ข้อมูล หรือมีคนเพิ่งต่อเน็ตเข้ามาใหม่
     const unsubSyncReq = gangPresence.subscribeSyncRequest(() => {
       const defIds = new Set(DEFAULT_SPOTS.map((s) => s.id));
       const custom = (loadSpotsFromStorage(gangSession.gangId) || []).filter((s) => !defIds.has(s.id));
@@ -1130,7 +1130,7 @@ export function App() {
         </div>
         <h1 className="text-2xl font-black text-white mb-2 tracking-wide uppercase">ระงับการเข้าถึงเว็บไซต์</h1>
         <p className="text-sm text-slate-400 max-w-md mb-2">
-          IP Address ของคุณ (<span className="font-mono text-red-400 font-bold">{clientIpAddress || 'IP ที่ถูกบล็อก'}</span>) ถูกระงับการเข้าใช้งานโดยหัวหน้าแก๊ง
+          IP Address ของคุณ (<span className="font-mono text-red-400 font-bold">{clientIpAddress || 'IP ที่ถูกบล็อก'}</span>) ถูกระงับการเข้าใช้งานโดยหัวหน้ากลุ่ม
         </p>
         {banReason && (
           <p className="text-xs text-red-300 bg-red-950/50 border border-red-500/30 rounded-xl px-3 py-1.5 max-w-md mb-3">
@@ -1138,7 +1138,7 @@ export function App() {
           </p>
         )}
         <p className="text-xs text-slate-500 max-w-sm mb-6">
-          หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อหัวหน้าแก๊งเพื่อขอปลดแบน IP ของคุณ
+          หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อหัวหน้ากลุ่มเพื่อขอปลดแบน IP ของคุณ
         </p>
         <div className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[10px] text-slate-500 font-mono">
           Security Enforcement • FiveM RunThukVerb

@@ -114,7 +114,7 @@ export const GangAuthModal: React.FC<GangAuthModalProps> = ({ onSuccess }) => {
             <span>COOLDOWN MAP</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1 max-w-[320px]">
-            ยืนยันตัวตนผ่านเซิร์ฟเวอร์เฉพาะสมาชิกแก๊ง เลือกสาขาและระบุรหัสผ่านประจำวัน
+            ยืนยันตัวตนผ่านเซิร์ฟเวอร์เฉพาะสมาชิกกลุ่ม เลือกสาขาและระบุรหัสผ่านประจำวัน
           </p>
         </div>
 

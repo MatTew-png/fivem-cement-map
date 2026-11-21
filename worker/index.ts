@@ -227,7 +227,7 @@ export async function handleApiRequest(
     const requestedBranch = sanitizeText(body.branchId, 24) || 'branch_1';
 
     if (!memberName) {
-      return jsonResponse({ success: false, error: 'กรุณาระบุชื่อเล่นในแก๊ง' }, 400, headers);
+      return jsonResponse({ success: false, error: 'กรุณาระบุชื่อเล่นในกลุ่ม' }, 400, headers);
     }
     if (!pin) {
       return jsonResponse({ success: false, error: 'กรุณากรอกรหัสผ่าน' }, 400, headers);

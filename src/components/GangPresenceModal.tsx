@@ -173,7 +173,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
     setForceLogoutBusy(true);
     const ok = await triggerServerForceLogout(currentSession);
     if (ok) {
-      gangPresence.broadcastForceLogout('หัวหน้าแก๊งรีเซ็ต Session ทั้งหมด');
+      gangPresence.broadcastForceLogout('หัวหน้ากลุ่มรีเซ็ต Session ทั้งหมด');
       setConfirmForceLogout(false);
     } else {
       setPinsError('ไม่สามารถส่งคำสั่ง Force Logout ไปยังเซิร์ฟเวอร์ได้');
@@ -285,7 +285,7 @@ export const GangPresenceModal: React.FC<GangPresenceModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 id="presence-modal-title" className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>แก๊ง {gangName}</span>
+                  <span>กลุ่ม {gangName}</span>
                 </h3>
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
                   <span className="relative flex h-2 w-2">

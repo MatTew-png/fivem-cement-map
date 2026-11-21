@@ -281,10 +281,10 @@ export const ExportImportModal = ({
                 <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
                   <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
                     <Lock className="w-4 h-4 text-red-400" />
-                    <span>สิทธิ์เฉพาะหัวหน้าแก๊ง (Master PIN)</span>
+                    <span>สิทธิ์เฉพาะหัวหน้ากลุ่ม (Master PIN)</span>
                   </div>
                   <p className="text-slate-300 leading-relaxed text-[11px]">
-                    การส่งออกพิกัดไปยัง epic-euclid ถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊งเท่านั้น
+                    การส่งออกพิกัดไปยัง epic-euclid ถูกจำกัดสิทธิ์เฉพาะหัวหน้ากลุ่มเท่านั้น
                   </p>
                 </div>
               ) : (
@@ -401,10 +401,10 @@ export const ExportImportModal = ({
                 <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
                   <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
                     <Lock className="w-4 h-4 text-red-400" />
-                    <span>สิทธิ์เฉพาะหัวหน้าแก๊ง (Master PIN)</span>
+                    <span>สิทธิ์เฉพาะหัวหน้ากลุ่ม (Master PIN)</span>
                   </div>
                   <p className="text-slate-300 leading-relaxed text-[11px]">
-                    การส่งออกพิกัดทั้งหมดถูกจำกัดสิทธิ์เฉพาะหัวหน้าแก๊งเพื่อป้องกันพิกัดหลุด
+                    การส่งออกพิกัดทั้งหมดถูกจำกัดสิทธิ์เฉพาะหัวหน้ากลุ่มเพื่อป้องกันพิกัดหลุด
                   </p>
                 </div>
               ) : (
@@ -538,10 +538,10 @@ export const ExportImportModal = ({
                 <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 space-y-2.5">
                   <div className="flex items-center gap-2 text-red-300 font-bold text-sm">
                     <Lock className="w-4 h-4 text-red-400" />
-                    <span>ระบบป้องกันความปลอดภัย: สิทธิ์เฉพาะหัวหน้าแก๊ง</span>
+                    <span>ระบบป้องกันความปลอดภัย: สิทธิ์เฉพาะหัวหน้ากลุ่ม</span>
                   </div>
                   <p className="text-slate-300 leading-relaxed text-[11px]">
-                    โค้ดตาราง FiveM Lua สำหรับ Server Script ถูกจำกัดสิทธิ์เฉพาะ <strong>Master PIN (หัวหน้าแก๊ง)</strong> เพื่อป้องกันการคัดลอกพิกัดแบบ Bulk Export
+                    โค้ดตาราง FiveM Lua สำหรับ Server Script ถูกจำกัดสิทธิ์เฉพาะ <strong>Master PIN (หัวหน้ากลุ่ม)</strong> เพื่อป้องกันการคัดลอกพิกัดแบบ Bulk Export
                   </p>
                 </div>
               ) : (

@@ -225,7 +225,7 @@ export const GangBentoModal: React.FC<GangBentoModalProps> = ({
                   ••••••
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">
-                  {currentSession?.isMaster ? 'ดูตารางรหัสได้ที่เมนูหัวหน้าแก๊ง' : 'ตรวจสอบจาก Discord ของแก๊ง'}
+                  {currentSession?.isMaster ? 'ดูตารางรหัสได้ที่เมนูหัวหน้ากลุ่ม' : 'ตรวจสอบจาก Discord ของกลุ่ม'}
                 </div>
               </div>
 

@@ -295,7 +295,7 @@ class GangPresenceManager {
     };
     this.publish(payload, this.getMqttTopic(), { qos: 1 });
     this.pingListeners.forEach((cb) => cb(ping));
-    logActivity(this.session.memberName, 'spot_update', `ปิงเรียกแก๊งที่จุด: ${label}`, this.session.gangId);
+    logActivity(this.session.memberName, 'spot_update', `ปิงเรียกกลุ่มที่จุด: ${label}`, this.session.gangId);
     this.notifyListeners();
   }
 
@@ -355,7 +355,7 @@ class GangPresenceManager {
     this.notifListeners.forEach((cb) => cb(fullNotif));
   }
 
-  // สมาชิกกดจับเวลาปูน ให้กระจายแจ้งเตือนทั้งแก๊ง
+  // สมาชิกกดจับเวลาปูน ให้กระจายแจ้งเตือนทั้งกลุ่ม
   public broadcastCooldown(spotId: string, spotName: string, durationMinutes: number, action: 'start' | 'cancel') {
     if (!this.session) return;
     const payload = {
@@ -376,7 +376,7 @@ class GangPresenceManager {
     }
   }
 
-  // สมาชิกปักจุด / แก้ไข / ลบ / ย้ายหมุด ให้กระจายอัปเดตทั้งแก๊งสดๆ ทันที
+  // สมาชิกปักจุด / แก้ไข / ลบ / ย้ายหมุด ให้กระจายอัปเดตทั้งกลุ่มสดๆ ทันที
   public broadcastSpotChange(action: SpotSyncAction, spot?: CementSpot, spotId?: string) {
     if (!this.session) return;
     const id = spotId || spot?.id || '';
@@ -552,14 +552,14 @@ class GangPresenceManager {
 
   private handleRetainedSpotsMessage(data: any) {
     if (!data || !Array.isArray(data.customSpots)) return;
-    this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'คลาวด์แก๊ง'));
+    this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'คลาวด์กลุ่ม'));
   }
 
   private handleRetainedCooldownsMessage(data: any) {
     if (!data || !Array.isArray(data.cooldowns)) return;
     const now = Date.now();
     const valid = data.cooldowns.filter((c: ActiveCooldown) => c && c.expiresAt > now - 60000);
-    this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'คลาวด์แก๊ง'));
+    this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'คลาวด์กลุ่ม'));
   }
 
   private sendHeartbeat() {
@@ -765,10 +765,10 @@ class GangPresenceManager {
     else if (data.type === 'spot_manifest') {
       if (data.clientId === this.clientId) return; // ตัวเอง
       if (Array.isArray(data.customSpots) && data.customSpots.length > 0) {
-        this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'สมาชิกแก๊ง'));
+        this.manifestListeners.forEach((cb) => cb(data.customSpots, data.memberName || 'สมาชิกกลุ่ม'));
       }
     }
-    // 6. Sync Request (สมาชิกที่เพิ่งต่อเน็ต ร้องขอข้อมูลหมุดสดๆ จากคนในแก๊ง)
+    // 6. Sync Request (สมาชิกที่เพิ่งต่อเน็ต ร้องขอข้อมูลหมุดสดๆ จากสมาชิกกลุ่ม)
     else if (data.type === 'sync_request') {
       if (data.clientId === this.clientId) return; // ตัวเอง
       this.syncRequestListeners.forEach((cb) => cb());
@@ -779,7 +779,7 @@ class GangPresenceManager {
       if (Array.isArray(data.cooldowns)) {
         const now = Date.now();
         const valid = data.cooldowns.filter((c: ActiveCooldown) => c && c.expiresAt > now - 60000);
-        this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกแก๊ง'));
+        this.cdManifestListeners.forEach((cb) => cb(valid, data.memberName || 'สมาชิกกลุ่ม'));
       }
     }
     // 8. Tactical Ping (เรียกเพื่อนมาดูจุดบนแผนที่)
@@ -792,11 +792,11 @@ class GangPresenceManager {
         y: Number(data.y),
         label: String(data.label || 'จุดปิงบนแผนที่'),
         spotId: data.spotId ? String(data.spotId) : undefined,
-        memberName: String(data.memberName || 'สมาชิกแก๊ง'),
+        memberName: String(data.memberName || 'สมาชิกกลุ่ม'),
         timestamp: Number(data.timestamp) || Date.now(),
       };
       this.pingListeners.forEach((cb) => cb(ping));
-      logActivity(ping.memberName, 'spot_update', `ปิงเรียกแก๊ง: ${ping.label}`, this.getGangId());
+      logActivity(ping.memberName, 'spot_update', `ปิงเรียกกลุ่ม: ${ping.label}`, this.getGangId());
       this.notifyListeners();
       this.triggerNotification({
         type: 'tactical_ping',
@@ -847,7 +847,7 @@ class GangPresenceManager {
   }
 
   // ส่งสัญญาณบังคับให้อุปกรณ์ทุกเครื่องเตะผู้ใช้ออกจากระบบทันที
-  public broadcastForceLogout(reason: string = 'หัวหน้าแก๊งรีเซ็ตรหัสผ่านใหม่') {
+  public broadcastForceLogout(reason: string = 'หัวหน้ากลุ่มรีเซ็ตรหัสผ่านใหม่') {
     const payload = {
       type: 'force_logout',
       reason,

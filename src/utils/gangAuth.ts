@@ -1,4 +1,4 @@
-// ระบบความปลอดภัยและ Session ผ่าน Cloudflare Worker API สำหรับแก๊ง FiveM (รันทุกเวิบ COOLDOWN)
+// ระบบความปลอดภัยและ Session ผ่าน Cloudflare Worker API สำหรับกลุ่ม FiveM (รันทุกเวิบ COOLDOWN)
 
 export interface GangSession {
   gangId: string;
@@ -563,7 +563,7 @@ export function logActivity(
   }
 }
 
-// ล้างประวัติ Activity Logs ทั้งหมดของแก๊ง
+// ล้างประวัติ Activity Logs ทั้งหมดของกลุ่ม
 export function clearActivityLogs(gangId?: string): void {
   try {
     const key = getLogKey(gangId);
